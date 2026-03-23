@@ -10,6 +10,7 @@ from tools.edgar_client import (
     get_adviser_detail,
     extract_adv_summary,
     search_13f_filings,
+    search_13f_by_cik,
 )
 from tools.fred_client import get_market_context, latest_value
 
@@ -69,18 +70,23 @@ def run(firm_input: str, fred_api_key: str = None) -> dict:
         print(f"[Ingestion] Fetching IAPD detail for CRD {crd}")
         detail = get_adviser_detail(str(crd))
         if detail:
-            raw_data["adv_summary"] = extract_adv_summary(detail)
+            search_hit = raw_data["search_results"][0] if raw_data["search_results"] else None
+            raw_data["adv_summary"] = extract_adv_summary(detail, search_hit=search_hit)
         else:
             raw_data["errors"].append(f"IAPD detail fetch failed for CRD {crd}")
 
     # ── Step 3: Search 13F filings on EDGAR ──────────────────────────────────
+    # Try name-based search first; note many private fund managers don't file 13F
     search_name = firm_input if not firm_input.isdigit() else raw_data["adv_summary"].get("firm_name", "")
     if search_name:
         print(f"[Ingestion] Searching EDGAR for 13F filings: '{search_name}'")
         filings = search_13f_filings(search_name, max_results=5)
         raw_data["filings_13f"] = filings
         if not filings:
-            raw_data["errors"].append(f"No 13F filings found for '{search_name}'")
+            raw_data["errors"].append(
+                f"No 13F filings found for '{search_name}' — "
+                "firm may not hold reportable US equity positions above $100M threshold"
+            )
 
     # ── Step 4: Pull macro context from FRED ─────────────────────────────────
     print("[Ingestion] Fetching macro context from FRED")

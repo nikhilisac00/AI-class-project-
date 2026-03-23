@@ -2,65 +2,53 @@
 SEC EDGAR & IAPD Client
 Pulls real data from:
   - IAPD (Investment Adviser Public Disclosure): adviser search + ADV filing detail
-  - SEC EDGAR full-text search: 13F filings
-  - SEC EDGAR submissions API: filing history
+  - SEC EDGAR full-text search: 13F filings, company filings
+  - SEC EDGAR company API: filing history
 
-All URLs are public, no auth required.
+All URLs are public. No auth required.
+Field names are verified against live API responses.
 """
 
+import json
 import time
 import requests
 
 IAPD_SEARCH   = "https://api.adviserinfo.sec.gov/search/firm"
 IAPD_DETAIL   = "https://api.adviserinfo.sec.gov/search/firm/{crd}"
-EDGAR_SEARCH  = "https://efts.sec.gov/LATEST/search-index"
-EDGAR_SUBMIT  = "https://data.sec.gov/submissions/{cik}.json"
-EDGAR_FILING  = "https://www.sec.gov/Archives/edgar/full-index/"
+EDGAR_EFTS    = "https://efts.sec.gov/LATEST/search-index"
+EDGAR_COMPANY = "https://www.sec.gov/cgi-bin/browse-edgar"
+EDGAR_SUBMIT  = "https://data.sec.gov/submissions/CIK{cik}.json"
 
 HEADERS = {
-    "User-Agent": "AI-Alternatives-Research nikhilisac00@gmail.com",
+    "User-Agent": "AI-Alternatives-Research contact@example.com",
     "Accept-Encoding": "gzip, deflate",
 }
 
 
 def _get(url: str, params: dict = None, retries: int = 3) -> dict | None:
-    """GET with polite retry. Returns parsed JSON or None on failure."""
     for attempt in range(retries):
         try:
             r = requests.get(url, params=params, headers=HEADERS, timeout=20)
             r.raise_for_status()
             return r.json()
-        except requests.exceptions.HTTPError as e:
+        except requests.exceptions.HTTPError:
             if r.status_code == 429:
                 time.sleep(2 ** attempt)
             else:
-                print(f"[EDGAR] HTTP {r.status_code} on {url}: {e}")
+                print(f"[EDGAR] HTTP {r.status_code} → {url}")
                 return None
         except requests.exceptions.RequestException as e:
-            print(f"[EDGAR] Request error on {url}: {e}")
+            print(f"[EDGAR] Request error: {e}")
             time.sleep(1)
     return None
 
 
-def _get_text(url: str, retries: int = 3) -> str | None:
-    """GET raw text (for filing documents)."""
-    for attempt in range(retries):
-        try:
-            r = requests.get(url, headers=HEADERS, timeout=30)
-            r.raise_for_status()
-            return r.text
-        except requests.exceptions.RequestException as e:
-            print(f"[EDGAR] Text fetch error on {url}: {e}")
-            time.sleep(1)
-    return None
-
-
-# ─── IAPD: Investment Adviser search ──────────────────────────────────────────
+# ─── IAPD: search ─────────────────────────────────────────────────────────────
 
 def search_adviser_by_name(name: str, max_results: int = 5) -> list[dict]:
     """
     Search IAPD for RIAs by firm name.
-    Returns list of {crd, firm_name, sec_number, ...}.
+    Field names verified against live API response.
     """
     params = {
         "query": name,
@@ -68,23 +56,33 @@ def search_adviser_by_name(name: str, max_results: int = 5) -> list[dict]:
         "nrows": max_results,
         "start": 0,
         "r": max_results,
-        "sort": "score+desc",
         "wt": "json",
     }
     data = _get(IAPD_SEARCH, params=params)
     if not data:
         return []
+
     hits = data.get("hits", {}).get("hits", [])
     results = []
     for h in hits:
         src = h.get("_source", {})
+        # Parse address from embedded JSON string
+        addr = {}
+        addr_raw = src.get("firm_ia_address_details", "")
+        if addr_raw:
+            try:
+                addr = json.loads(addr_raw).get("officeAddress", {})
+            except (json.JSONDecodeError, AttributeError):
+                pass
+
         results.append({
-            "crd": src.get("org_pk"),
-            "firm_name": src.get("org_nm"),
-            "sec_number": src.get("sec_number"),
-            "city": src.get("st_cd"),
-            "state": src.get("state_cd"),
-            "registration_status": src.get("registration_status"),
+            "crd": src.get("firm_source_id"),
+            "firm_name": src.get("firm_name"),
+            "sec_number": src.get("firm_ia_full_sec_number"),
+            "registration_status": src.get("firm_ia_scope"),
+            "has_disclosures": src.get("firm_ia_disclosure_fl") == "Y",
+            "city": addr.get("city"),
+            "state": addr.get("state"),
         })
     return results
 
@@ -92,73 +90,97 @@ def search_adviser_by_name(name: str, max_results: int = 5) -> list[dict]:
 def get_adviser_detail(crd: str) -> dict | None:
     """
     Pull full IAPD detail for a CRD number.
-    Returns raw JSON from the IAPD API (includes ADV sections).
+    Returns the parsed iacontent dict (contains basicInformation, registrationStatus, etc.)
     """
     url = IAPD_DETAIL.format(crd=crd)
     data = _get(url)
-    return data
+    if not data:
+        return None
 
-
-def extract_adv_summary(iapd_detail: dict) -> dict:
-    """
-    Parse IAPD detail JSON into a clean ADV summary dict.
-    Only uses fields actually present in the API response — no inference.
-    """
-    if not iapd_detail:
-        return {}
-
-    hits = iapd_detail.get("hits", {}).get("hits", [])
+    hits = data.get("hits", {}).get("hits", [])
     if not hits:
-        return {}
+        return None
 
     src = hits[0].get("_source", {})
+    iacontent_raw = src.get("iacontent", "")
+    if not iacontent_raw:
+        return None
 
-    # Core firm info
+    try:
+        return json.loads(iacontent_raw)
+    except json.JSONDecodeError:
+        return None
+
+
+def extract_adv_summary(iacontent: dict, search_hit: dict = None) -> dict:
+    """
+    Parse IAPD iacontent dict into a clean ADV summary.
+    Only uses fields actually present in the real API response.
+    search_hit: the matching search result dict (for extra fields)
+    """
+    if not iacontent:
+        return {}
+
+    basic = iacontent.get("basicInformation", {})
+    scope_flags = iacontent.get("orgScopeStatusFlags", {})
+    address_details = iacontent.get("iaFirmAddressDetails", {})
+    brochures = iacontent.get("brochures", [])
+    registration = iacontent.get("registrationStatus", {})
+    notice_filings = iacontent.get("noticeFilings", [])
+
+    # Address parsing
+    addr = {}
+    if isinstance(address_details, list) and address_details:
+        addr = address_details[0].get("officeAddress", {})
+    elif isinstance(address_details, dict):
+        addr = address_details.get("officeAddress", {})
+
+    # Brochure URLs (Part 2A/2B)
+    brochure_urls = []
+    if isinstance(brochures, list):
+        for b in brochures:
+            if isinstance(b, dict) and b.get("fileId"):
+                brochure_urls.append(b.get("fileId"))
+
     summary = {
-        "firm_name": src.get("org_nm"),
-        "crd_number": src.get("org_pk"),
-        "sec_number": src.get("sec_number"),
-        "registration_status": src.get("registration_status"),
-        "registration_date": src.get("registration_date"),
-        "city": src.get("st_cd"),
-        "state": src.get("state_cd"),
-        "website": src.get("website_addresses", [None])[0] if src.get("website_addresses") else None,
+        "firm_name": basic.get("firmName"),
+        "crd_number": basic.get("firmId"),
+        "sec_number": f"{basic.get('iaSECNumberType','')}-{basic.get('iaSECNumber','')}".strip("-"),
+        "registration_status": basic.get("iaScope"),
+        "adv_filing_date": basic.get("advFilingDate"),
+        "has_pdf": basic.get("hasPdf") == "Y",
+
+        # Registration flags
+        "is_sec_registered": scope_flags.get("isSECRegistered") == "Y",
+        "is_state_registered": scope_flags.get("isStateRegistered") == "Y",
+        "is_era_registered": scope_flags.get("isERARegistered") == "Y",
+
+        # Address
+        "city": addr.get("city"),
+        "state": addr.get("state"),
+        "country": addr.get("country"),
+        "postal_code": addr.get("postalCode"),
+
+        # Notice filings (state registrations)
+        "notice_filing_states": [
+            nf.get("stateCode") for nf in notice_filings
+            if isinstance(nf, dict) and nf.get("stateCode")
+        ],
+
+        # Brochures
+        "brochure_file_ids": brochure_urls,
+
+        # From search results (if provided)
+        "has_disclosures": search_hit.get("has_disclosures") if search_hit else None,
+
+        # Fields not available in this API — must be obtained from ADV Part 1 PDF/XML
+        "aum_regulatory": None,     # Not in IAPD API — in ADV Part 1 Item 5
+        "num_clients": None,        # Not in IAPD API — in ADV Part 1 Item 5
+        "num_employees": None,      # Not in IAPD API — in ADV Part 1 Item 5
+        "fee_types": [],            # Not in IAPD API — in ADV Part 2
+        "min_account_size": None,   # Not in IAPD API — in ADV Part 2
+        "key_personnel": [],        # Not in IAPD API — in Schedule A/B
     }
-
-    # AUM & client counts from latest ADV
-    latest_filing = src.get("latest_filing", {})
-    adv_data = latest_filing.get("form_adv", {})
-
-    part1 = adv_data.get("part1", {})
-    summary["aum_regulatory"] = part1.get("assets_under_management")
-    summary["num_clients"] = part1.get("number_of_clients")
-    summary["num_accounts"] = part1.get("number_of_accounts")
-    summary["num_employees"] = part1.get("number_of_employees")
-    summary["num_investment_advisers"] = part1.get("number_of_investment_advisers")
-
-    # Fee structures
-    part2 = adv_data.get("part2", {})
-    summary["fee_types"] = part2.get("advisory_fee_types", [])
-    summary["min_account_size"] = part2.get("minimum_account_size")
-
-    # Key personnel (Item 1 / Schedule A)
-    summary["key_personnel"] = []
-    for person in src.get("ind_details", []):
-        summary["key_personnel"].append({
-            "name": person.get("ind_nm"),
-            "crd": person.get("ind_pk"),
-            "title": person.get("titles", []),
-            "ownership_pct": person.get("ownership_pct"),
-        })
-
-    # Disciplinary history flags (Item 11)
-    disc = src.get("disclosure_info", {})
-    summary["has_disclosures"] = bool(disc)
-    summary["disclosure_count"] = disc.get("total_disclosures", 0) if disc else 0
-    summary["disclosure_types"] = list(disc.keys()) if disc else []
-
-    # Regulatory / registration details
-    summary["registrations"] = src.get("registrations", [])
 
     return summary
 
@@ -168,38 +190,68 @@ def extract_adv_summary(iapd_detail: dict) -> dict:
 def search_13f_filings(firm_name: str, max_results: int = 5) -> list[dict]:
     """
     Search EDGAR full-text for 13F-HR filings by firm name.
-    Returns list of {accession_number, filing_date, entity_name, ...}.
+    Uses EFTS API with correct field names from live API inspection.
     """
     params = {
         "q": f'"{firm_name}"',
         "forms": "13F-HR",
-        "dateRange": "custom",
-        "startdt": "2024-01-01",
-        "_source": "period_of_report,file_date,entity_name,file_num",
-        "hits.hits._source": "period_of_report,file_date,entity_name",
-        "hits.hits.total.value": max_results,
     }
-    data = _get(EDGAR_SEARCH, params=params)
+    data = _get(EDGAR_EFTS, params=params)
     if not data:
         return []
-    hits = data.get("hits", {}).get("hits", [])
+
+    hits = data.get("hits", {}).get("hits", [])[:max_results]
     results = []
     for h in hits:
         src = h.get("_source", {})
         results.append({
-            "entity_name": src.get("entity_name"),
-            "accession_number": h.get("_id"),
+            "entity_name": src.get("display_names", [None])[0] if src.get("display_names") else None,
+            "cik": src.get("ciks", [None])[0] if src.get("ciks") else None,
+            "accession_number": src.get("adsh"),
             "filing_date": src.get("file_date"),
-            "period_of_report": src.get("period_of_report"),
+            "period_ending": src.get("period_ending"),
+            "form": src.get("form"),
+            "description": src.get("file_description"),
         })
+    return results
+
+
+def search_13f_by_cik(cik: str, max_results: int = 5) -> list[dict]:
+    """
+    Pull 13F-HR filings for a known CIK directly from EDGAR submissions API.
+    More accurate than name-based search when CIK is known.
+    """
+    cik_padded = cik.lstrip("0").zfill(10)
+    submissions = get_submissions_by_cik(cik_padded)
+    if not submissions:
+        return []
+
+    filings = submissions.get("filings", {}).get("recent", {})
+    forms = filings.get("form", [])
+    dates = filings.get("filingDate", [])
+    accessions = filings.get("accessionNumber", [])
+    descriptions = filings.get("primaryDocument", [])
+
+    results = []
+    for i, form in enumerate(forms):
+        if form in ("13F-HR", "13F-HR/A") and len(results) < max_results:
+            results.append({
+                "entity_name": submissions.get("name"),
+                "cik": cik,
+                "accession_number": accessions[i] if i < len(accessions) else None,
+                "filing_date": dates[i] if i < len(dates) else None,
+                "period_ending": None,  # not in submissions API directly
+                "form": form,
+                "description": descriptions[i] if i < len(descriptions) else None,
+            })
     return results
 
 
 def get_submissions_by_cik(cik: str) -> dict | None:
     """
-    Pull filing history for an entity by SEC CIK number.
-    CIK must be zero-padded to 10 digits, e.g. '0001234567'.
+    Pull filing history for an entity by SEC CIK (zero-padded to 10 digits).
+    E.g. cik='1234567' → fetches CIK0001234567.json
     """
     cik_padded = cik.zfill(10)
-    url = EDGAR_SUBMIT.format(cik=f"CIK{cik_padded}")
+    url = EDGAR_SUBMIT.format(cik=cik_padded)
     return _get(url)
