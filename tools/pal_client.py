@@ -39,8 +39,8 @@ async def _call_pal_tool(tool_name: str, arguments: dict) -> str | None:
         return None
 
     try:
-        from mcp import ClientSession, StdioServerParameters
-        from mcp.client.stdio import stdio_client
+        from mcp import ClientSession, StdioServerParameters  # type: ignore
+        from mcp.client.stdio import stdio_client              # type: ignore
 
         server_params = StdioServerParameters(
             command=sys.executable,
@@ -128,11 +128,11 @@ Be specific. Reference exact sections. Do not rewrite the memo."""
 
 
 def is_available() -> bool:
-    """Return True if PAL MCP server is present and importable."""
+    """Return True if PAL MCP server is present and mcp package is importable."""
     if not _pal_available():
         return False
     try:
         import mcp  # noqa: F401
         return True
-    except ImportError:
+    except (ImportError, Exception):
         return False
