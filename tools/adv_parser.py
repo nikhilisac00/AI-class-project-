@@ -26,6 +26,7 @@ from typing import Optional
 
 EFTS_URL    = "https://efts.sec.gov/LATEST/search-index"
 SUBMISSIONS = "https://data.sec.gov/submissions/CIK{cik}.json"
+EDGAR_ARCHIVE = "https://www.sec.gov/Archives/edgar/data/{cik}/{acc_clean}/"
 HEADERS = {
     "User-Agent": "AI-Alternatives-Research research@example.com",
     "Accept-Encoding": "gzip, deflate",
@@ -61,10 +62,128 @@ def _text(url: str) -> Optional[str]:
 
 # ── 13F portfolio value (proxy AUM for public equity managers) ─────────────────
 
+def _find_cik_for_13f(firm_name: str) -> Optional[str]:
+    """Find EDGAR CIK for a firm by searching 13F-HR filings on EFTS."""
+    for query in [f'"{firm_name}"', firm_name]:
+        data = _json(EFTS_URL, {"q": query, "forms": "13F-HR"})
+        if data:
+            hits = data.get("hits", {}).get("hits", [])
+            if hits:
+                ciks = hits[0]["_source"].get("ciks", [])
+                if ciks:
+                    return str(int(ciks[0]))  # strip leading zeros
+    return None
+
+
+def _latest_13f_from_submissions(cik: str) -> Optional[dict]:
+    """
+    Use EDGAR submissions API to find the most recent 13F-HR filing.
+    Returns dict with accession, filing_date, period_of_report or None.
+    """
+    url = SUBMISSIONS.format(cik=cik.zfill(10))
+    data = _json(url)
+    if not data:
+        return None
+    recent = data.get("filings", {}).get("recent", {})
+    forms   = recent.get("form", [])
+    dates   = recent.get("filingDate", [])
+    accs    = recent.get("accessionNumber", [])
+    periods = recent.get("reportDate", [])
+    for i, ft in enumerate(forms):
+        if ft == "13F-HR":
+            return {
+                "accession":       accs[i],
+                "filing_date":     dates[i],
+                "period_of_report": periods[i] if i < len(periods) else None,
+            }
+    return None
+
+
+def _xml_file_from_filing(cik: str, acc: str) -> Optional[str]:
+    """
+    Scrape the EDGAR filing HTML index to find the primary 13F XML filename.
+    Returns just the filename (not the full URL).
+    """
+    acc_clean = acc.replace("-", "")
+    base = f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc_clean}/"
+    html = _text(base + acc + "-index.htm")
+    if not html:
+        return None
+    # Look for primary_doc.xml (has tableValueTotal) but NOT inside xslForm subdir
+    for name in re.findall(r'href="[^"]*?/([^/\"]+\.xml)"', html, re.I):
+        if name.lower() == "primary_doc.xml":
+            return name
+    # Fallback to any .xml not in an xsl subdirectory
+    for name in re.findall(r'href="(?!.*xslForm)[^"]*?/([^/\"]+\.xml)"', html, re.I):
+        if name.lower() not in ("xsl.xml",):
+            return name
+    return None
+
+
+def _parse_13f_xml(cik: str, acc: str, xml_file: str, period: Optional[str]) -> dict:
+    """
+    Download and parse a 13F-HR primary_doc.xml.
+    SEC changed reporting units from thousands → dollars starting with filings
+    covering periods ending on or after 2024-12-31 (schema version X0202).
+    Returns dict with portfolio_value_usd, portfolio_value_fmt, holdings_count.
+    """
+    acc_clean = acc.replace("-", "")
+    base = f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc_clean}/"
+    xml_content = _text(base + xml_file)
+    if not xml_content:
+        return {}
+
+    # Strip namespaces so ElementTree can parse
+    xml_clean = re.sub(r'\s+xmlns(?::\w+)?="[^"]*"', "", xml_content)
+    xml_clean = re.sub(r'\s+\w+:schemaLocation="[^"]*"', "", xml_clean)
+    xml_clean = re.sub(r"<(\w+):(\w[\w.-]*)", r"<\2", xml_clean)
+    xml_clean = re.sub(r"</(\w+):(\w[\w.-]*)", r"</\2", xml_clean)
+
+    try:
+        root = ET.fromstring(xml_clean)
+    except ET.ParseError:
+        return {}
+
+    # Detect schema version to determine value units.
+    # X0202 (effective 2025-01-01) reports values in dollars; earlier in thousands.
+    schema_el = root.find(".//schemaVersion")
+    schema_ver = schema_el.text.strip() if schema_el is not None and schema_el.text else ""
+    use_dollars = schema_ver >= "X0202" or (period or "") >= "2024-12-31"
+
+    val_raw = None
+    for tag in ("tableValueTotal", "totalValue", "sumValue", "portfolioValue"):
+        el = root.find(f".//{tag}")
+        if el is not None and el.text and el.text.strip().replace(",", "").isdigit():
+            val_raw = int(el.text.strip().replace(",", ""))
+            break
+
+    out = {}
+    if val_raw is not None:
+        val_usd = val_raw if use_dollars else val_raw * 1000
+        out["portfolio_value_usd"] = val_usd
+        if val_usd >= 1e12:
+            out["portfolio_value_fmt"] = f"${val_usd/1e12:.2f}T"
+        elif val_usd >= 1e9:
+            out["portfolio_value_fmt"] = f"${val_usd/1e9:.2f}B"
+        else:
+            out["portfolio_value_fmt"] = f"${val_usd/1e6:.1f}M"
+
+    # Holdings count — prefer tableEntryTotal from the summary doc
+    entry_el = root.find(".//tableEntryTotal")
+    if entry_el is not None and entry_el.text and entry_el.text.strip().isdigit():
+        out["holdings_count"] = int(entry_el.text.strip())
+    else:
+        holdings = root.findall(".//infoTable") or root.findall(".//InfoTable")
+        if holdings:
+            out["holdings_count"] = len(holdings)
+
+    return out
+
+
 def _get_13f_portfolio_value(firm_name: str) -> dict:
     """
     Find the most recent 13F-HR filing and extract total portfolio value.
-    Returns dict with portfolio_value_usd, filing_date, cik, and holdings_count.
+    Uses EFTS to resolve CIK, then EDGAR submissions API for the latest filing.
     Only applicable for managers with >$100M in US public equities.
     """
     result = {
@@ -78,83 +197,35 @@ def _get_13f_portfolio_value(firm_name: str) -> dict:
         "note": None,
     }
 
-    # Find 13F filing via EFTS
-    for query in [f'"{firm_name}"', firm_name]:
-        data = _json(EFTS_URL, {"q": query, "forms": "13F-HR"})
-        if data:
-            hits = data.get("hits", {}).get("hits", [])
-            if hits:
-                src = hits[0]["_source"]
-                ciks = src.get("ciks", [])
-                acc  = src.get("adsh")
-                if ciks and acc:
-                    result["cik"]       = ciks[0]
-                    result["accession"] = acc
-                    result["filing_date"] = src.get("file_date")
-                    result["period_of_report"] = src.get("period_ending")
-                    break
-
-    if not result["cik"]:
+    # Step 1: find CIK via EFTS
+    cik = _find_cik_for_13f(firm_name)
+    if not cik:
         result["note"] = "No 13F-HR filings found — firm may not hold >$100M in US public equities"
         return result
+    result["cik"] = cik
 
-    # Fetch the 13F XML to get total portfolio value
-    cik = result["cik"]
-    acc = result["accession"]
-    acc_clean = acc.replace("-", "")
-    base = f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc_clean}/"
+    # Step 2: get most recent 13F-HR accession via submissions API
+    filing = _latest_13f_from_submissions(cik)
+    if not filing:
+        result["note"] = f"CIK {cik} found but no 13F-HR in recent submissions"
+        return result
 
-    # Get filing index
-    index = _json(f"{base}{acc}-index.json")
-    xml_file = None
-    if index:
-        for doc in index.get("directory", {}).get("item", []):
-            name = doc.get("name", "")
-            # 13F primary XML is typically infotable.xml or primary_doc.xml
-            if name.lower().endswith(".xml") and name.lower() not in ("xsl.xml",):
-                xml_file = name
-                break
+    acc    = filing["accession"]
+    result["accession"]       = acc
+    result["filing_date"]     = filing["filing_date"]
+    result["period_of_report"] = filing["period_of_report"]
 
+    # Step 3: find the XML file via HTML index
+    xml_file = _xml_file_from_filing(cik, acc)
     if not xml_file:
-        result["note"] = f"13F filing found (CIK={cik}) but XML document not accessible"
+        result["note"] = f"13F filing found (CIK={cik}) but XML document not located in index"
         return result
 
-    xml_content = _text(base + xml_file)
-    if not xml_content:
-        result["note"] = f"Could not download 13F XML from {base + xml_file}"
-        return result
+    # Step 4: parse XML for portfolio value and holdings count
+    parsed = _parse_13f_xml(cik, acc, xml_file, filing["period_of_report"])
+    result.update(parsed)
 
-    # Parse 13F XML for total value and holdings count
-    try:
-        xml_clean = re.sub(r'\s+xmlns(?::\w+)?="[^"]*"', "", xml_content)
-        xml_clean = re.sub(r"<(\w+):(\w[\w.-]*)", r"<\2", xml_clean)
-        xml_clean = re.sub(r"</(\w+):(\w[\w.-]*)", r"</\2", xml_clean)
-        root = ET.fromstring(xml_clean)
-
-        # Total portfolio value (in thousands)
-        for tag in ("tableValueTotal", "totalValue", "sumValue", "portfolioValue"):
-            el = root.find(f".//{tag}")
-            if el is not None and el.text and el.text.strip().replace(",", "").isdigit():
-                val_thousands = int(el.text.strip().replace(",", ""))
-                val_usd = val_thousands * 1000
-                result["portfolio_value_usd"] = val_usd
-                if val_usd >= 1e12:
-                    result["portfolio_value_fmt"] = f"${val_usd/1e12:.2f}T"
-                elif val_usd >= 1e9:
-                    result["portfolio_value_fmt"] = f"${val_usd/1e9:.2f}B"
-                else:
-                    result["portfolio_value_fmt"] = f"${val_usd/1e6:.1f}M"
-                break
-
-        # Holdings count
-        holdings = root.findall(".//infoTable") or root.findall(".//InfoTable")
-        if holdings:
-            result["holdings_count"] = len(holdings)
-
-    except ET.ParseError as e:
-        result["note"] = f"13F XML parse error: {e}"
-
-    if result["portfolio_value_fmt"]:
+    if result.get("portfolio_value_fmt"):
         result["note"] = (
             "13F public equity portfolio (US equities only — not total regulatory AUM). "
             f"Period: {result['period_of_report'] or 'unknown'}"
