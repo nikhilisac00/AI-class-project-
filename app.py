@@ -28,6 +28,7 @@ import agents.data_ingestion  as ingestion_agent
 import agents.fund_analysis   as analysis_agent
 import agents.risk_flagging   as risk_agent
 import agents.memo_generation as memo_agent
+from tools.llm_client import make_client
 from tools.pal_client import is_available as pal_available, call_consensus
 
 
@@ -51,14 +52,33 @@ def _tier_color(tier: str) -> str:
 with st.sidebar:
     st.title("Settings")
 
-    anthropic_key = st.text_input(
-        "Anthropic API Key",
-        value=os.getenv("ANTHROPIC_API_KEY", ""),
-        type="password",
-        help="Required. Get one at console.anthropic.com",
+    provider = st.radio(
+        "AI Provider",
+        options=["Anthropic (Claude)", "OpenAI (ChatGPT)"],
+        index=0,
+        horizontal=True,
     )
+    is_openai = provider.startswith("OpenAI")
+
+    if is_openai:
+        api_key = st.text_input(
+            "OpenAI API Key",
+            value=os.getenv("OPENAI_API_KEY", ""),
+            type="password",
+            help="Get one at platform.openai.com. Uses o3 (reasoning model).",
+        )
+        st.caption("Model: o3 (reasoning mode)")
+    else:
+        api_key = st.text_input(
+            "Anthropic API Key",
+            value=os.getenv("ANTHROPIC_API_KEY", ""),
+            type="password",
+            help="Get one at console.anthropic.com. Uses claude-opus-4-6 + extended thinking.",
+        )
+        st.caption("Model: claude-opus-4-6 + extended thinking")
+
     fred_key = st.text_input(
-        "FRED API Key (optional)",
+        "FRED API Key (optional — free)",
         value=os.getenv("FRED_API_KEY", ""),
         type="password",
         help="Free at fred.stlouisfed.org. Adds macro rates/spreads to memo.",
@@ -88,7 +108,6 @@ with st.sidebar:
 
     st.divider()
     st.caption("Sources: IAPD · SEC EDGAR (13F XML) · FRED")
-    st.caption("Model: claude-opus-4-6 + extended thinking")
     st.caption("No hallucination — every fact traces to a real API call")
 
 
@@ -127,15 +146,14 @@ st.divider()
 # ── Run pipeline ───────────────────────────────────────────────────────────────
 
 if run_button:
-    if not anthropic_key:
-        st.error("Anthropic API key required. Add it in the sidebar.")
+    if not api_key:
+        st.error(f"{'OpenAI' if is_openai else 'Anthropic'} API key required. Add it in the sidebar.")
         st.stop()
     if not firm_input.strip():
         st.error("Enter a fund name or CRD number.")
         st.stop()
 
-    import anthropic
-    client = anthropic.Anthropic(api_key=anthropic_key)
+    client = make_client("openai" if is_openai else "anthropic", api_key)
 
     progress_bar = st.progress(0, text="Starting...")
     status_box   = st.empty()

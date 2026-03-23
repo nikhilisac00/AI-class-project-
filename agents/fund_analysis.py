@@ -1,12 +1,11 @@
 """
 Fund Analysis Agent
 Takes raw_data from the ingestion agent and produces structured analysis.
-Uses Claude with extended thinking to reason over real data.
-Never invents numbers — all outputs are grounded in raw_data fields.
+Uses LLMClient (Anthropic or OpenAI) — never invents numbers.
 """
 
 import json
-import anthropic
+from tools.llm_client import LLMClient
 
 
 SYSTEM_PROMPT = """You are a senior alternatives research analyst at a large institutional LP.
@@ -24,22 +23,7 @@ CRITICAL RULES — NO EXCEPTIONS:
 Output must be valid JSON matching the schema in the user message."""
 
 
-def run(raw_data: dict, client: anthropic.Anthropic) -> dict:
-    """
-    Produce structured fund analysis from ingested raw data.
-
-    Args:
-        raw_data: Output from data_ingestion.run()
-        client:   Anthropic client instance
-
-    Returns:
-        analysis dict with structured findings
-    """
-    adv = raw_data.get("adv_summary", {})
-    filings = raw_data.get("filings_13f", [])
-    macro = raw_data.get("market_context", {})
-    errors = raw_data.get("errors", [])
-
+def run(raw_data: dict, client: LLMClient) -> dict:
     user_message = f"""
 Analyze the following investment adviser data and return a JSON object.
 
@@ -103,34 +87,10 @@ Return ONLY a JSON object with this exact schema (use null for any missing field
 }}
 """
 
-    print("[Fund Analysis] Calling Claude (extended thinking)...")
-    response = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=8000,
-        thinking={
-            "type": "enabled",
-            "budget_tokens": 5000,
-        },
+    print(f"[Fund Analysis] Calling {client.provider} ({client.model})...")
+    return client.complete_json(
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_message}],
+        user=user_message,
+        max_tokens=8000,
+        thinking_tokens=5000,
     )
-
-    # Extract text block (skip thinking blocks)
-    result_text = ""
-    for block in response.content:
-        if block.type == "text":
-            result_text = block.text.strip()
-            break
-
-    # Strip markdown fences if present
-    if result_text.startswith("```"):
-        lines = result_text.split("\n")
-        result_text = "\n".join(lines[1:-1])
-
-    try:
-        analysis = json.loads(result_text)
-    except json.JSONDecodeError as e:
-        print(f"[Fund Analysis] JSON parse error: {e}")
-        analysis = {"raw_response": result_text, "parse_error": str(e)}
-
-    return analysis

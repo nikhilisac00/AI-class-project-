@@ -5,7 +5,7 @@ All flags are derived from data — no fabricated risk signals.
 """
 
 import json
-import anthropic
+from tools.llm_client import LLMClient
 
 
 SYSTEM_PROMPT = """You are a risk analyst at an institutional LP (endowment/pension/family office).
@@ -19,18 +19,7 @@ CRITICAL RULES:
 5. Keep it factual. IC teams act on these flags."""
 
 
-def run(analysis: dict, raw_data: dict, client: anthropic.Anthropic) -> dict:
-    """
-    Produce a structured risk flags report.
-
-    Args:
-        analysis: Output from fund_analysis.run()
-        raw_data: Original ingested data
-        client:   Anthropic client
-
-    Returns:
-        risk_report dict
-    """
+def run(analysis: dict, raw_data: dict, client: LLMClient) -> dict:
     user_message = f"""
 Review the following investment adviser analysis and identify risk flags for LP due diligence.
 
@@ -55,50 +44,19 @@ Return ONLY a JSON object:
     }}
   ],
   "clean_items": [
-    "list of areas that appear clean based on available data (with caveat if limited data)"
+    "list of areas that appear clean based on available data"
   ],
   "critical_data_gaps": [
     "list of fields that are null/missing but would be material to LP decision"
   ],
   "overall_commentary": "2-3 sentence factual summary for IC memo. No fluff."
 }}
-
-Categories to check (flag only if there is actual evidence):
-- Regulatory disclosures / disciplinary history
-- Key person concentration (ownership %, number of advisers)
-- AUM relative to team size
-- Fee structure anomalies
-- Missing material disclosures
-- Registration gaps or lapses
-- Macro environment risks for this strategy type
 """
 
-    print("[Risk Flagging] Calling Claude (extended thinking)...")
-    response = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=6000,
-        thinking={
-            "type": "enabled",
-            "budget_tokens": 4000,
-        },
+    print(f"[Risk Flagging] Calling {client.provider} ({client.model})...")
+    return client.complete_json(
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_message}],
+        user=user_message,
+        max_tokens=6000,
+        thinking_tokens=4000,
     )
-
-    result_text = ""
-    for block in response.content:
-        if block.type == "text":
-            result_text = block.text.strip()
-            break
-
-    if result_text.startswith("```"):
-        lines = result_text.split("\n")
-        result_text = "\n".join(lines[1:-1])
-
-    try:
-        risk_report = json.loads(result_text)
-    except json.JSONDecodeError as e:
-        print(f"[Risk Flagging] JSON parse error: {e}")
-        risk_report = {"raw_response": result_text, "parse_error": str(e)}
-
-    return risk_report
