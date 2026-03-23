@@ -36,18 +36,11 @@ load_dotenv()
 console = Console()
 
 
-def validate_env(provider: str) -> str:
-    """Check required env vars before running."""
-    if provider == "openai":
-        key = os.getenv("OPENAI_API_KEY")
-        if not key:
-            console.print("[bold red]Error:[/] OPENAI_API_KEY not set. Add it to .env")
-            sys.exit(1)
-    else:
-        key = os.getenv("ANTHROPIC_API_KEY")
-        if not key:
-            console.print("[bold red]Error:[/] ANTHROPIC_API_KEY not set. Add it to .env")
-            sys.exit(1)
+def validate_env() -> str:
+    key = os.getenv("OPENAI_API_KEY")
+    if not key:
+        console.print("[bold red]Error:[/] OPENAI_API_KEY not set. Add it to .env")
+        sys.exit(1)
     return key
 
 
@@ -115,12 +108,6 @@ def main():
         help="Firm name (e.g. 'AQR Capital Management') or CRD number",
     )
     parser.add_argument(
-        "--provider",
-        default="anthropic",
-        choices=["anthropic", "openai"],
-        help="AI provider: anthropic (claude-opus-4-6) or openai (o3). Default: anthropic",
-    )
-    parser.add_argument(
         "--no-fred",
         action="store_true",
         help="Skip FRED macro data pull (useful if no FRED API key)",
@@ -137,8 +124,8 @@ def main():
     )
     args = parser.parse_args()
 
-    api_key = validate_env(args.provider)
-    client  = make_client(args.provider, api_key)
+    api_key = validate_env()
+    client  = make_client(api_key)
     fred_key = None if args.no_fred else os.getenv("FRED_API_KEY")
 
     console.print(Panel(
