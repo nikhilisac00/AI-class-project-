@@ -15,7 +15,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Page config (must be first Streamlit call) ─────────────────────────────────────────
 st.set_page_config(
     page_title="AI Alternatives Research Associate",
     page_icon="📋",
@@ -25,14 +24,30 @@ st.set_page_config(
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-import agents.data_ingestion as ingestion_agent
-import agents.fund_analysis  as analysis_agent
-import agents.risk_flagging  as risk_agent
+import agents.data_ingestion  as ingestion_agent
+import agents.fund_analysis   as analysis_agent
+import agents.risk_flagging   as risk_agent
 import agents.memo_generation as memo_agent
-from tools.pal_client import is_available as pal_available, call_thinkdeep, call_consensus
+from tools.pal_client import is_available as pal_available, call_consensus
 
 
-# ── Sidebar ──────────────────────────────────────────────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _badge(label: str, color: str) -> str:
+    return (
+        f'<span style="background:{color};color:#fff;padding:2px 10px;'
+        f'border-radius:4px;font-size:0.78rem;font-weight:600">{label}</span>'
+    )
+
+def _sev_color(sev: str) -> str:
+    return {"HIGH": "#c0392b", "MEDIUM": "#e67e22", "LOW": "#27ae60"}.get(sev, "#7f8c8d")
+
+def _tier_color(tier: str) -> str:
+    return {"HIGH": "#c0392b", "MEDIUM": "#e67e22", "LOW": "#27ae60"}.get(tier, "#95a5a6")
+
+
+# ── Sidebar ────────────────────────────────────────────────────────────────────
+
 with st.sidebar:
     st.title("Settings")
 
@@ -46,18 +61,18 @@ with st.sidebar:
         "FRED API Key (optional)",
         value=os.getenv("FRED_API_KEY", ""),
         type="password",
-        help="Free at fred.stlouisfed.org. Adds macro context to memo.",
+        help="Free at fred.stlouisfed.org. Adds macro rates/spreads to memo.",
     )
 
     st.divider()
 
-    use_pal = False
+    use_pal   = False
     pal_status = pal_available()
     if pal_status:
         use_pal = st.toggle(
             "Multi-Model Consensus (PAL)",
             value=False,
-            help="Uses PAL MCP to validate risk flags with a second model. Slower but catches more edge cases.",
+            help="Uses PAL MCP to validate risk flags with Gemini-3-Pro.",
         )
         st.caption("PAL MCP: connected")
     else:
@@ -72,37 +87,45 @@ with st.sidebar:
     )
 
     st.divider()
-    st.caption("Data sources: IAPD · SEC EDGAR (ADV XML + 13F) · FRED")
+    st.caption("Sources: IAPD · SEC EDGAR (13F XML) · FRED")
     st.caption("Model: claude-opus-4-6 + extended thinking")
-    st.caption("No hallucination — all facts trace to real API responses")
+    st.caption("No hallucination — every fact traces to a real API call")
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────────────
+# ── Header ─────────────────────────────────────────────────────────────────────
+
 st.title("AI Alternative Investments Research Associate")
 st.caption("Autonomous due diligence — from CRD number to IC-ready memo")
 
-st.markdown(
-    """
-    Enter a fund manager name or CRD number. The system will:
-    1. Pull ADV filing data from IAPD / SEC EDGAR (including AUM, fees, and key personnel from ADV XML)
-    2. Analyze AUM, team, fees, and registration history
-    3. Flag risks using LP due diligence standards
-    4. Generate a structured memo ready for IC review
-    """
-)
-
-col1, col2 = st.columns([3, 1])
-with col1:
+col_search, col_btn = st.columns([4, 1])
+with col_search:
     firm_input = st.text_input(
-        "Fund manager name or CRD number",
-        placeholder='e.g. "AQR Capital Management" or "149729"',
+        "Firm",
+        placeholder='Firm name or CRD — e.g. "AQR Capital Management" or "149729"',
         label_visibility="collapsed",
     )
-with col2:
+with col_btn:
     run_button = st.button("Run Analysis", type="primary", use_container_width=True)
 
+with st.expander("How it works", expanded=False):
+    st.markdown(
+        """
+**Pipeline (5 steps):**
+1. **IAPD** — resolve firm name → CRD → ADV registration data
+2. **SEC EDGAR** — fetch latest 13F-HR filing, parse portfolio value from XML
+3. **FRED** — pull macro context (rates, spreads, VIX)
+4. **Claude Opus 4.6** (extended thinking) — analyze, flag risks, generate memo
+5. *(optional)* **PAL MCP** — Gemini-3-Pro consensus validation of risk flags
 
-# ── Pipeline ────────────────────────────────────────────────────────────────────────────
+**No hallucination:** `null` is returned for any missing field. Data gaps are surfaced explicitly in the memo.
+        """
+    )
+
+st.divider()
+
+
+# ── Run pipeline ───────────────────────────────────────────────────────────────
+
 if run_button:
     if not anthropic_key:
         st.error("Anthropic API key required. Add it in the sidebar.")
@@ -115,55 +138,53 @@ if run_button:
     client = anthropic.Anthropic(api_key=anthropic_key)
 
     progress_bar = st.progress(0, text="Starting...")
-    status_area  = st.empty()
+    status_box   = st.empty()
 
-    raw_data, analysis, risk_report, memo, pal_review = None, None, None, None, None
+    raw_data = analysis = risk_report = memo = pal_review = None
 
     try:
-        # ── Step 1: Ingest ───────────────────────────────────────────────────────────────
-        status_area.info("Step 1/5 — Ingesting data from EDGAR / IAPD / ADV XML / FRED...")
-        progress_bar.progress(5, text="Ingesting data...")
+        status_box.info("Step 1/5 — Ingesting: IAPD · EDGAR 13F XML · FRED...")
+        progress_bar.progress(5, text="Ingesting...")
         raw_data = ingestion_agent.run(firm_input.strip(), fred_api_key=fred_key or None)
-        progress_bar.progress(30, text="Data ingestion complete")
+        progress_bar.progress(30, text="Ingestion complete")
 
         if raw_data.get("errors"):
-            st.warning("Ingestion warnings: " + " | ".join(raw_data["errors"]))
+            st.warning("Ingestion notes: " + " | ".join(raw_data["errors"]))
 
-        # ── Step 2: Analyze ──────────────────────────────────────────────────────────────
-        status_area.info("Step 2/5 — Running fund analysis (Claude + extended thinking)...")
+        status_box.info("Step 2/5 — Fund analysis (Claude + extended thinking)...")
         progress_bar.progress(35, text="Analyzing...")
         analysis = analysis_agent.run(raw_data, client)
-        progress_bar.progress(55, text="Fund analysis complete")
+        progress_bar.progress(55, text="Analysis complete")
 
-        # ── Step 3: Risk flags ──────────────────────────────────────────────────────────
-        status_area.info("Step 3/5 — Flagging risks (Claude + extended thinking)...")
-        progress_bar.progress(60, text="Flagging risks...")
+        status_box.info("Step 3/5 — Risk flagging (Claude + extended thinking)...")
+        progress_bar.progress(58, text="Flagging risks...")
         risk_report = risk_agent.run(analysis, raw_data, client)
         progress_bar.progress(75, text="Risk flagging complete")
 
-        # ── PAL consensus (optional) ────────────────────────────────────────────────────
         if use_pal and pal_status:
-            status_area.info("PAL — Running multi-model consensus validation...")
-            progress_bar.progress(77, text="PAL consensus review...")
+            status_box.info("PAL — Multi-model consensus (Gemini-3-Pro)...")
+            progress_bar.progress(77, text="PAL consensus...")
             pal_review = call_consensus(
-                question="Validate these risk flags for an LP reviewing this investment manager. Are there gaps or overstatements?",
+                question=(
+                    "Validate these LP due diligence risk flags. "
+                    "Identify gaps, overstatements, or missing standard diligence items."
+                ),
                 content=json.dumps(risk_report, indent=2, default=str),
             )
-            progress_bar.progress(85, text="PAL consensus complete")
+            progress_bar.progress(85, text="PAL complete")
 
-        # ── Step 4: Memo ───────────────────────────────────────────────────────────────
-        status_area.info("Step 4/5 — Generating DD memo (Claude + extended thinking)...")
+        status_box.info("Step 4/5 — Generating DD memo (Claude + extended thinking)...")
         progress_bar.progress(87, text="Generating memo...")
         memo = memo_agent.run(analysis, risk_report, raw_data, client)
         progress_bar.progress(100, text="Done")
-        status_area.success("Analysis complete.")
+        status_box.success("Analysis complete.")
 
     except Exception as e:
         st.error(f"Pipeline error: {e}")
         st.exception(e)
         st.stop()
 
-    # ── Save outputs ────────────────────────────────────────────────────────────────────
+    # ── Save outputs ──────────────────────────────────────────────────────────
     firm_name = (
         (analysis or {}).get("firm_overview", {}).get("name")
         or firm_input.strip()
@@ -177,158 +198,222 @@ if run_button:
     memo_path = base.parent / f"{base.name}_DD_MEMO.md"
     if memo:
         memo_path.write_text(memo, encoding="utf-8")
-    if raw_data:
-        (base.parent / f"{base.name}_raw_data.json").write_text(
-            json.dumps(raw_data, indent=2, default=str), encoding="utf-8"
-        )
-    if analysis:
-        (base.parent / f"{base.name}_analysis.json").write_text(
-            json.dumps(analysis, indent=2, default=str), encoding="utf-8"
-        )
-    if risk_report:
-        (base.parent / f"{base.name}_risk_report.json").write_text(
-            json.dumps(risk_report, indent=2, default=str), encoding="utf-8"
-        )
+    for label, obj in [
+        ("raw_data",    raw_data),
+        ("analysis",    analysis),
+        ("risk_report", risk_report),
+    ]:
+        if obj:
+            (base.parent / f"{base.name}_{label}.json").write_text(
+                json.dumps(obj, indent=2, default=str), encoding="utf-8"
+            )
 
-    # ──────────────────────────────────────────────────────────────────────────────
-    # FUND SNAPSHOT — key metrics from real data sources + risk tier
-    # ──────────────────────────────────────────────────────────────────────────────
-    st.divider()
+    # ── Extract display fields ────────────────────────────────────────────────
+    adv     = (raw_data  or {}).get("adv_summary",  {})
+    adv_xml = (raw_data  or {}).get("adv_xml_data", {})
+    ov      = (analysis  or {}).get("firm_overview", {})
+    tf      = adv_xml.get("thirteenf",  {})
+    discl   = adv_xml.get("disclosures", [])
+    broch   = adv_xml.get("brochure",   {})
+    macro   = (raw_data  or {}).get("market_context", {})
+    tier    = (risk_report or {}).get("overall_risk_tier", "UNKNOWN")
+
+    # ── ① Firm Identity Header ────────────────────────────────────────────────
     st.subheader(firm_name)
 
-    adv_xml  = (raw_data or {}).get("adv_xml_data", {})
-    overview = (analysis  or {}).get("firm_overview", {})
-    tf       = adv_xml.get("thirteenf", {})
-    disclosures = adv_xml.get("disclosures", [])
-    brochure    = adv_xml.get("brochure", {})
+    reg_status = adv.get("registration_status") or ov.get("registration_status")
+    reg_color  = "#27ae60" if reg_status == "ACTIVE" else "#e74c3c"
+    crd_str    = adv.get("crd_number") or ov.get("crd")
+    sec_str    = adv.get("sec_number") or ov.get("sec_number")
+    city       = adv.get("city")
+    state_str  = adv.get("state")
+    adv_date   = adv.get("adv_filing_date")
 
-    # 13F portfolio value (real filed data — proxy AUM for equity managers)
-    portfolio_val = tf.get("portfolio_value_fmt")
-    portfolio_note = tf.get("note", "")
+    identity_parts = []
+    if reg_status:
+        identity_parts.append(_badge(reg_status, reg_color))
+    if adv.get("is_sec_registered"):
+        identity_parts.append(_badge("SEC Registered", "#2980b9"))
+    if adv.get("is_state_registered"):
+        identity_parts.append(_badge("State Registered", "#8e44ad"))
 
-    # Fallback fields from Claude analysis
-    clients   = overview.get("num_clients")
-    employees = overview.get("num_employees")
-    num_ia    = overview.get("num_investment_advisers")
-    fee_types = (analysis or {}).get("fee_structure", {}).get("fee_types", [])
-    personnel = []  # Not available from free APIs
-    tier      = (risk_report or {}).get("overall_risk_tier", "UNKNOWN")
-    tier_icon = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(tier, "⚪")
+    if identity_parts:
+        st.markdown(" ".join(identity_parts), unsafe_allow_html=True)
 
-    # ─ Key metric cards ─────────────────────────────────────────────────────────────
+    meta_parts = []
+    if crd_str:  meta_parts.append(f"CRD: **{crd_str}**")
+    if sec_str:  meta_parts.append(f"SEC: **{sec_str}**")
+    if city and state_str: meta_parts.append(f"**{city}, {state_str}**")
+    if adv_date: meta_parts.append(f"Latest ADV: **{adv_date}**")
+    if meta_parts:
+        st.caption("  ·  ".join(meta_parts))
+
+    notice_states = adv.get("notice_filing_states", [])
+    if notice_states:
+        st.caption(f"Notice filings in: {', '.join(notice_states)}")
+
+    # ── ② Key Metric Cards ────────────────────────────────────────────────────
+    st.markdown("---")
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("13F Portfolio Value", portfolio_val or "N/A")
-    c2.metric("Holdings Count",      str(tf.get("holdings_count")) if tf.get("holdings_count") else "—")
-    c3.metric("Clients",             str(clients)  if clients   else "—")
-    c4.metric("Employees",           str(employees) if employees else "—")
-    c5.metric("Risk Tier",           f"{tier_icon} {tier}")
+    c1.metric(
+        "13F Portfolio Value",
+        tf.get("portfolio_value_fmt") or "N/A",
+        help="Total US public equity holdings from most recent 13F-HR (proxy AUM)",
+    )
+    c2.metric(
+        "Holdings",
+        str(tf.get("holdings_count")) if tf.get("holdings_count") else "—",
+        help="Distinct equity positions in latest 13F",
+    )
+    c3.metric(
+        "Clients",
+        str(ov.get("num_clients")) if ov.get("num_clients") else "—",
+    )
+    c4.metric(
+        "Employees",
+        str(ov.get("num_employees")) if ov.get("num_employees") else "—",
+    )
+    c5.metric(
+        "Risk Tier",
+        tier,
+        help="Overall LP due diligence risk tier from risk flagging agent",
+    )
 
-    # ─ Fee types ────────────────────────────────────────────────────────────────────────
-    if fee_types:
-        st.markdown(
-            "**Fee Structure:** " + " ".join(f"`{f}`" for f in fee_types)
-        )
-
-    # ─ EDGAR source info ───────────────────────────────────────────────────────────
-    # 13F source link
+    # ── ③ Source & Brochure Captions ─────────────────────────────────────────
     if tf.get("accession") and tf.get("cik"):
-        acc_clean = tf["accession"].replace("-", "")
+        acc_clean  = tf["accession"].replace("-", "")
         filing_url = (
             f"https://www.sec.gov/Archives/edgar/data/{tf['cik']}"
             f"/{acc_clean}/{tf['accession']}-index.htm"
         )
         st.caption(
-            f"Source: [EDGAR 13F-HR filing]({filing_url}) "
-            f"({tf.get('filing_date', '')}). "
-            f"{portfolio_note}"
+            f"[EDGAR 13F-HR filing]({filing_url}) · {tf.get('filing_date', '')} · "
+            f"{tf.get('note', '')}"
         )
     else:
-        st.caption((raw_data or {}).get("adv_xml_data", {}).get(
-            "aum_note", "Regulatory AUM not available via free API."))
-
-    if brochure.get("brochure_name"):
         st.caption(
-            f"ADV Part 2A: **{brochure['brochure_name']}** "
-            f"(filed {brochure.get('brochure_date', '')}). "
-            "PDF available at adviserinfo.sec.gov"
+            adv_xml.get("aum_note", "Regulatory AUM not available via free public API.")
         )
 
-    if disclosures:
+    if broch.get("brochure_name"):
+        st.caption(
+            f"ADV Part 2A: **{broch['brochure_name']}** "
+            f"(filed {broch.get('brochure_date', '')}). "
+            "PDF at adviserinfo.sec.gov"
+        )
+
+    # ── ④ Disclosure Banner ───────────────────────────────────────────────────
+    if discl:
         import pandas as pd
-        with st.expander(f"Disclosure Events ({len(disclosures)}) from IAPD", expanded=False):
+        with st.expander(
+            f"Disclosure Events ({len(discl)}) — from IAPD", expanded=False
+        ):
             df_d = pd.DataFrame([{
                 "Type":        d.get("type", ""),
                 "Date":        d.get("date") or "—",
                 "Description": d.get("description") or "—",
                 "Resolution":  d.get("resolution") or "—",
-            } for d in disclosures])
+            } for d in discl])
             st.dataframe(df_d, use_container_width=True, hide_index=True)
-    elif (raw_data or {}).get("adv_summary", {}).get("has_disclosures"):
-        st.warning("IAPD indicates this firm has disclosures. Check adviserinfo.sec.gov for details.")
+    elif adv.get("has_disclosures"):
+        st.warning(
+            "IAPD indicates disclosure events on record. "
+            "Visit adviserinfo.sec.gov for full details."
+        )
 
-    # ── Results tabs ────────────────────────────────────────────────────────────────────
-    st.divider()
+    # ── ⑤ Macro Context Panel ────────────────────────────────────────────────
+    if macro:
+        st.markdown("---")
+        st.caption("**Market Context** (FRED — latest readings)")
+        m1, m2, m3, m4, m5 = st.columns(5)
+        def _m(series): return macro.get(series, {}).get("latest") or "—"
+        m1.metric("Fed Funds",  _m("fed_funds_rate") + "%"  if _m("fed_funds_rate") != "—" else "—")
+        m2.metric("10Y Yield",  _m("ten_yr_yield")   + "%"  if _m("ten_yr_yield")   != "—" else "—")
+        m3.metric("HY Spread",  _m("hy_spread")             if _m("hy_spread")      != "—" else "—")
+        m4.metric("IG Spread",  _m("ig_spread")             if _m("ig_spread")      != "—" else "—")
+        m5.metric("VIX",        _m("vix")                   if _m("vix")            != "—" else "—")
+
+    # ── ⑥ Results Tabs ────────────────────────────────────────────────────────
+    st.markdown("---")
     tab_risk, tab_memo, tab_pal, tab_raw = st.tabs([
         "Risk Dashboard", "DD Memo", "PAL Consensus", "Raw Data",
     ])
 
-    # ─ Risk Dashboard ─────────────────────────────────────────────────────────────────
+    # ─ Risk Dashboard ──────────────────────────────────────────────────────────
     with tab_risk:
         if risk_report:
+            # Risk tier banner
+            tier_c = _tier_color(tier)
+            st.markdown(
+                f'<div style="background:{tier_c};color:#fff;padding:10px 16px;'
+                f'border-radius:6px;font-size:1.1rem;font-weight:700;margin-bottom:12px">'
+                f'Overall Risk Tier: {tier}</div>',
+                unsafe_allow_html=True,
+            )
+
             commentary = risk_report.get("overall_commentary", "")
             if commentary:
                 st.info(commentary)
 
             flags = risk_report.get("flags", [])
             if flags:
-                st.subheader("Flags")
-                for f in flags:
-                    sev = f.get("severity", "")
-                    sev_icon = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(sev, "⚪")
-                    with st.expander(
-                        f"{sev_icon} [{f.get('category','')}] {f.get('finding','')[:80]}"
-                    ):
-                        st.markdown(f"**Severity:** {sev}")
+                # Sort: HIGH → MEDIUM → LOW
+                order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+                flags_sorted = sorted(flags, key=lambda f: order.get(f.get("severity",""), 9))
+
+                st.subheader(f"Risk Flags ({len(flags_sorted)})")
+                for f in flags_sorted:
+                    sev  = f.get("severity", "")
+                    sev_c = _sev_color(sev)
+                    label = (
+                        f'<span style="background:{sev_c};color:#fff;padding:1px 7px;'
+                        f'border-radius:3px;font-size:0.75rem;font-weight:600;margin-right:6px">'
+                        f'{sev}</span>'
+                        f'[{f.get("category","")}] {f.get("finding","")[:90]}'
+                    )
+                    with st.expander(label, expanded=(sev == "HIGH")):
                         st.markdown(f"**Finding:** {f.get('finding','')}")
                         st.markdown(f"**Evidence:** {f.get('evidence','')}")
                         st.markdown(f"**LP Action:** {f.get('lp_action','')}")
             else:
-                st.success("No risk flags identified from available data.")
+                st.success("No risk flags identified from available public data.")
 
-            gaps = risk_report.get("critical_data_gaps", [])
-            if gaps:
-                st.subheader("Critical Data Gaps")
-                for g in gaps:
-                    st.markdown(f"- {g}")
-
-            clean = risk_report.get("clean_items", [])
-            if clean:
-                st.subheader("Clean Items")
-                for c in clean:
-                    st.markdown(f"- {c}")
+            col_gaps, col_clean = st.columns(2)
+            with col_gaps:
+                gaps = risk_report.get("critical_data_gaps", [])
+                if gaps:
+                    st.subheader("Critical Data Gaps")
+                    for g in gaps:
+                        st.markdown(f"- {g}")
+            with col_clean:
+                clean = risk_report.get("clean_items", [])
+                if clean:
+                    st.subheader("Clean Items")
+                    for c in clean:
+                        st.markdown(f"- {c}")
         else:
             st.warning("Risk report not available.")
 
-    # ─ DD Memo ─────────────────────────────────────────────────────────────────────────
+    # ─ DD Memo ─────────────────────────────────────────────────────────────────
     with tab_memo:
         if memo:
-            col_dl1, col_dl2 = st.columns(2)
-            with col_dl1:
+            dl1, dl2 = st.columns(2)
+            with dl1:
                 st.download_button(
-                    label="Download Memo (.md)",
+                    "Download Memo (.md)",
                     data=memo,
                     file_name=f"{safe_name}_DD_MEMO.md",
                     mime="text/markdown",
                     use_container_width=True,
                 )
-            with col_dl2:
+            with dl2:
                 if raw_data and analysis and risk_report:
                     bundle = json.dumps(
                         {"raw_data": raw_data, "analysis": analysis, "risk_report": risk_report},
                         indent=2, default=str,
                     )
                     st.download_button(
-                        label="Download JSON Bundle",
+                        "Download JSON Bundle",
                         data=bundle,
                         file_name=f"{safe_name}_bundle.json",
                         mime="application/json",
@@ -339,28 +424,33 @@ if run_button:
         else:
             st.warning("Memo not generated.")
 
-    # ─ PAL Consensus ───────────────────────────────────────────────────────────────
+    # ─ PAL Consensus ───────────────────────────────────────────────────────────
     with tab_pal:
         if pal_review:
             st.subheader("PAL Multi-Model Consensus Review")
+            st.caption("Validated by Gemini-3-Pro via PAL MCP server")
             st.markdown(pal_review)
-        elif use_pal and not pal_status:
+        elif use_pal:
             st.info("PAL MCP server not available in this environment.")
         else:
-            st.info("Enable 'Multi-Model Consensus' in the sidebar to run PAL validation.")
+            st.info(
+                "Enable **Multi-Model Consensus** in the sidebar to validate "
+                "risk flags with Gemini-3-Pro via PAL MCP."
+            )
 
-    # ─ Raw Data ─────────────────────────────────────────────────────────────────────
+    # ─ Raw Data ────────────────────────────────────────────────────────────────
     with tab_raw:
         if raw_data:
-            with st.expander("ADV XML Data (EDGAR)", expanded=True):
-                st.json(raw_data.get("adv_xml_data", {}))
+            with st.expander("13F XML Data (EDGAR)", expanded=True):
+                st.json(adv_xml)
             with st.expander("IAPD ADV Summary"):
-                st.json(raw_data.get("adv_summary", {}))
-            with st.expander("13F Filings"):
+                st.json(adv)
+            with st.expander("13F Filing Search Results"):
                 st.json(raw_data.get("filings_13f", []))
             with st.expander("FRED Macro Context"):
-                st.json(raw_data.get("market_context", {}))
-
+                st.json(macro)
+            with st.expander("Ingestion Errors / Notes"):
+                st.json(raw_data.get("errors", []))
         if analysis:
-            with st.expander("Structured Analysis (Claude)"):
+            with st.expander("Structured Analysis (Claude output)"):
                 st.json(analysis)

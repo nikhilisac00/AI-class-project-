@@ -85,7 +85,11 @@ Return ONLY a JSON object with this exact schema (use null for any missing field
   "13f_filings": {{
     "available": "boolean",
     "most_recent": "string or null",
-    "count_found": "number"
+    "count_found": "number",
+    "portfolio_value": "string or null — from adv_xml_data.thirteenf.portfolio_value_fmt if present",
+    "holdings_count": "number or null — from adv_xml_data.thirteenf.holdings_count if present",
+    "period_of_report": "string or null",
+    "note": "string — copy adv_xml_data.thirteenf.note verbatim if present"
   }},
   "macro_context_snapshot": {{
     "fed_funds_rate": "string or null",
