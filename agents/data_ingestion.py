@@ -65,10 +65,12 @@ def run(firm_input: str, fred_api_key: str = None) -> dict:
             print(f"[Ingestion] Resolved to CRD {crd}: {results[0]['firm_name']}")
 
     # ── Step 2: Pull IAPD/ADV detail ─────────────────────────────────────────────────────
+    _iacontent = None   # keep for Step 5
     if crd:
         print(f"[Ingestion] Fetching IAPD detail for CRD {crd}")
         detail = get_adviser_detail(str(crd))
         if detail:
+            _iacontent = detail  # pass to ADV enrichment step
             search_hit = raw_data["search_results"][0] if raw_data["search_results"] else None
             raw_data["adv_summary"] = extract_adv_summary(detail, search_hit=search_hit)
         else:
@@ -97,24 +99,21 @@ def run(firm_input: str, fred_api_key: str = None) -> dict:
     else:
         raw_data["errors"].append("FRED macro data unavailable (check API key)")
 
-    # ── Step 5: ADV Part 1A XML from EDGAR ──────────────────────────────────────────
-    # Pulls the fields IAPD JSON cannot provide: AUM, fees, key personnel
+    # ── Step 5: ADV enrichment (13F portfolio value + IAPD disclosure details) ──────────
     adv_search_name = (
         raw_data["adv_summary"].get("firm_name")
         or (search_name if not firm_input.isdigit() else None)
     )
     if adv_search_name:
-        print(f"[Ingestion] Fetching ADV XML from EDGAR for '{adv_search_name}'")
+        print(f"[Ingestion] Running ADV enrichment for '{adv_search_name}'")
         try:
             from tools.adv_parser import fetch_adv_data
-            adv_xml = fetch_adv_data(adv_search_name)
+            adv_xml = fetch_adv_data(adv_search_name, iacontent=_iacontent)
             raw_data["adv_xml_data"] = adv_xml
-            if adv_xml.get("error"):
-                raw_data["errors"].append(f"ADV XML: {adv_xml['error']}")
         except Exception as e:
-            raw_data["errors"].append(f"ADV XML fetch failed: {e}")
+            raw_data["errors"].append(f"ADV enrichment failed: {e}")
     else:
-        raw_data["errors"].append("ADV XML: could not determine firm name for EDGAR search")
+        raw_data["errors"].append("ADV enrichment: could not determine firm name")
 
     print(f"[Ingestion] Done. Errors: {raw_data['errors'] or 'none'}")
     return raw_data

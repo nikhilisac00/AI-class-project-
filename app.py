@@ -191,32 +191,37 @@ if run_button:
         )
 
     # ──────────────────────────────────────────────────────────────────────────────
-    # FUND SNAPSHOT — key metrics from ADV XML + risk tier
+    # FUND SNAPSHOT — key metrics from real data sources + risk tier
     # ──────────────────────────────────────────────────────────────────────────────
     st.divider()
     st.subheader(firm_name)
 
     adv_xml  = (raw_data or {}).get("adv_xml_data", {})
     overview = (analysis  or {}).get("firm_overview", {})
+    tf       = adv_xml.get("thirteenf", {})
+    disclosures = adv_xml.get("disclosures", [])
+    brochure    = adv_xml.get("brochure", {})
 
-    # Prefer ADV XML (real filing data) → fall back to Claude's structured analysis
-    aum       = adv_xml.get("aum_regulatory")          or overview.get("aum_regulatory")  or "Not Disclosed"
-    aum_disc  = adv_xml.get("aum_discretionary")       or "—"
-    clients   = adv_xml.get("num_clients")             or overview.get("num_clients")
-    employees = adv_xml.get("num_employees")           or overview.get("num_employees")
-    num_ia    = adv_xml.get("num_investment_advisers") or overview.get("num_investment_advisers")
-    fee_types = adv_xml.get("fee_types") or (analysis or {}).get("fee_structure", {}).get("fee_types", [])
-    personnel = adv_xml.get("key_personnel", [])
+    # 13F portfolio value (real filed data — proxy AUM for equity managers)
+    portfolio_val = tf.get("portfolio_value_fmt")
+    portfolio_note = tf.get("note", "")
+
+    # Fallback fields from Claude analysis
+    clients   = overview.get("num_clients")
+    employees = overview.get("num_employees")
+    num_ia    = overview.get("num_investment_advisers")
+    fee_types = (analysis or {}).get("fee_structure", {}).get("fee_types", [])
+    personnel = []  # Not available from free APIs
     tier      = (risk_report or {}).get("overall_risk_tier", "UNKNOWN")
     tier_icon = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(tier, "⚪")
 
     # ─ Key metric cards ─────────────────────────────────────────────────────────────
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Regulatory AUM",   str(aum))
-    c2.metric("Discretionary AUM", str(aum_disc))
-    c3.metric("Clients",           str(clients)  if clients   else "—")
-    c4.metric("Employees",         str(employees) if employees else "—")
-    c5.metric("Risk Tier",         f"{tier_icon} {tier}")
+    c1.metric("13F Portfolio Value", portfolio_val or "N/A")
+    c2.metric("Holdings Count",      str(tf.get("holdings_count")) if tf.get("holdings_count") else "—")
+    c3.metric("Clients",             str(clients)  if clients   else "—")
+    c4.metric("Employees",           str(employees) if employees else "—")
+    c5.metric("Risk Tier",           f"{tier_icon} {tier}")
 
     # ─ Fee types ────────────────────────────────────────────────────────────────────────
     if fee_types:
@@ -225,26 +230,41 @@ if run_button:
         )
 
     # ─ EDGAR source info ───────────────────────────────────────────────────────────
-    if adv_xml.get("filing_url"):
-        cik_str = f"CIK {adv_xml['cik']} · " if adv_xml.get("cik") else ""
-        st.caption(
-            f"ADV XML source: {cik_str}"
-            f"[EDGAR filing]({adv_xml['filing_url']})"
+    # 13F source link
+    if tf.get("accession") and tf.get("cik"):
+        acc_clean = tf["accession"].replace("-", "")
+        filing_url = (
+            f"https://www.sec.gov/Archives/edgar/data/{tf['cik']}"
+            f"/{acc_clean}/{tf['accession']}-index.htm"
         )
-    elif adv_xml.get("error"):
-        st.caption(f"ADV XML unavailable: {adv_xml['error']}")
+        st.caption(
+            f"Source: [EDGAR 13F-HR filing]({filing_url}) "
+            f"({tf.get('filing_date', '')}). "
+            f"{portfolio_note}"
+        )
+    else:
+        st.caption((raw_data or {}).get("adv_xml_data", {}).get(
+            "aum_note", "Regulatory AUM not available via free API."))
 
-    # ─ Key Personnel table (Schedule A) ──────────────────────────────────────────
-    if personnel:
+    if brochure.get("brochure_name"):
+        st.caption(
+            f"ADV Part 2A: **{brochure['brochure_name']}** "
+            f"(filed {brochure.get('brochure_date', '')}). "
+            "PDF available at adviserinfo.sec.gov"
+        )
+
+    if disclosures:
         import pandas as pd
-        st.markdown("**Key Personnel — Schedule A**")
-        df = pd.DataFrame([{
-            "Name":       p.get("name", ""),
-            "Title(s)":   ", ".join(p.get("titles", [])) or "—",
-            "CRD #":      p.get("crd")           or "—",
-            "Ownership":  p.get("ownership_pct") or "—",
-        } for p in personnel])
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        with st.expander(f"Disclosure Events ({len(disclosures)}) from IAPD", expanded=False):
+            df_d = pd.DataFrame([{
+                "Type":        d.get("type", ""),
+                "Date":        d.get("date") or "—",
+                "Description": d.get("description") or "—",
+                "Resolution":  d.get("resolution") or "—",
+            } for d in disclosures])
+            st.dataframe(df_d, use_container_width=True, hide_index=True)
+    elif (raw_data or {}).get("adv_summary", {}).get("has_disclosures"):
+        st.warning("IAPD indicates this firm has disclosures. Check adviserinfo.sec.gov for details.")
 
     # ── Results tabs ────────────────────────────────────────────────────────────────────
     st.divider()
