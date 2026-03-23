@@ -1,42 +1,36 @@
 """
-LLM Client — Anthropic Claude with extended thinking.
-Provides a simple wrapper so agents don't depend on the raw SDK.
+LLM Client — OpenAI o3 (reasoning model).
 """
 
 import json
-import re
-import anthropic
-
-
-MODEL = "claude-opus-4-6"
+import openai
 
 
 class LLMClient:
     def __init__(self, api_key: str):
-        self._client = anthropic.Anthropic(api_key=api_key)
-        self.provider = "anthropic"
-        self.model = MODEL
+        self._client = openai.OpenAI(api_key=api_key)
+        self.provider = "openai"
+        self.model = "o3"
 
     def complete(self, system: str, user: str,
-                 max_tokens: int = 10000, thinking_tokens: int = 6000, **_) -> str:
-        response = self._client.messages.create(
+                 max_tokens: int = 8000, **_) -> str:
+        response = self._client.chat.completions.create(
             model=self.model,
-            max_tokens=max_tokens,
-            thinking={"type": "enabled", "budget_tokens": thinking_tokens},
-            system=system,
-            messages=[{"role": "user", "content": user}],
+            messages=[
+                {"role": "developer", "content": system},
+                {"role": "user",      "content": user},
+            ],
+            max_completion_tokens=max_tokens,
+            reasoning_effort="high",
         )
-        for block in response.content:
-            if block.type == "text":
-                return block.text.strip()
-        return ""
+        return (response.choices[0].message.content or "").strip()
 
     def complete_json(self, system: str, user: str,
-                      max_tokens: int = 8000, thinking_tokens: int = 5000, **_) -> dict:
-        text = self.complete(system, user, max_tokens, thinking_tokens)
-        # Strip markdown fences
-        text = re.sub(r"^```(?:json)?\s*", "", text.strip())
-        text = re.sub(r"\s*```$", "", text.strip())
+                      max_tokens: int = 8000, **_) -> dict:
+        text = self.complete(system, user, max_tokens)
+        if text.startswith("```"):
+            lines = text.split("\n")
+            text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
         try:
             return json.loads(text)
         except json.JSONDecodeError as e:
