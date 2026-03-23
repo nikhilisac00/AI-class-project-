@@ -1,8 +1,6 @@
 """
 AI Alternative Investments Research Associate — Streamlit UI
 ============================================================
-DRIVER Path A: Python + Streamlit
-
 Run:  streamlit run app.py
 """
 
@@ -17,7 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Page config (must be first Streamlit call) ─────────────────────────────────
+# ── Page config (must be first Streamlit call) ─────────────────────────────────────────
 st.set_page_config(
     page_title="AI Alternatives Research Associate",
     page_icon="📋",
@@ -25,17 +23,16 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Add project root to path so agents/ and tools/ are importable
 sys.path.insert(0, str(Path(__file__).parent))
 
 import agents.data_ingestion as ingestion_agent
-import agents.fund_analysis as analysis_agent
-import agents.risk_flagging as risk_agent
+import agents.fund_analysis  as analysis_agent
+import agents.risk_flagging  as risk_agent
 import agents.memo_generation as memo_agent
 from tools.pal_client import is_available as pal_available, call_thinkdeep, call_consensus
 
 
-# ── Sidebar ────────────────────────────────────────────────────────────────────
+# ── Sidebar ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("Settings")
 
@@ -60,7 +57,7 @@ with st.sidebar:
         use_pal = st.toggle(
             "Multi-Model Consensus (PAL)",
             value=False,
-            help="Uses PAL MCP to validate risk flags with Gemini-3-Pro. Slower but catches more edge cases.",
+            help="Uses PAL MCP to validate risk flags with a second model. Slower but catches more edge cases.",
         )
         st.caption("PAL MCP: connected")
     else:
@@ -75,19 +72,19 @@ with st.sidebar:
     )
 
     st.divider()
-    st.caption("Data sources: IAPD · SEC EDGAR · FRED")
+    st.caption("Data sources: IAPD · SEC EDGAR (ADV XML + 13F) · FRED")
     st.caption("Model: claude-opus-4-6 + extended thinking")
     st.caption("No hallucination — all facts trace to real API responses")
 
 
-# ── Main ───────────────────────────────────────────────────────────────────────
+# ── Main ──────────────────────────────────────────────────────────────────────────────
 st.title("AI Alternative Investments Research Associate")
 st.caption("Autonomous due diligence — from CRD number to IC-ready memo")
 
 st.markdown(
     """
     Enter a fund manager name or CRD number. The system will:
-    1. Pull ADV filing data from IAPD / SEC EDGAR
+    1. Pull ADV filing data from IAPD / SEC EDGAR (including AUM, fees, and key personnel from ADV XML)
     2. Analyze AUM, team, fees, and registration history
     3. Flag risks using LP due diligence standards
     4. Generate a structured memo ready for IC review
@@ -105,7 +102,7 @@ with col2:
     run_button = st.button("Run Analysis", type="primary", use_container_width=True)
 
 
-# ── Pipeline ───────────────────────────────────────────────────────────────────
+# ── Pipeline ────────────────────────────────────────────────────────────────────────────
 if run_button:
     if not anthropic_key:
         st.error("Anthropic API key required. Add it in the sidebar.")
@@ -117,47 +114,46 @@ if run_button:
     import anthropic
     client = anthropic.Anthropic(api_key=anthropic_key)
 
-    # Progress container
     progress_bar = st.progress(0, text="Starting...")
-    status_area = st.empty()
+    status_area  = st.empty()
 
     raw_data, analysis, risk_report, memo, pal_review = None, None, None, None, None
 
     try:
-        # ── Step 1: Ingest ────────────────────────────────────────────────────
-        status_area.info("Step 1/4 — Ingesting data from EDGAR / IAPD / FRED...")
-        progress_bar.progress(10, text="Ingesting data...")
+        # ── Step 1: Ingest ───────────────────────────────────────────────────────────────
+        status_area.info("Step 1/5 — Ingesting data from EDGAR / IAPD / ADV XML / FRED...")
+        progress_bar.progress(5, text="Ingesting data...")
         raw_data = ingestion_agent.run(firm_input.strip(), fred_api_key=fred_key or None)
-        progress_bar.progress(25, text="Data ingestion complete")
+        progress_bar.progress(30, text="Data ingestion complete")
 
         if raw_data.get("errors"):
-            st.warning(f"Ingestion warnings: {' | '.join(raw_data['errors'])}")
+            st.warning("Ingestion warnings: " + " | ".join(raw_data["errors"]))
 
-        # ── Step 2: Analyze ───────────────────────────────────────────────────
-        status_area.info("Step 2/4 — Running fund analysis (Claude + extended thinking)...")
-        progress_bar.progress(30, text="Analyzing...")
+        # ── Step 2: Analyze ──────────────────────────────────────────────────────────────
+        status_area.info("Step 2/5 — Running fund analysis (Claude + extended thinking)...")
+        progress_bar.progress(35, text="Analyzing...")
         analysis = analysis_agent.run(raw_data, client)
-        progress_bar.progress(50, text="Fund analysis complete")
+        progress_bar.progress(55, text="Fund analysis complete")
 
-        # ── Step 3: Risk flags ────────────────────────────────────────────────
-        status_area.info("Step 3/4 — Flagging risks (Claude + extended thinking)...")
-        progress_bar.progress(55, text="Flagging risks...")
+        # ── Step 3: Risk flags ──────────────────────────────────────────────────────────
+        status_area.info("Step 3/5 — Flagging risks (Claude + extended thinking)...")
+        progress_bar.progress(60, text="Flagging risks...")
         risk_report = risk_agent.run(analysis, raw_data, client)
-        progress_bar.progress(70, text="Risk flagging complete")
+        progress_bar.progress(75, text="Risk flagging complete")
 
-        # ── PAL consensus (optional) ──────────────────────────────────────────
+        # ── PAL consensus (optional) ────────────────────────────────────────────────────
         if use_pal and pal_status:
-            status_area.info("PAL — Running multi-model consensus validation (Gemini-3-Pro)...")
-            progress_bar.progress(72, text="PAL consensus review...")
+            status_area.info("PAL — Running multi-model consensus validation...")
+            progress_bar.progress(77, text="PAL consensus review...")
             pal_review = call_consensus(
                 question="Validate these risk flags for an LP reviewing this investment manager. Are there gaps or overstatements?",
                 content=json.dumps(risk_report, indent=2, default=str),
             )
-            progress_bar.progress(80, text="PAL consensus complete")
+            progress_bar.progress(85, text="PAL consensus complete")
 
-        # ── Step 4: Memo ──────────────────────────────────────────────────────
-        status_area.info("Step 4/4 — Generating DD memo (Claude + extended thinking)...")
-        progress_bar.progress(82, text="Generating memo...")
+        # ── Step 4: Memo ───────────────────────────────────────────────────────────────
+        status_area.info("Step 4/5 — Generating DD memo (Claude + extended thinking)...")
+        progress_bar.progress(87, text="Generating memo...")
         memo = memo_agent.run(analysis, risk_report, raw_data, client)
         progress_bar.progress(100, text="Done")
         status_area.success("Analysis complete.")
@@ -167,14 +163,14 @@ if run_button:
         st.exception(e)
         st.stop()
 
-    # ── Save outputs ──────────────────────────────────────────────────────────
+    # ── Save outputs ────────────────────────────────────────────────────────────────────
     firm_name = (
         (analysis or {}).get("firm_overview", {}).get("name")
         or firm_input.strip()
     )
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts        = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_name = "".join(c if c.isalnum() or c in "_ -" else "_" for c in firm_name)[:40]
-    out_dir = Path(output_dir)
+    out_dir   = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     base = out_dir / f"{ts}_{safe_name}"
 
@@ -194,25 +190,71 @@ if run_button:
             json.dumps(risk_report, indent=2, default=str), encoding="utf-8"
         )
 
-    # ── Results tabs ──────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────────────
+    # FUND SNAPSHOT — key metrics from ADV XML + risk tier
+    # ──────────────────────────────────────────────────────────────────────────────
     st.divider()
-    st.subheader(f"Results: {firm_name}")
+    st.subheader(firm_name)
 
+    adv_xml  = (raw_data or {}).get("adv_xml_data", {})
+    overview = (analysis  or {}).get("firm_overview", {})
+
+    # Prefer ADV XML (real filing data) → fall back to Claude's structured analysis
+    aum       = adv_xml.get("aum_regulatory")          or overview.get("aum_regulatory")  or "Not Disclosed"
+    aum_disc  = adv_xml.get("aum_discretionary")       or "—"
+    clients   = adv_xml.get("num_clients")             or overview.get("num_clients")
+    employees = adv_xml.get("num_employees")           or overview.get("num_employees")
+    num_ia    = adv_xml.get("num_investment_advisers") or overview.get("num_investment_advisers")
+    fee_types = adv_xml.get("fee_types") or (analysis or {}).get("fee_structure", {}).get("fee_types", [])
+    personnel = adv_xml.get("key_personnel", [])
+    tier      = (risk_report or {}).get("overall_risk_tier", "UNKNOWN")
+    tier_icon = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(tier, "⚪")
+
+    # ─ Key metric cards ─────────────────────────────────────────────────────────────
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Regulatory AUM",   str(aum))
+    c2.metric("Discretionary AUM", str(aum_disc))
+    c3.metric("Clients",           str(clients)  if clients   else "—")
+    c4.metric("Employees",         str(employees) if employees else "—")
+    c5.metric("Risk Tier",         f"{tier_icon} {tier}")
+
+    # ─ Fee types ────────────────────────────────────────────────────────────────────────
+    if fee_types:
+        st.markdown(
+            "**Fee Structure:** " + " ".join(f"`{f}`" for f in fee_types)
+        )
+
+    # ─ EDGAR source info ───────────────────────────────────────────────────────────
+    if adv_xml.get("filing_url"):
+        cik_str = f"CIK {adv_xml['cik']} · " if adv_xml.get("cik") else ""
+        st.caption(
+            f"ADV XML source: {cik_str}"
+            f"[EDGAR filing]({adv_xml['filing_url']})"
+        )
+    elif adv_xml.get("error"):
+        st.caption(f"ADV XML unavailable: {adv_xml['error']}")
+
+    # ─ Key Personnel table (Schedule A) ──────────────────────────────────────────
+    if personnel:
+        import pandas as pd
+        st.markdown("**Key Personnel — Schedule A**")
+        df = pd.DataFrame([{
+            "Name":       p.get("name", ""),
+            "Title(s)":   ", ".join(p.get("titles", [])) or "—",
+            "CRD #":      p.get("crd")           or "—",
+            "Ownership":  p.get("ownership_pct") or "—",
+        } for p in personnel])
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # ── Results tabs ────────────────────────────────────────────────────────────────────
+    st.divider()
     tab_risk, tab_memo, tab_pal, tab_raw = st.tabs([
-        "Risk Dashboard", "DD Memo", "PAL Consensus", "Raw Data"
+        "Risk Dashboard", "DD Memo", "PAL Consensus", "Raw Data",
     ])
 
-    # Risk Dashboard
+    # ─ Risk Dashboard ─────────────────────────────────────────────────────────────────
     with tab_risk:
         if risk_report:
-            tier = risk_report.get("overall_risk_tier", "UNKNOWN")
-            tier_colors = {"HIGH": "red", "MEDIUM": "orange", "LOW": "green"}
-            color = tier_colors.get(tier, "gray")
-            st.markdown(
-                f"<h3 style='color:{color}'>Overall Risk Tier: {tier}</h3>",
-                unsafe_allow_html=True,
-            )
-
             commentary = risk_report.get("overall_commentary", "")
             if commentary:
                 st.info(commentary)
@@ -247,50 +289,58 @@ if run_button:
         else:
             st.warning("Risk report not available.")
 
-    # DD Memo
+    # ─ DD Memo ─────────────────────────────────────────────────────────────────────────
     with tab_memo:
         if memo:
-            st.download_button(
-                label="Download Memo (.md)",
-                data=memo,
-                file_name=f"{safe_name}_DD_MEMO.md",
-                mime="text/markdown",
-            )
-            if raw_data and analysis and risk_report:
-                bundle = json.dumps(
-                    {"raw_data": raw_data, "analysis": analysis, "risk_report": risk_report},
-                    indent=2, default=str
-                )
+            col_dl1, col_dl2 = st.columns(2)
+            with col_dl1:
                 st.download_button(
-                    label="Download JSON Bundle",
-                    data=bundle,
-                    file_name=f"{safe_name}_bundle.json",
-                    mime="application/json",
+                    label="Download Memo (.md)",
+                    data=memo,
+                    file_name=f"{safe_name}_DD_MEMO.md",
+                    mime="text/markdown",
+                    use_container_width=True,
                 )
+            with col_dl2:
+                if raw_data and analysis and risk_report:
+                    bundle = json.dumps(
+                        {"raw_data": raw_data, "analysis": analysis, "risk_report": risk_report},
+                        indent=2, default=str,
+                    )
+                    st.download_button(
+                        label="Download JSON Bundle",
+                        data=bundle,
+                        file_name=f"{safe_name}_bundle.json",
+                        mime="application/json",
+                        use_container_width=True,
+                    )
             st.divider()
             st.markdown(memo)
         else:
             st.warning("Memo not generated.")
 
-    # PAL Consensus
+    # ─ PAL Consensus ───────────────────────────────────────────────────────────────
     with tab_pal:
         if pal_review:
             st.subheader("PAL Multi-Model Consensus Review")
-            st.caption("Validated by Gemini-3-Pro via PAL MCP server")
             st.markdown(pal_review)
         elif use_pal and not pal_status:
             st.info("PAL MCP server not available in this environment.")
         else:
             st.info("Enable 'Multi-Model Consensus' in the sidebar to run PAL validation.")
 
-    # Raw Data
+    # ─ Raw Data ─────────────────────────────────────────────────────────────────────
     with tab_raw:
-        st.subheader("Raw Ingested Data")
         if raw_data:
-            st.json(raw_data)
-        else:
-            st.warning("No raw data.")
+            with st.expander("ADV XML Data (EDGAR)", expanded=True):
+                st.json(raw_data.get("adv_xml_data", {}))
+            with st.expander("IAPD ADV Summary"):
+                st.json(raw_data.get("adv_summary", {}))
+            with st.expander("13F Filings"):
+                st.json(raw_data.get("filings_13f", []))
+            with st.expander("FRED Macro Context"):
+                st.json(raw_data.get("market_context", {}))
 
         if analysis:
-            st.subheader("Structured Analysis")
-            st.json(analysis)
+            with st.expander("Structured Analysis (Claude)"):
+                st.json(analysis)

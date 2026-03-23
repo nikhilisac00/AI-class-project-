@@ -27,22 +27,24 @@ def run(firm_input: str, fred_api_key: str = None) -> dict:
         raw_data dict with keys:
           - search_results   : IAPD search hits
           - crd              : resolved CRD
-          - adv_summary      : parsed ADV fields (only real data, no defaults)
+          - adv_summary      : parsed ADV fields from IAPD (registration, status, etc.)
+          - adv_xml_data     : ADV Part 1A XML fields from EDGAR (AUM, fees, personnel)
           - filings_13f      : list of 13F-HR filing metadata
           - market_context   : FRED macro series (latest readings)
           - errors           : list of any non-fatal errors encountered
     """
     raw_data = {
-        "input": firm_input,
+        "input":         firm_input,
         "search_results": [],
-        "crd": None,
-        "adv_summary": {},
-        "filings_13f": [],
+        "crd":           None,
+        "adv_summary":   {},
+        "adv_xml_data":  {},
+        "filings_13f":   [],
         "market_context": {},
-        "errors": [],
+        "errors":        [],
     }
 
-    # ── Step 1: Resolve CRD ───────────────────────────────────────────────────
+    # ── Step 1: Resolve CRD ───────────────────────────────────────────────────────────────
     if firm_input.isdigit():
         crd = firm_input
         raw_data["crd"] = crd
@@ -56,16 +58,13 @@ def run(firm_input: str, fred_api_key: str = None) -> dict:
             msg = f"No IAPD results found for '{firm_input}'"
             raw_data["errors"].append(msg)
             print(f"[Ingestion] WARNING: {msg}")
-            # Still try 13F search below with the name
             crd = None
         else:
-            # Take the top hit — downstream memo will show search_results so
-            # user can verify we matched the right entity
             crd = results[0]["crd"]
             raw_data["crd"] = crd
             print(f"[Ingestion] Resolved to CRD {crd}: {results[0]['firm_name']}")
 
-    # ── Step 2: Pull IAPD/ADV detail ─────────────────────────────────────────
+    # ── Step 2: Pull IAPD/ADV detail ─────────────────────────────────────────────────────
     if crd:
         print(f"[Ingestion] Fetching IAPD detail for CRD {crd}")
         detail = get_adviser_detail(str(crd))
@@ -75,8 +74,7 @@ def run(firm_input: str, fred_api_key: str = None) -> dict:
         else:
             raw_data["errors"].append(f"IAPD detail fetch failed for CRD {crd}")
 
-    # ── Step 3: Search 13F filings on EDGAR ──────────────────────────────────
-    # Try name-based search first; note many private fund managers don't file 13F
+    # ── Step 3: Search 13F filings on EDGAR ─────────────────────────────────────────────
     search_name = firm_input if not firm_input.isdigit() else raw_data["adv_summary"].get("firm_name", "")
     if search_name:
         print(f"[Ingestion] Searching EDGAR for 13F filings: '{search_name}'")
@@ -88,17 +86,35 @@ def run(firm_input: str, fred_api_key: str = None) -> dict:
                 "firm may not hold reportable US equity positions above $100M threshold"
             )
 
-    # ── Step 4: Pull macro context from FRED ─────────────────────────────────
+    # ── Step 4: Pull macro context from FRED ──────────────────────────────────────────
     print("[Ingestion] Fetching macro context from FRED")
     macro = get_market_context(api_key=fred_api_key)
     if macro:
-        # Summarise to latest reading per series for memo brevity
         raw_data["market_context"] = {
             name: {"latest": latest_value(obs), "recent": obs[:3]}
             for name, obs in macro.items()
         }
     else:
         raw_data["errors"].append("FRED macro data unavailable (check API key)")
+
+    # ── Step 5: ADV Part 1A XML from EDGAR ──────────────────────────────────────────
+    # Pulls the fields IAPD JSON cannot provide: AUM, fees, key personnel
+    adv_search_name = (
+        raw_data["adv_summary"].get("firm_name")
+        or (search_name if not firm_input.isdigit() else None)
+    )
+    if adv_search_name:
+        print(f"[Ingestion] Fetching ADV XML from EDGAR for '{adv_search_name}'")
+        try:
+            from tools.adv_parser import fetch_adv_data
+            adv_xml = fetch_adv_data(adv_search_name)
+            raw_data["adv_xml_data"] = adv_xml
+            if adv_xml.get("error"):
+                raw_data["errors"].append(f"ADV XML: {adv_xml['error']}")
+        except Exception as e:
+            raw_data["errors"].append(f"ADV XML fetch failed: {e}")
+    else:
+        raw_data["errors"].append("ADV XML: could not determine firm name for EDGAR search")
 
     print(f"[Ingestion] Done. Errors: {raw_data['errors'] or 'none'}")
     return raw_data
