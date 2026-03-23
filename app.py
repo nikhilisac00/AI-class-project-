@@ -53,12 +53,12 @@ with st.sidebar:
     st.title("Settings")
 
     api_key = st.text_input(
-        "OpenAI API Key",
-        value=os.getenv("OPENAI_API_KEY", ""),
+        "Anthropic API Key",
+        value=os.getenv("ANTHROPIC_API_KEY", ""),
         type="password",
-        help="Get one at platform.openai.com",
+        help="Required. Get one at console.anthropic.com",
     )
-    st.caption("Model: o3 (reasoning mode)")
+    st.caption("Model: claude-opus-4-6 + extended thinking")
 
     fred_key = st.text_input(
         "FRED API Key (optional — free)",
@@ -130,7 +130,7 @@ st.divider()
 
 if run_button:
     if not api_key:
-        st.error("OpenAI API key required. Add it in the sidebar.")
+        st.error("Anthropic API key required. Add it in the sidebar.")
         st.stop()
     if not firm_input.strip():
         st.error("Enter a fund name or CRD number.")

@@ -1,40 +1,42 @@
 """
-LLM Client — OpenAI only (o3 reasoning model)
+LLM Client — Anthropic Claude with extended thinking.
+Provides a simple wrapper so agents don't depend on the raw SDK.
 """
 
 import json
-from dataclasses import dataclass
+import re
+import anthropic
 
 
-@dataclass
+MODEL = "claude-opus-4-6"
+
+
 class LLMClient:
-    api_key: str
-    model:   str = "o3"
-    _client: object = None
-
-    def __post_init__(self):
-        import openai
-        self._client = openai.OpenAI(api_key=self.api_key)
+    def __init__(self, api_key: str):
+        self._client = anthropic.Anthropic(api_key=api_key)
+        self.provider = "anthropic"
+        self.model = MODEL
 
     def complete(self, system: str, user: str,
-                 max_tokens: int = 8000, **_) -> str:
-        response = self._client.chat.completions.create(
+                 max_tokens: int = 10000, thinking_tokens: int = 6000, **_) -> str:
+        response = self._client.messages.create(
             model=self.model,
-            messages=[
-                {"role": "developer", "content": system},
-                {"role": "user",      "content": user},
-            ],
-            max_completion_tokens=max_tokens,
-            reasoning_effort="high",
+            max_tokens=max_tokens,
+            thinking={"type": "enabled", "budget_tokens": thinking_tokens},
+            system=system,
+            messages=[{"role": "user", "content": user}],
         )
-        return (response.choices[0].message.content or "").strip()
+        for block in response.content:
+            if block.type == "text":
+                return block.text.strip()
+        return ""
 
     def complete_json(self, system: str, user: str,
-                      max_tokens: int = 8000, **_) -> dict:
-        text = self.complete(system, user, max_tokens)
-        if text.startswith("```"):
-            lines = text.split("\n")
-            text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+                      max_tokens: int = 8000, thinking_tokens: int = 5000, **_) -> dict:
+        text = self.complete(system, user, max_tokens, thinking_tokens)
+        # Strip markdown fences
+        text = re.sub(r"^```(?:json)?\s*", "", text.strip())
+        text = re.sub(r"\s*```$", "", text.strip())
         try:
             return json.loads(text)
         except json.JSONDecodeError as e:
