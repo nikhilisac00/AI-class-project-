@@ -1,0 +1,30 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude Code Review
+        uses: anthropic/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          direct_prompt: |
+            Review this pull request for the AI Alternative Investments Research Associate project.
+            Focus on:
+            1. Financial data accuracy — are API responses handled correctly? No hardcoded values?
+            2. Error handling — do all external API calls have proper fallbacks?
+            3. Anti-hallucination compliance — do agents return null instead of guessing?
+            4. Security — no API keys or credentials exposed in code?
+            5. Test coverage — are new functions testable and tested?
+            Be concise. Highlight critical issues first.

@@ -1,8 +1,19 @@
 # AI Alternative Investments Research Associate
 
+[![CI](https://github.com/nikhilisac00/AI-class-project-/actions/workflows/ci.yml/badge.svg)](https://github.com/nikhilisac00/AI-class-project-/actions/workflows/ci.yml)
+[![Live App](https://img.shields.io/badge/Streamlit-Live%20App-FF4B4B?logo=streamlit)](https://bg7t89xzs4fa25xcgzdtwh.streamlit.app/)
+
 An autonomous multi-agent system that performs the work of a junior alternatives research analyst — ingesting real public data and producing structured LP-grade due diligence memos.
 
-**The output is the memo. Not a dashboard.**
+**Input:** fund name or CRD number → **Output:** IC-ready DD memo in under 3 minutes.
+
+---
+
+## Live Demo
+
+**https://bg7t89xzs4fa25xcgzdtwh.streamlit.app/**
+
+Try: `AQR Capital Management`, `Renaissance Technologies`, `Clearlake Capital`, or any CRD number.
 
 ---
 
@@ -10,26 +21,26 @@ An autonomous multi-agent system that performs the work of a junior alternatives
 
 Given a fund name or CRD number, the system autonomously:
 
-1. **Ingests** real data from SEC EDGAR (ADV filings, 13F filings) and FRED API
-2. **Analyzes** the firm: AUM, team, fee structure, client concentration, registrations
+1. **Ingests** real data from SEC EDGAR (13F XML), IAPD (ADV filings), and FRED API
+2. **Analyzes** the firm: 13F portfolio value, registration status, disclosures, macro context
 3. **Flags risks**: regulatory disclosures, key person concentration, data gaps, structural issues
-4. **Generates** a structured due diligence memo formatted for IC review
+4. **Generates** a structured 11-section memo formatted for IC review
 
-No hallucination. Every fact in the memo traces to a real API response.
+No hallucination. Every fact in the memo traces to a real API response. Missing fields return `null`.
 
 ---
 
 ## Architecture
 
 ```
-main.py
-├── Agent 1: Data Ingestion     → IAPD/EDGAR/FRED APIs (no auth for most)
-├── Agent 2: Fund Analysis      → Claude Opus 4.6 + extended thinking
-├── Agent 3: Risk Flagging      → Claude Opus 4.6 + extended thinking
-└── Agent 4: Memo Generation    → Claude Opus 4.6 + extended thinking
+app.py / main.py
+├── Agent 1: Data Ingestion   → IAPD + EDGAR 13F XML + FRED (no LLM)
+├── Agent 2: Fund Analysis    → OpenAI o3 (reasoning model)
+├── Agent 3: Risk Flagging    → OpenAI o3 (reasoning model)
+└── Agent 4: Memo Generation  → OpenAI o3 (reasoning model)
 ```
 
-Each agent is a separate module. Claude uses **extended thinking** to reason carefully before writing — this is the core mechanism for minimizing hallucination in financial analysis.
+See [`docs/research-brief.md`](docs/research-brief.md) for full architecture and data source mapping.
 
 ---
 
@@ -37,9 +48,10 @@ Each agent is a separate module. Claude uses **extended thinking** to reason car
 
 | Source | What It Provides | Auth |
 |--------|-----------------|------|
-| [IAPD (adviserinfo.sec.gov)](https://adviserinfo.sec.gov) | ADV filings: AUM, fees, personnel, disclosures | None |
-| [SEC EDGAR](https://efts.sec.gov) | 13F filings (public equity holdings) | None |
-| [FRED API](https://fred.stlouisfed.org) | Macro context: rates, spreads, VIX | Free key |
+| [IAPD](https://adviserinfo.sec.gov) | Registration status, disclosure flags, brochure metadata | None |
+| [SEC EDGAR 13F](https://data.sec.gov) | Portfolio value (USD), holdings count — proxy AUM | None |
+| [FRED](https://fred.stlouisfed.org) | Fed funds rate, 10Y yield, HY spread, VIX | Free key |
+| OpenAI o3 | Fund analysis, risk flagging, memo generation | API key |
 
 ---
 
@@ -56,89 +68,97 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 # Edit .env and add:
-#   ANTHROPIC_API_KEY=your_key
-#   FRED_API_KEY=your_fred_key  (optional but recommended)
+#   OPENAI_API_KEY=your_key
+#   FRED_API_KEY=your_fred_key  (optional — free at fred.stlouisfed.org)
 ```
 
-### 3. Run
+### 3. Run (Streamlit UI)
 ```bash
-# By firm name
+streamlit run app.py
+```
+
+### 4. Run (CLI)
+```bash
 python main.py "AQR Capital Management"
+python main.py 149729                          # by CRD number
+python main.py "Bridgewater" --no-fred         # skip FRED
+python main.py "Two Sigma" --raw-only          # data only, skip LLM
+```
 
-# By CRD number
-python main.py 149729
+---
 
-# Skip FRED (no FRED API key)
-python main.py "Bridgewater Associates" --no-fred
+## Running Tests
 
-# Only pull data, skip Claude analysis
-python main.py "Two Sigma" --raw-only
-
-# Custom output directory
-python main.py "Renaissance Technologies" --output-dir ./my_memos
+```bash
+pip install pytest pytest-cov
+pytest tests/ -v --cov=tools --cov=agents --cov-report=term-missing
 ```
 
 ---
 
 ## Output
 
-Each run produces four files in `./output/memos/`:
+Each run saves four files to `./output/memos/`:
 
 ```
-20241201_143022_AQR Capital Management_DD_MEMO.md       ← the memo
-20241201_143022_AQR Capital Management_analysis.json    ← structured analysis
-20241201_143022_AQR Capital Management_risk_report.json ← risk flags
-20241201_143022_AQR Capital Management_raw_data.json    ← raw API responses
+20260324_120000_AQR_Capital_Management_DD_MEMO.md
+20260324_120000_AQR_Capital_Management_analysis.json
+20260324_120000_AQR_Capital_Management_risk_report.json
+20260324_120000_AQR_Capital_Management_raw_data.json
 ```
 
-### Memo Structure
-
-1. Header (firm, CRD, date, data sources, status)
+### Memo Sections
+1. Header (firm, CRD, date, data sources)
 2. Executive Summary
-3. Firm Overview (AUM, registration, team size)
-4. Investment Team (personnel, ownership)
+3. Firm Overview
+4. Investment Team
 5. Fee Structure
 6. Regulatory & Compliance
 7. Risk Flags Table (Category | Severity | Finding | Action)
-8. Macro Context (rates, spreads)
+8. Macro Context
 9. Data Gaps & Limitations
-10. Next Steps for diligence team
+10. Next Steps
 11. Appendix: Data Quality Log
+
+---
+
+## Branch Strategy
+
+```
+main   ← production (protected — requires PR + CI pass)
+dev    ← integration branch
+feature/<name>-<task>  ← individual work
+```
+
+PRs from `feature/*` → `dev` → `main`. CI runs on every push.
 
 ---
 
 ## No-Hallucination Design
 
-- Claude is instructed to output `null` for any missing field, never estimate
-- Risk flags require explicit evidence citations from the data
-- Extended thinking gives Claude reasoning budget before writing
-- Raw API responses are saved alongside the memo so every claim is auditable
-- Data gaps are surfaced explicitly — the memo tells you what it *doesn't* know
+- All fields initialized to `null`; only populated if found in an API response
+- LLM system prompts explicitly forbid estimation of missing values
+- Risk flags require explicit evidence citations
+- Data gaps surface as LP action items (e.g., "request audited financials")
+- Raw API responses saved alongside memo — every claim is auditable
 
 ---
 
 ## What This Does Not Do
 
-- **Fund performance**: Private fund returns are not public. The system flags this as a data gap and notes you need direct GP engagement.
-- **Real-time news**: No news/earnings scraping in MVP (next version).
-- **Proprietary databases**: No Preqin, PitchBook, or Bloomberg data.
+- **Fund performance**: Private returns are not public. The system flags this and generates a standard GP ask.
+- **Proprietary databases**: No Preqin, PitchBook, Bloomberg (planned: financialdatasets.ai, LSEG)
+- **Real-time news**: No news scraping in current version
 
 ---
 
-## Roadmap
+## Environment Variables
 
-- [ ] News & earnings transcript ingestion (web search agent)
-- [ ] Peer comparison across a manager universe
-- [ ] Portfolio monitoring: re-run on schedule, diff against prior memo
-- [ ] Email/calendar integration (AI Chief of Staff mode)
-- [ ] PDF export of final memo
-
----
-
-## Get a Free FRED API Key
-
-[https://fred.stlouisfed.org/docs/api/api_key.html](https://fred.stlouisfed.org/docs/api/api_key.html) — takes 30 seconds.
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Yes | OpenAI API key for o3 model |
+| `FRED_API_KEY` | No | Free FRED key — adds macro context |
 
 ---
 
-*Built as an AI class project. Uses Claude Opus 4.6 with extended thinking.*
+*AI Finance class project · OpenAI o3 · SEC EDGAR · IAPD · FRED*
