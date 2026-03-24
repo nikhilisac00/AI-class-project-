@@ -125,7 +125,6 @@ def extract_adv_summary(iacontent: dict, search_hit: dict = None) -> dict:
     scope_flags = iacontent.get("orgScopeStatusFlags", {})
     address_details = iacontent.get("iaFirmAddressDetails", {})
     brochures = iacontent.get("brochures", [])
-    registration = iacontent.get("registrationStatus", {})
     notice_filings = iacontent.get("noticeFilings", [])
 
     # Address parsing

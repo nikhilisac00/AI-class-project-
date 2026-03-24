@@ -3,9 +3,7 @@ Tests for tools/adv_parser.py — pure-function logic only.
 No real HTTP calls; all external I/O is mocked.
 """
 
-import xml.etree.ElementTree as ET
-from unittest.mock import patch, MagicMock
-import pytest
+from unittest.mock import patch
 
 from tools.adv_parser import (
     parse_iapd_disclosures,

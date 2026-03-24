@@ -10,7 +10,6 @@ from tools.edgar_client import (
     get_adviser_detail,
     extract_adv_summary,
     search_13f_filings,
-    search_13f_by_cik,
 )
 from tools.fred_client import get_market_context, latest_value
 

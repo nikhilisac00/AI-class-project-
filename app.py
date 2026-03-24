@@ -24,12 +24,12 @@ st.set_page_config(
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-import agents.data_ingestion  as ingestion_agent
-import agents.fund_analysis   as analysis_agent
-import agents.risk_flagging   as risk_agent
-import agents.memo_generation as memo_agent
-from tools.llm_client import make_client
-from tools.pal_client  import is_available as pal_available, call_consensus
+import agents.data_ingestion  as ingestion_agent  # noqa: E402
+import agents.fund_analysis   as analysis_agent   # noqa: E402
+import agents.risk_flagging   as risk_agent       # noqa: E402
+import agents.memo_generation as memo_agent       # noqa: E402
+from tools.llm_client import make_client          # noqa: E402
+from tools.pal_client  import is_available as pal_available, call_consensus  # noqa: E402
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -242,10 +242,14 @@ if run_button:
         st.markdown(" ".join(identity_parts), unsafe_allow_html=True)
 
     meta_parts = []
-    if crd_str:  meta_parts.append(f"CRD: **{crd_str}**")
-    if sec_str:  meta_parts.append(f"SEC: **{sec_str}**")
-    if city and state_str: meta_parts.append(f"**{city}, {state_str}**")
-    if adv_date: meta_parts.append(f"Latest ADV: **{adv_date}**")
+    if crd_str:
+        meta_parts.append(f"CRD: **{crd_str}**")
+    if sec_str:
+        meta_parts.append(f"SEC: **{sec_str}**")
+    if city and state_str:
+        meta_parts.append(f"**{city}, {state_str}**")
+    if adv_date:
+        meta_parts.append(f"Latest ADV: **{adv_date}**")
     if meta_parts:
         st.caption("  ·  ".join(meta_parts))
 

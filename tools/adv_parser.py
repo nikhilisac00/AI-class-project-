@@ -19,7 +19,6 @@ All endpoints are public. No auth required.
 
 import re
 import time
-import json
 import requests
 import xml.etree.ElementTree as ET
 from typing import Optional

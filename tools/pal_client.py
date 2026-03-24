@@ -14,11 +14,9 @@ PAL tools used:
 """
 
 import asyncio
-import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
 
 # Path to the local PAL server installation
 PAL_SERVER_DIR = Path(os.getenv("PAL_SERVER_DIR", str(Path.home() / "pal-mcp-server")))
