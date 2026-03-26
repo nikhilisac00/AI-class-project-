@@ -1,0 +1,75 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Deploy to Streamlit Cloud
+    runs-on: ubuntu-latest
+    needs: []          # runs independently; Streamlit deploys on git push
+    environment:
+      name: production
+      url: https://bg7t89xzs4fa25xcgzdtwh.streamlit.app/
+
+    steps:
+      - name: Create GitHub deployment record
+        uses: actions/github-script@v7
+        id: deployment
+        with:
+          script: |
+            const dep = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              ref:   context.sha,
+              environment: 'production',
+              description: 'Streamlit Cloud — auto-deploy on push',
+              auto_merge: false,
+              required_contexts: [],
+            });
+            core.setOutput('deployment_id', dep.data.id);
+
+      - name: Wait for Streamlit Cloud to redeploy
+        run: sleep 60
+
+      - name: Health check — verify app is live
+        id: health
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 30 \
+            https://bg7t89xzs4fa25xcgzdtwh.streamlit.app/)
+          echo "HTTP status: $STATUS"
+          if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 400 ]; then
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            echo "result=failure" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Mark deployment success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              deployment_id: ${{ steps.deployment.outputs.deployment_id }},
+              state: 'success',
+              environment_url: 'https://bg7t89xzs4fa25xcgzdtwh.streamlit.app/',
+              description: 'App is live',
+            });
+
+      - name: Mark deployment failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              deployment_id: ${{ steps.deployment.outputs.deployment_id }},
+              state: 'failure',
+              description: 'Health check failed',
+            });
