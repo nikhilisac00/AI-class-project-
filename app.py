@@ -116,7 +116,7 @@ with st.expander("How it works", expanded=False):
 1. **IAPD** — resolve firm name → CRD → ADV registration data
 2. **SEC EDGAR** — fetch latest 13F-HR filing, parse portfolio value from XML
 3. **FRED** — pull macro context (rates, spreads, VIX)
-4. **Claude Opus 4.6** (extended thinking) — analyze, flag risks, generate memo
+4. **OpenAI o3** (reasoning mode) — analyze, flag risks, generate memo
 5. *(optional)* **PAL MCP** — Gemini-3-Pro consensus validation of risk flags
 
 **No hallucination:** `null` is returned for any missing field. Data gaps are surfaced explicitly in the memo.
@@ -152,12 +152,12 @@ if run_button:
         if raw_data.get("errors"):
             st.warning("Ingestion notes: " + " | ".join(raw_data["errors"]))
 
-        status_box.info("Step 2/5 — Fund analysis (Claude + extended thinking)...")
+        status_box.info("Step 2/5 — Fund analysis (OpenAI o3 reasoning)...")
         progress_bar.progress(35, text="Analyzing...")
         analysis = analysis_agent.run(raw_data, client)
         progress_bar.progress(55, text="Analysis complete")
 
-        status_box.info("Step 3/5 — Risk flagging (Claude + extended thinking)...")
+        status_box.info("Step 3/5 — Risk flagging (OpenAI o3 reasoning)...")
         progress_bar.progress(58, text="Flagging risks...")
         risk_report = risk_agent.run(analysis, raw_data, client)
         progress_bar.progress(75, text="Risk flagging complete")
@@ -174,7 +174,7 @@ if run_button:
             )
             progress_bar.progress(85, text="PAL complete")
 
-        status_box.info("Step 4/5 — Generating DD memo (Claude + extended thinking)...")
+        status_box.info("Step 4/5 — Generating DD memo (OpenAI o3 reasoning)...")
         progress_bar.progress(87, text="Generating memo...")
         memo = memo_agent.run(analysis, risk_report, raw_data, client)
         progress_bar.progress(100, text="Done")

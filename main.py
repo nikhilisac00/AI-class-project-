@@ -10,7 +10,7 @@ Usage:
     python main.py "Two Sigma"     --output-dir ./output/memos
 
 Data sources: SEC EDGAR (IAPD/ADV + 13F), FRED API
-Model: claude-opus-4-6 with extended thinking
+Model: OpenAI o3 (reasoning mode)
 """
 
 import argparse
@@ -131,7 +131,7 @@ def main():
     console.print(Panel(
         f"[bold]AI Alternatives Research Associate[/]\n"
         f"Target: [cyan]{args.firm}[/]\n"
-        f"Model: claude-opus-4-6 (extended thinking)\n"
+        f"Model: OpenAI o3 (reasoning mode)\n"
         f"Sources: IAPD · SEC EDGAR · {'FRED' if not args.no_fred else 'FRED skipped'}",
         title="Starting Analysis",
         expand=False,
@@ -164,14 +164,14 @@ def main():
     # ── Agent 2: Fund Analysis ────────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Running fund analysis (Claude extended thinking)...", total=None)
+        task = p.add_task("Running fund analysis (OpenAI o3 reasoning)...", total=None)
         analysis = analysis_agent.run(raw_data, client)
         p.update(task, description="Fund analysis complete", completed=True)
 
     # ── Agent 3: Risk Flagging ────────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Running risk flagging (Claude extended thinking)...", total=None)
+        task = p.add_task("Running risk flagging (OpenAI o3 reasoning)...", total=None)
         risk_report = risk_agent.run(analysis, raw_data, client)
         p.update(task, description="Risk flagging complete", completed=True)
 
@@ -180,7 +180,7 @@ def main():
     # ── Agent 4: Memo Generation ──────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Generating DD memo (Claude extended thinking)...", total=None)
+        task = p.add_task("Generating DD memo (OpenAI o3 reasoning)...", total=None)
         memo = memo_agent.run(analysis, risk_report, raw_data, client)
         p.update(task, description="Memo generation complete", completed=True)
 
