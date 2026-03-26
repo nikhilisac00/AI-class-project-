@@ -9,6 +9,8 @@ jobs:
     name: Deploy to Streamlit Cloud
     runs-on: ubuntu-latest
     needs: []          # runs independently; Streamlit deploys on git push
+    permissions:
+      deployments: write
     environment:
       name: production
       url: https://bg7t89xzs4fa25xcgzdtwh.streamlit.app/
