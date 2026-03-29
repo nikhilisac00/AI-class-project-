@@ -33,8 +33,19 @@ class LLMClient:
             text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
         try:
             return json.loads(text)
-        except json.JSONDecodeError as e:
-            return {"parse_error": str(e), "raw_response": text}
+        except json.JSONDecodeError:
+            # Try extracting the first JSON object/array from the response
+            import re
+            match = re.search(r'(\{.*\}|\[.*\])', text, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group(1))
+                except json.JSONDecodeError:
+                    pass
+            raise ValueError(
+                f"LLM returned non-JSON response from {self.model}. "
+                f"First 200 chars: {text[:200]!r}"
+            )
 
 
 def make_client(api_key: str) -> LLMClient:

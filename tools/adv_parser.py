@@ -79,7 +79,7 @@ def _latest_13f_from_submissions(cik: str) -> Optional[dict]:
     Use EDGAR submissions API to find the most recent 13F-HR filing.
     Returns dict with accession, filing_date, period_of_report or None.
     """
-    url = SUBMISSIONS.format(cik=cik.zfill(10))
+    url = SUBMISSIONS.format(cik=cik.lstrip("0").zfill(10))
     data = _json(url)
     if not data:
         return None
@@ -181,7 +181,7 @@ def _parse_13f_xml(cik: str, acc: str, xml_file: str, period: Optional[str]) -> 
 
 def _all_13f_from_submissions(cik: str, max_quarters: int = 8) -> list[dict]:
     """Return up to max_quarters most recent 13F-HR filings from the submissions API."""
-    url  = SUBMISSIONS.format(cik=cik.zfill(10))
+    url  = SUBMISSIONS.format(cik=cik.lstrip("0").zfill(10))
     data = _json(url)
     if not data:
         return []

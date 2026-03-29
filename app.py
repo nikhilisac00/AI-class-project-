@@ -22,6 +22,136 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+st.markdown("""
+<style>
+/* ── Hide Streamlit chrome ───────────────────────────────────── */
+#MainMenu, footer, header { visibility: hidden; }
+.stDeployButton { display: none; }
+
+/* ── Global typography ───────────────────────────────────────── */
+html, body, [class*="css"] {
+    font-family: "Inter", "Segoe UI", sans-serif;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────── */
+[data-testid="stSidebar"] {
+    background: #0f1923;
+}
+[data-testid="stSidebar"] * {
+    color: #d4dce8 !important;
+}
+[data-testid="stSidebar"] .stTextInput label,
+[data-testid="stSidebar"] .stSlider label,
+[data-testid="stSidebar"] .stToggle label {
+    color: #8fa3bb !important;
+    font-size: 0.78rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+[data-testid="stSidebar"] hr {
+    border-color: #1e2f42 !important;
+}
+
+/* ── Metric cards ────────────────────────────────────────────── */
+.metric-card {
+    background: #ffffff;
+    border: 1px solid #e8ecf0;
+    border-radius: 8px;
+    padding: 16px 18px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.metric-card .metric-label {
+    font-size: 0.70rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #8fa3bb;
+    margin-bottom: 6px;
+}
+.metric-card .metric-value {
+    font-size: 1.45rem;
+    font-weight: 700;
+    color: #0f1923;
+    line-height: 1.2;
+}
+
+/* ── Risk tier badge ─────────────────────────────────────────── */
+.risk-tier-banner {
+    border-radius: 8px;
+    padding: 14px 20px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* ── Tab styling ─────────────────────────────────────────────── */
+[data-testid="stTabs"] [data-baseweb="tab"] {
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 8px 18px;
+}
+
+/* ── Section subheaders ──────────────────────────────────────── */
+.section-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8fa3bb;
+    margin-bottom: 4px;
+}
+
+/* ── Firm header card ────────────────────────────────────────── */
+.firm-header {
+    background: linear-gradient(135deg, #0f1923 0%, #1a2f45 100%);
+    border-radius: 10px;
+    padding: 22px 28px;
+    margin-bottom: 20px;
+    color: #ffffff;
+}
+.firm-header h2 {
+    margin: 0 0 6px 0;
+    font-size: 1.55rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+.firm-header .firm-meta {
+    font-size: 0.82rem;
+    color: #8fa3bb;
+    margin-top: 8px;
+}
+
+/* ── Primary button ──────────────────────────────────────────── */
+.stButton > button[kind="primary"] {
+    background: #1a3d6e;
+    border: none;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    padding: 10px 24px;
+    border-radius: 6px;
+}
+.stButton > button[kind="primary"]:hover {
+    background: #1e4d8c;
+}
+
+/* ── Expander ────────────────────────────────────────────────── */
+[data-testid="stExpander"] summary {
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+/* ── Divider ─────────────────────────────────────────────────── */
+hr { border-color: #e8ecf0 !important; }
+</style>
+""", unsafe_allow_html=True)
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 import agents.data_ingestion  as ingestion_agent  # noqa: E402
@@ -73,52 +203,59 @@ for _k, _v in [
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.title("Settings")
+    st.markdown("""
+    <div style="padding:18px 4px 10px 4px">
+      <div style="font-size:1.05rem;font-weight:700;color:#ffffff;letter-spacing:0.02em">
+        ⚙️ Configuration
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
+    st.markdown('<div class="section-label">API Keys</div>', unsafe_allow_html=True)
     api_key = st.text_input(
         "OpenAI API Key",
         value=os.getenv("OPENAI_API_KEY", ""),
         type="password",
         help="Required. Get one at platform.openai.com",
     )
-    st.caption("Model: o3 (reasoning mode)")
+    st.caption("Model: o3 · reasoning mode")
 
     fred_key = st.text_input(
-        "FRED API Key (optional — free)",
+        "FRED API Key (optional)",
         value=os.getenv("FRED_API_KEY", ""),
         type="password",
-        help="Free at fred.stlouisfed.org. Adds macro rates/spreads to memo.",
+        help="Free at fred.stlouisfed.org — adds macro rates/spreads.",
     )
 
     tavily_key = st.text_input(
-        "Tavily API Key (optional — free tier)",
+        "Tavily API Key (optional)",
         value=os.getenv("TAVILY_API_KEY", ""),
         type="password",
-        help="Free at tavily.com (1,000 searches/month). Falls back to DuckDuckGo if blank.",
+        help="Free tier at tavily.com (1,000/mo). Falls back to DuckDuckGo.",
     )
 
+    st.divider()
+    st.markdown('<div class="section-label">Research Options</div>', unsafe_allow_html=True)
     run_news = st.toggle(
         "Deep News Research",
         value=True,
-        help="Karpathy autoresearch loop: iterative web research on the manager.",
+        help="Iterative web research loop on the manager.",
     )
     news_rounds = st.slider("Research rounds", min_value=1, max_value=5, value=3) if run_news else 3
 
     st.divider()
-
+    st.markdown('<div class="section-label">Advanced</div>', unsafe_allow_html=True)
     use_pal    = False
     pal_status = pal_available()
     if pal_status:
         use_pal = st.toggle(
             "Multi-Model Consensus (PAL)",
             value=False,
-            help="Uses PAL MCP to validate risk flags with Gemini-3-Pro.",
+            help="Validate risk flags with Gemini-3-Pro via PAL MCP.",
         )
         st.caption("PAL MCP: connected")
     else:
-        st.caption("PAL MCP: not available (optional)")
-
-    st.divider()
+        st.caption("PAL MCP: not available")
 
     output_dir = st.text_input(
         "Output directory",
@@ -127,14 +264,30 @@ with st.sidebar:
     )
 
     st.divider()
-    st.caption("Sources: IAPD · SEC EDGAR (13F XML, Form D) · FRED")
-    st.caption("No hallucination — every fact traces to a real API call")
+    st.caption("Data: IAPD · SEC EDGAR 13F · Form D · FRED")
+    st.caption("No hallucination — every fact cites a real API field")
 
 
 # ── Header ───────────────────────────────────────────────────────────────────
 
-st.title("AI Alternative Investments Research Associate")
-st.caption("Autonomous LP due diligence — from firm name to IC-ready memo")
+st.markdown("""
+<div style="background:linear-gradient(135deg,#0f1923 0%,#1a2f45 100%);
+            border-radius:10px;padding:28px 32px;margin-bottom:24px">
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:8px">
+    <div style="background:#c9a84c;border-radius:6px;width:36px;height:36px;
+                display:flex;align-items:center;justify-content:center;
+                font-size:1.2rem;flex-shrink:0">📋</div>
+    <div>
+      <div style="font-size:1.45rem;font-weight:700;color:#ffffff;line-height:1.2">
+        Alternatives Research Associate
+      </div>
+      <div style="font-size:0.82rem;color:#8fa3bb;margin-top:3px">
+        Autonomous LP due diligence &nbsp;·&nbsp; SEC EDGAR &nbsp;·&nbsp; IAPD &nbsp;·&nbsp; FRED &nbsp;·&nbsp; OpenAI o3
+      </div>
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 with st.expander("How it works", expanded=False):
     st.markdown(
@@ -157,7 +310,14 @@ st.divider()
 # STEP 1 — Firm Search & Confirmation
 # ────────────────────────────────────────────────────────────────────────────
 
-st.subheader("Step 1 — Find Firm")
+st.markdown("""
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+  <div style="background:#1a3d6e;color:#fff;border-radius:50%;width:28px;height:28px;
+              display:flex;align-items:center;justify-content:center;
+              font-size:0.85rem;font-weight:700;flex-shrink:0">1</div>
+  <div style="font-size:1.1rem;font-weight:700;color:#0f1923">Find Firm</div>
+</div>
+""", unsafe_allow_html=True)
 
 col_q, col_find = st.columns([4, 1])
 with col_q:
@@ -261,7 +421,14 @@ st.divider()
 # ────────────────────────────────────────────────────────────────────────────
 
 if st.session_state.confirmed_firm:
-    st.subheader("Step 2 — Run Analysis")
+    st.markdown("""
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div style="background:#1a3d6e;color:#fff;border-radius:50%;width:28px;height:28px;
+                  display:flex;align-items:center;justify-content:center;
+                  font-size:0.85rem;font-weight:700;flex-shrink:0">2</div>
+      <div style="font-size:1.1rem;font-weight:700;color:#0f1923">Run Analysis</div>
+    </div>
+    """, unsafe_allow_html=True)
 
     run_button = st.button(
         f"Run Due Diligence on {st.session_state.confirmed_firm.get('firm_name', '')}",
@@ -425,72 +592,97 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
     fd       = (raw_data  or {}).get("fund_discovery", {})
 
     # ── Firm Identity Header ──────────────────────────────────────────────
-    st.subheader(firm_name)
-
     reg_status = adv.get("registration_status") or ov.get("registration_status")
-    reg_color  = "#27ae60" if reg_status == "ACTIVE" else "#e74c3c"
+    reg_color  = "#1a7a4a" if reg_status == "ACTIVE" else "#b03030"
     crd_str    = adv.get("crd_number") or ov.get("crd")
     sec_str    = adv.get("sec_number") or ov.get("sec_number")
     city       = adv.get("city")
     state_str  = adv.get("state")
     adv_date   = adv.get("adv_filing_date")
 
-    identity_parts = []
+    badges_html = ""
     if reg_status:
-        identity_parts.append(_badge(reg_status, reg_color))
+        badges_html += _badge(reg_status, reg_color) + " "
     if adv.get("is_sec_registered"):
-        identity_parts.append(_badge("SEC Registered", "#2980b9"))
+        badges_html += _badge("SEC Registered", "#1a3d6e") + " "
     if adv.get("is_state_registered"):
-        identity_parts.append(_badge("State Registered", "#8e44ad"))
-    if identity_parts:
-        st.markdown(" ".join(identity_parts), unsafe_allow_html=True)
+        badges_html += _badge("State Registered", "#5b3a8e") + " "
+    if adv.get("has_disclosures"):
+        badges_html += _badge("Disclosures on Record", "#8b3a1a") + " "
 
-    meta_parts = []
+    meta_items = []
     if crd_str:
-        meta_parts.append(f"CRD: **{crd_str}**")
+        meta_items.append(f"CRD {crd_str}")
     if sec_str:
-        meta_parts.append(f"SEC: **{sec_str}**")
+        meta_items.append(f"SEC {sec_str}")
     if city and state_str:
-        meta_parts.append(f"**{city}, {state_str}**")
+        meta_items.append(f"{city}, {state_str}")
     if adv_date:
-        meta_parts.append(f"Latest ADV: **{adv_date}**")
-    if meta_parts:
-        st.caption("  ·  ".join(meta_parts))
+        meta_items.append(f"ADV filed {adv_date}")
+    meta_html = "  ·  ".join(meta_items)
 
     notice_states = adv.get("notice_filing_states", [])
+    notice_html = ""
     if notice_states:
-        st.caption(f"Notice filings in: {', '.join(notice_states)}")
+        notice_html = (
+            f'<div style="margin-top:6px;font-size:0.77rem;color:#8fa3bb">'
+            f'Notice filings: {", ".join(notice_states)}</div>'
+        )
+
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#0f1923 0%,#1a2f45 100%);
+                border-radius:10px;padding:22px 28px;margin-bottom:20px">
+      <div style="font-size:1.5rem;font-weight:700;color:#ffffff;margin-bottom:8px">
+        {firm_name}
+      </div>
+      <div style="margin-bottom:10px">{badges_html}</div>
+      <div style="font-size:0.82rem;color:#8fa3bb">{meta_html}</div>
+      {notice_html}
+    </div>
+    """, unsafe_allow_html=True)
 
     # ── Key Metric Cards ──────────────────────────────────────────────────
-    st.markdown("---")
+    tier_color_map = {"HIGH": "#b03030", "MEDIUM": "#b06010", "LOW": "#1a7a4a"}
+    tier_c_card = tier_color_map.get(tier, "#4a5568")
+
+    def _metric_card(label: str, value: str, sublabel: str = "") -> str:
+        sub = f'<div style="font-size:0.70rem;color:#8fa3bb;margin-top:3px">{sublabel}</div>' if sublabel else ""
+        return f"""
+        <div class="metric-card">
+          <div class="metric-label">{label}</div>
+          <div class="metric-value">{value}</div>
+          {sub}
+        </div>"""
+
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric(
-        "13F Portfolio Value",
+    c1.markdown(_metric_card(
+        "13F Portfolio",
         tf.get("portfolio_value_fmt") or "N/A",
-        help="Total US public equity holdings from most recent 13F-HR",
-    )
-    c2.metric(
+        "US public equity"
+    ), unsafe_allow_html=True)
+    c2.markdown(_metric_card(
         "Holdings",
         str(tf.get("holdings_count")) if tf.get("holdings_count") else "—",
-    )
-    c3.metric(
+        "positions"
+    ), unsafe_allow_html=True)
+    c3.markdown(_metric_card(
         "Funds Found",
         str(fd.get("total_found", 0)),
-        help="Private funds discovered via Form D, IAPD, and web search",
-    )
-    c4.metric(
+        "Form D + IAPD"
+    ), unsafe_allow_html=True)
+    c4.markdown(_metric_card(
         "Clients",
         str(ov.get("num_clients")) if ov.get("num_clients") else "—",
-    )
-    c5.metric(
+    ), unsafe_allow_html=True)
+    c5.markdown(_metric_card(
         "Employees",
         str(ov.get("num_employees")) if ov.get("num_employees") else "—",
-    )
-    c6.metric(
-        "Risk Tier",
-        tier,
-        help="Overall LP due diligence risk tier",
-    )
+    ), unsafe_allow_html=True)
+    c6.markdown(f"""
+    <div class="metric-card" style="border-top:3px solid {tier_c_card}">
+      <div class="metric-label">Risk Tier</div>
+      <div class="metric-value" style="color:{tier_c_card}">{tier}</div>
+    </div>""", unsafe_allow_html=True)
 
     # ── Source / brochure captions ────────────────────────────────────────
     if tf.get("accession") and tf.get("cik"):
@@ -602,10 +794,13 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
     with tab_risk:
         if risk_report:
             tier_c = _tier_color(tier)
+            tier_icon = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(tier, "⚪")
             st.markdown(
-                f'<div style="background:{tier_c};color:#fff;padding:10px 16px;'
-                f'border-radius:6px;font-size:1.1rem;font-weight:700;margin-bottom:12px">'
-                f'Overall Risk Tier: {tier}</div>',
+                f'<div class="risk-tier-banner" style="background:{tier_c}20;'
+                f'border-left:4px solid {tier_c};color:#0f1923">'
+                f'<span style="font-size:1.3rem">{tier_icon}</span>'
+                f'<span>Overall Risk Tier: <strong style="color:{tier_c}">{tier}</strong></span>'
+                f'</div>',
                 unsafe_allow_html=True,
             )
             commentary = risk_report.get("overall_commentary", "")
@@ -746,10 +941,13 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             overall_nr   = nr.get("overall_news_risk", "UNKNOWN")
             nr_color     = _tier_color(overall_nr)
 
+            nr_icon = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(overall_nr, "⚪")
             st.markdown(
-                f'<div style="background:{nr_color};color:#fff;padding:10px 16px;'
-                f'border-radius:6px;font-size:1.1rem;font-weight:700;margin-bottom:12px">'
-                f'News Risk: {overall_nr}</div>',
+                f'<div class="risk-tier-banner" style="background:{nr_color}20;'
+                f'border-left:4px solid {nr_color};color:#0f1923">'
+                f'<span style="font-size:1.3rem">{nr_icon}</span>'
+                f'<span>News Risk: <strong style="color:{nr_color}">{overall_nr}</strong></span>'
+                f'</div>',
                 unsafe_allow_html=True,
             )
 
