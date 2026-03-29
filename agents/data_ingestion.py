@@ -138,5 +138,30 @@ def run(firm_input: str, fred_api_key: str = None,
     else:
         raw_data["errors"].append("Fund discovery: could not determine firm name")
 
+    # ── Step 7: SEC enforcement deep-dive ────────────────────────────────────
+    enf_name = (
+        raw_data["adv_summary"].get("firm_name")
+        or (firm_input if not firm_input.isdigit() else None)
+    )
+    if enf_name:
+        print(f"[Ingestion] Running enforcement check for '{enf_name}'")
+        try:
+            from agents import enforcement as _enf
+            cik_for_enf = (
+                (raw_data.get("adv_xml_data", {}).get("thirteenf") or {}).get("cik")
+            )
+            raw_data["enforcement"] = _enf.run(
+                firm_name=enf_name,
+                crd=raw_data.get("crd"),
+                cik=cik_for_enf,
+                iacontent=_iacontent,
+                client=client,
+            )
+        except Exception as e:
+            raw_data["errors"].append(f"Enforcement check failed: {e}")
+            raw_data["enforcement"] = {}
+    else:
+        raw_data["enforcement"] = {}
+
     print(f"[Ingestion] Done. Errors: {raw_data['errors'] or 'none'}")
     return raw_data

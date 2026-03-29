@@ -895,8 +895,18 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
 
     # ── Results Tabs ──────────────────────────────────────────────────────
     st.markdown("---")
-    tab_scorecard, tab_risk, tab_funds, tab_news, tab_memo, tab_pal, tab_raw = st.tabs([
-        "IC Scorecard", "Risk Dashboard", "Funds", "News Research", "DD Memo", "PAL Consensus", "Raw Data",
+    enf_report  = (raw_data or {}).get("enforcement", {})
+    enf_sev     = enf_report.get("severity", "CLEAN")
+    _enf_icons  = {"CLEAN": "✅", "LOW": "🟡", "MEDIUM": "🟠", "HIGH": "🔴", "CRITICAL": "🚨"}
+    enf_icon    = _enf_icons.get(enf_sev, "⚪")
+
+    (
+        tab_scorecard, tab_enf, tab_risk, tab_funds,
+        tab_news, tab_memo, tab_pal, tab_raw,
+    ) = st.tabs([
+        "IC Scorecard", f"Enforcement {enf_icon}",
+        "Risk Dashboard", "Funds",
+        "News Research", "DD Memo", "PAL Consensus", "Raw Data",
     ])
 
     # ─ IC Scorecard ──────────────────────────────────────────────────────
@@ -1068,6 +1078,166 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
 
         else:
             st.warning("IC Scorecard not available.")
+
+    # ─ Enforcement Tab ───────────────────────────────────────────────────
+    with tab_enf:
+        _sev_colors_enf = {
+            "CLEAN":    "#1a7a4a",
+            "LOW":      "#b5870a",
+            "MEDIUM":   "#b06010",
+            "HIGH":     "#c0392b",
+            "CRITICAL": "#7b0000",
+        }
+        enf_sev_color = _sev_colors_enf.get(enf_sev, "#4a5568")
+
+        # ── Severity banner ───────────────────────────────────────────────
+        st.markdown(
+            f'<div style="background:{enf_sev_color};color:#fff;padding:10px 16px;'
+            f'border-radius:6px;font-size:1.1rem;font-weight:700;margin-bottom:16px">'
+            f'{enf_icon} Enforcement Severity: {enf_sev}</div>',
+            unsafe_allow_html=True,
+        )
+
+        if enf_report.get("summary"):
+            if enf_sev == "CLEAN":
+                st.success(enf_report["summary"])
+            elif enf_sev in ("HIGH", "CRITICAL"):
+                st.error(enf_report["summary"])
+            else:
+                st.warning(enf_report["summary"])
+
+        # ── Key stats row ─────────────────────────────────────────────────
+        enf_data   = enf_report.get("enforcement_data", {})
+        ec1, ec2, ec3, ec4 = st.columns(4)
+        ec1.metric("Total Actions",    str(enf_data.get("total_actions", 0)))
+        ec2.metric(
+            "High Severity",
+            str(enf_data.get("high_count", 0)),
+            help="Bars, suspensions, fraud orders, criminal disclosures",
+        )
+        ec3.metric(
+            "Open / Pending",
+            str(len(enf_data.get("open_actions", []))),
+            help="Actions without a clear resolved/dismissed status",
+        )
+        ec4.metric(
+            "Total Penalties",
+            enf_data.get("penalty_total_fmt") or "—",
+            help="Sum of numeric penalty amounts extracted from IAPD disclosures",
+        )
+
+        # ── Red flags ─────────────────────────────────────────────────────
+        red_flags = enf_report.get("red_flags", [])
+        if red_flags:
+            st.markdown("---")
+            st.subheader("Red Flags")
+            for flag in red_flags:
+                st.markdown(
+                    f'<div style="background:#fff0f0;border-left:4px solid #c0392b;'
+                    f'padding:8px 12px;border-radius:4px;margin-bottom:6px">'
+                    f'🚩 {flag}</div>',
+                    unsafe_allow_html=True,
+                )
+
+        # ── Key findings ──────────────────────────────────────────────────
+        key_findings = enf_report.get("key_findings", [])
+        if key_findings:
+            st.markdown("---")
+            st.subheader("Key Findings")
+            for finding in key_findings:
+                st.markdown(f"- {finding}")
+
+        # ── Individual action cards ───────────────────────────────────────
+        actions = enf_data.get("actions", [])
+        if actions:
+            st.markdown("---")
+            st.subheader(f"Enforcement Actions ({len(actions)})")
+            import pandas as pd
+            _sev_c = {"HIGH": "#c0392b", "MEDIUM": "#e67e22", "LOW": "#27ae60"}
+            for i, a in enumerate(actions):
+                sev   = a.get("severity", "LOW")
+                badge = (
+                    f'<span style="background:{_sev_c.get(sev,"#95a5a6")};'
+                    f'color:#fff;padding:1px 8px;border-radius:3px;'
+                    f'font-size:0.75rem;font-weight:600">{sev}</span>'
+                )
+                label = (
+                    f'{badge} &nbsp;'
+                    f'[{a.get("action_type","")} · {a.get("initiated_by","")}] &nbsp;'
+                    f'{(a.get("description") or "")[:70]}'
+                )
+                with st.expander(label, expanded=(sev == "HIGH" and i < 3)):
+                    col_a, col_b = st.columns(2)
+                    col_a.markdown(f"**Date:** {a.get('date') or '—'}")
+                    col_a.markdown(f"**Type:** {a.get('action_type','—')}")
+                    col_a.markdown(f"**Initiated by:** {a.get('initiated_by','—')}")
+                    col_b.markdown(f"**Resolution:** {a.get('resolution') or '—'}")
+                    col_b.markdown(
+                        f"**Penalty:** {a.get('penalty_fmt') or '—'}"
+                    )
+                    if a.get("sanctions"):
+                        st.markdown(
+                            "**Sanctions:** " + " · ".join(a["sanctions"])
+                        )
+                    if a.get("description"):
+                        st.markdown(f"**Description:** {a['description']}")
+                    if a.get("raw_details"):
+                        with st.expander("Full IAPD detail fields"):
+                            df_d = pd.DataFrame(
+                                [{"Field": k, "Value": v}
+                                 for k, v in a["raw_details"].items()],
+                            )
+                            st.dataframe(df_d, use_container_width=True,
+                                         hide_index=True)
+
+        # ── EDGAR enforcement-adjacent filings ────────────────────────────
+        edgar_hits = enf_data.get("edgar_hits", [])
+        if edgar_hits:
+            st.markdown("---")
+            with st.expander(
+                f"EDGAR Enforcement-Adjacent Filings ({len(edgar_hits)})"
+            ):
+                import pandas as pd
+                df_e = pd.DataFrame([
+                    {
+                        "Form":       h.get("form_type"),
+                        "Filed":      h.get("file_date"),
+                        "Accession":  h.get("accession"),
+                        "EDGAR Link": h.get("edgar_url") or "—",
+                    }
+                    for h in edgar_hits
+                ])
+                st.dataframe(df_e, use_container_width=True, hide_index=True)
+
+        # ── EDGAR submission flags ────────────────────────────────────────
+        edgar_flags = enf_data.get("edgar_flags", [])
+        if edgar_flags:
+            st.markdown("---")
+            with st.expander(
+                f"Unusual EDGAR Submission Forms ({len(edgar_flags)})"
+            ):
+                import pandas as pd
+                df_f = pd.DataFrame([
+                    {"Form": f.get("form_type"), "Filed": f.get("file_date"),
+                     "Accession": f.get("accession")}
+                    for f in edgar_flags
+                ])
+                st.dataframe(df_f, use_container_width=True, hide_index=True)
+                st.caption(
+                    "ADV-W = registration withdrawal · "
+                    "UPLOAD = SEC staff-uploaded document"
+                )
+
+        if enf_report.get("errors"):
+            with st.expander("Enforcement check notes"):
+                for err in enf_report["errors"]:
+                    st.caption(f"⚠ {err}")
+
+        st.caption(
+            "Sources: IAPD regulatory/criminal/civil disclosures · "
+            "SEC EDGAR EFTS · EDGAR Submissions · "
+            "adviserinfo.sec.gov"
+        )
 
     # ─ Risk Dashboard ────────────────────────────────────────────────────
     with tab_risk:
@@ -1340,6 +1510,8 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
     # ─ Raw Data ──────────────────────────────────────────────────────────
     with tab_raw:
         if raw_data:
+            with st.expander("Enforcement Data"):
+                st.json(enf_report)
             with st.expander("Fund Discovery", expanded=True):
                 st.json(fd)
             with st.expander("13F XML Data (EDGAR)"):
