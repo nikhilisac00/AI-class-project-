@@ -1190,6 +1190,21 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                             st.dataframe(df_d, use_container_width=True,
                                          hide_index=True)
 
+        # ── Web search results ────────────────────────────────────────────
+        web_results = enf_data.get("web_results", [])
+        if web_results:
+            st.markdown("---")
+            with st.expander(
+                f"Web Search — Enforcement News ({len(web_results)} results)"
+            ):
+                for r in web_results:
+                    st.markdown(
+                        f"**[{r.get('title','(no title)')}]({r.get('url','')})**"
+                        + (f"  ·  {r.get('date','')}" if r.get("date") else "")
+                    )
+                    st.caption(r.get("snippet", "")[:300])
+                    st.markdown("---")
+
         # ── EDGAR enforcement-adjacent filings ────────────────────────────
         edgar_hits = enf_data.get("edgar_hits", [])
         if edgar_hits:

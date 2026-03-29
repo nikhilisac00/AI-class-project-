@@ -4,15 +4,18 @@ SEC Enforcement Client
 Aggregates enforcement and disciplinary history for an investment adviser.
 
 Data sources:
-  1. IAPD iaRegulatoryDisclosures / iaCriminalDisclosures / iaCivilDisclosures —
-     the authoritative structured record of SEC/FINRA/state actions.
-  2. EDGAR EFTS full-text search — finds SEC UPLOAD form types and other
-     enforcement-adjacent filings linked to the firm.
-  3. EDGAR submissions scan — flags ADV-W (registration withdrawal) and
-     UPLOAD form types in the firm's CIK filing history.
+  1. IAPD iacontent disclosure arrays — only present for some firms/API responses.
+     The public IAPD API (`api.adviserinfo.sec.gov/search/firm/{crd}`) returns a
+     lightweight iacontent that often OMITS the disclosure arrays.  We attempt the
+     parse and fall back gracefully.
+  2. Web search (Tavily / DuckDuckGo) — primary enforcement discovery when IAPD
+     arrays are absent.  Searches SEC.gov, FINRA, regulatory news for the firm.
+  3. EDGAR EFTS full-text search — UPLOAD/CORRESP form types and enforcement-
+     adjacent filings from the firm's EDGAR CIK.
+  4. EDGAR submissions scan — ADV-W registration withdrawal, UPLOAD orders.
 
 Key output fields per action:
-  action_type  : Regulatory / Criminal / Civil / Arbitration
+  action_type  : Regulatory / Criminal / Civil / Arbitration / Web
   initiated_by : SEC / FINRA / State / CFTC / DOJ / Unknown
   date         : ISO date string
   description  : what the action alleged
@@ -20,7 +23,7 @@ Key output fields per action:
   penalty_usd  : numeric penalty if extractable
   resolution   : Settled / Dismissed / Final Order / Pending / …
   severity     : HIGH / MEDIUM / LOW  (rule-based)
-  source       : IAPD / EDGAR EFTS / EDGAR Submissions
+  source       : IAPD / Web search / EDGAR EFTS / EDGAR Submissions
 """
 
 import re
@@ -273,7 +276,102 @@ def parse_iapd_enforcement(iacontent: dict) -> list:
     return records
 
 
-# ── Source 2: EDGAR EFTS enforcement search ────────────────────────────────────
+# ── Source 2: Web search enforcement discovery ────────────────────────────────
+
+_ENFORCEMENT_QUERIES = [
+    '"{name}" SEC enforcement action settlement penalty',
+    '"{name}" FINRA fine suspension bar regulatory action',
+    '"{name}" SEC "cease-and-desist" OR "fraud" OR "investment adviser" violation',
+]
+
+_WEB_ENFORCEMENT_KEYWORDS = {
+    "enforcement", "settlement", "penalty", "fine", "bar", "suspension",
+    "cease-and-desist", "cease and desist", "fraud", "violation", "sanction",
+    "disgorgement", "injunction", "criminal", "indictment", "action taken",
+    "regulatory action", "disciplinary", "ordered to pay",
+}
+
+
+def web_search_enforcement(firm_name: str, tavily_key: str = None) -> list:
+    """
+    Search web (Tavily → ddgs) for SEC/FINRA enforcement actions.
+    Returns up to 8 relevant search hits as dicts with title/url/snippet/date.
+    """
+    results = []
+    seen_urls: set = set()
+
+    # ── Try Tavily first (better quality, needs API key) ──────────────────
+    if tavily_key:
+        try:
+            from tavily import TavilyClient
+            client = TavilyClient(api_key=tavily_key)
+            for template in _ENFORCEMENT_QUERIES[:2]:
+                query = template.format(name=firm_name)
+                resp = client.search(query, search_depth="advanced", max_results=5,
+                                     include_answer=False)
+                for r in resp.get("results", []):
+                    url     = r.get("url", "")
+                    content = (r.get("content") or "").lower()
+                    if url not in seen_urls and any(
+                        kw in content for kw in _WEB_ENFORCEMENT_KEYWORDS
+                    ):
+                        seen_urls.add(url)
+                        results.append({
+                            "title":   r.get("title", ""),
+                            "url":     url,
+                            "snippet": (r.get("content") or "")[:500],
+                            "date":    r.get("published_date"),
+                            "source":  "tavily",
+                        })
+                        if len(results) >= 8:
+                            return results
+        except Exception:
+            pass
+
+    if results:
+        return results
+
+    # ── Fallback: ddgs (new package name for duckduckgo-search) ──────────
+    for package in ("ddgs", "duckduckgo_search"):
+        try:
+            mod = __import__(package, fromlist=["DDGS"])
+            DDGS = mod.DDGS
+            for template in _ENFORCEMENT_QUERIES[:2]:
+                query = template.format(name=firm_name)
+                try:
+                    import warnings
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        with DDGS() as ddgs:
+                            hits = list(ddgs.text(query, max_results=5))
+                    for h in hits:
+                        url     = h.get("href", "")
+                        content = (h.get("body") or "").lower()
+                        if url not in seen_urls and any(
+                            kw in content for kw in _WEB_ENFORCEMENT_KEYWORDS
+                        ):
+                            seen_urls.add(url)
+                            snippet = (h.get("body") or "")[:500]
+                            results.append({
+                                "title":   h.get("title", ""),
+                                "url":     url,
+                                "snippet": snippet,
+                                "date":    None,
+                                "source":  "ddgs",
+                            })
+                            if len(results) >= 8:
+                                return results
+                except Exception:
+                    pass
+            if results:
+                return results   # first working package is enough
+        except ImportError:
+            continue
+
+    return results
+
+
+# ── Source 3: EDGAR EFTS enforcement search ────────────────────────────────────
 
 def search_edgar_enforcement(firm_name: str, cik: str = None) -> list:
     """
@@ -370,18 +468,28 @@ def scan_submissions_for_enforcement(cik: str) -> list:
 # ── Aggregate ──────────────────────────────────────────────────────────────────
 
 def fetch_enforcement_data(
-    firm_name: str,
-    crd:       str = None,
-    cik:       str = None,
-    iacontent: dict = None,
+    firm_name:           str,
+    crd:                 str = None,
+    cik:                 str = None,
+    iacontent:           dict = None,
+    has_disclosure_flag: bool = False,
+    tavily_key:          str = None,
 ) -> dict:
     """
     Full enforcement data aggregation for an investment adviser.
 
+    Args:
+        has_disclosure_flag : True if IAPD search result had firm_ia_disclosure_fl=Y.
+                              Ensures we still run web search even when iacontent
+                              arrays are absent (as is common with the public API).
+        tavily_key          : optional Tavily key for better web search results.
+
     Returns:
         actions            : list of IAPD enforcement action dicts
+        web_results        : list of web-search-derived enforcement hits
         edgar_hits         : EDGAR EFTS enforcement-adjacent filings
         edgar_flags        : unusual form types in EDGAR submissions
+        iapd_flag          : bool — IAPD indicated disclosures on record
         total_actions      : int
         high_count         : int
         medium_count       : int
@@ -393,8 +501,10 @@ def fetch_enforcement_data(
     """
     report: dict = {
         "actions":           [],
+        "web_results":       [],
         "edgar_hits":        [],
         "edgar_flags":       [],
+        "iapd_flag":         has_disclosure_flag,
         "total_actions":     0,
         "high_count":        0,
         "medium_count":      0,
@@ -405,7 +515,7 @@ def fetch_enforcement_data(
         "errors":            [],
     }
 
-    # Source 1: IAPD
+    # Source 1: IAPD disclosure arrays (when available)
     if iacontent:
         try:
             actions = parse_iapd_enforcement(iacontent)
@@ -415,7 +525,17 @@ def fetch_enforcement_data(
         except Exception as e:
             report["errors"].append(f"IAPD parse error: {e}")
 
-    # Source 2: EDGAR EFTS
+    # Source 2: Web search — primary when IAPD arrays absent or flag is set
+    if has_disclosure_flag or not report["actions"]:
+        try:
+            web_hits = web_search_enforcement(firm_name, tavily_key=tavily_key)
+            report["web_results"] = web_hits
+            if web_hits:
+                report["sources_used"].append("Web search (SEC / FINRA news)")
+        except Exception as e:
+            report["errors"].append(f"Web search error: {e}")
+
+    # Source 3: EDGAR EFTS
     try:
         edgar_hits = search_edgar_enforcement(firm_name, cik=cik)
         report["edgar_hits"] = edgar_hits

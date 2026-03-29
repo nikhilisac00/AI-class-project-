@@ -155,6 +155,10 @@ def run(firm_input: str, fred_api_key: str = None,
                 crd=raw_data.get("crd"),
                 cik=cik_for_enf,
                 iacontent=_iacontent,
+                has_disclosure_flag=bool(
+                    raw_data["adv_summary"].get("has_disclosures")
+                ),
+                tavily_key=tavily_key,
                 client=client,
             )
         except Exception as e:
