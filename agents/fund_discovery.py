@@ -20,7 +20,6 @@ Output feeds directly into:
   - memo_generation agent (Fund Analysis section of the memo)
 """
 
-import json
 from tools.llm_client import LLMClient
 from tools.formd_client import search_funds_for_gp
 from tools import web_search_client
@@ -183,7 +182,7 @@ def run(
 
     # ── Source 3: Website / web search for additional fund names ─────────────
     if client:
-        print(f"[Fund Discovery] Web search for fund names from website/brochures...")
+        print("[Fund Discovery] Web search for fund names from website/brochures...")
         try:
             web_names = _extract_funds_from_website(
                 firm_name, website or "", client, tavily_key=tavily_key
