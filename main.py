@@ -31,6 +31,7 @@ import agents.fund_analysis as analysis_agent
 import agents.news_research as news_agent
 import agents.risk_flagging as risk_agent
 import agents.memo_generation as memo_agent
+import agents.ic_scorecard   as scorecard_agent
 from tools.llm_client import make_client
 
 load_dotenv()
@@ -237,15 +238,34 @@ def main():
                               news_report=news_report)
         p.update(task, description="Memo generation complete", completed=True)
 
+    # ── Agent 6: IC Scorecard ─────────────────────────────────────────────────
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
+                  console=console) as p:
+        task = p.add_task("Generating IC Scorecard (OpenAI o3 reasoning)...", total=None)
+        scorecard = scorecard_agent.run(analysis, risk_report, raw_data, client,
+                                        news_report=news_report)
+        p.update(task, description="IC Scorecard complete", completed=True)
+
+    rec       = scorecard.get("recommendation", "UNKNOWN")
+    overall   = scorecard.get("overall_score", "—")
+    conf      = scorecard.get("confidence", "—")
+    rec_color = {"PROCEED": "green", "REQUEST MORE INFO": "yellow", "PASS": "red"}.get(rec, "white")
+    console.print(f"\n[bold {rec_color}]IC Recommendation: {rec}[/]  "
+                  f"(Score: {overall}/10 · Confidence: {conf})")
+    if scorecard.get("recommendation_summary"):
+        console.print(f"[dim]{scorecard['recommendation_summary']}[/]")
+
     # ── Save outputs ──────────────────────────────────────────────────────────
     memo_path = save_outputs(
         firm_name, raw_data, analysis, risk_report, memo, args.output_dir
     )
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_name = "".join(c if c.isalnum() or c in "_ -" else "_" for c in firm_name)[:40]
     if news_report:
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_name = "".join(c if c.isalnum() or c in "_ -" else "_" for c in firm_name)[:40]
         news_path = Path(args.output_dir) / f"{ts}_{safe_name}_news_report.json"
         news_path.write_text(json.dumps(news_report, indent=2, default=str), encoding="utf-8")
+    scorecard_path = Path(args.output_dir) / f"{ts}_{safe_name}_ic_scorecard.json"
+    scorecard_path.write_text(json.dumps(scorecard, indent=2, default=str), encoding="utf-8")
 
     console.print(Panel(
         f"[bold green]Done.[/]\n"

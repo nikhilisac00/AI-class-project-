@@ -160,6 +160,7 @@ import agents.fund_analysis   as analysis_agent   # noqa: E402
 import agents.news_research   as news_agent       # noqa: E402
 import agents.risk_flagging   as risk_agent       # noqa: E402
 import agents.memo_generation as memo_agent       # noqa: E402
+import agents.ic_scorecard   as scorecard_agent  # noqa: E402
 from tools.llm_client import make_client          # noqa: E402
 from tools.pal_client  import is_available as pal_available, call_consensus  # noqa: E402
 
@@ -458,7 +459,7 @@ if run_button:
     raw_data = analysis = risk_report = memo = pal_review = news_report = None
 
     try:
-        total_steps = 4 + (1 if run_news else 0) + (1 if use_pal and pal_status else 0)
+        total_steps = 5 + (1 if run_news else 0) + (1 if use_pal and pal_status else 0)
         step = [0]
         def _pct(n): return int(n / total_steps * 100)
 
@@ -528,13 +529,19 @@ if run_button:
         status_box.info("Step — Generating DD memo (o3 reasoning)...")
         memo = memo_agent.run(analysis, risk_report, raw_data, client,
                               news_report=news_report)
+        step[0] += 1
+        progress_bar.progress(_pct(step[0]), text="Memo complete")
+
+        status_box.info("Step — Generating IC Scorecard (o3 reasoning)...")
+        scorecard = scorecard_agent.run(analysis, risk_report, raw_data, client,
+                                        news_report=news_report)
         progress_bar.progress(100, text="Done")
         status_box.success("Analysis complete.")
 
         st.session_state.pipeline_result = dict(
             raw_data=raw_data, analysis=analysis, risk_report=risk_report,
-            memo=memo, pal_review=pal_review, news_report=news_report,
-            firm_name=firm_name_resolved,
+            memo=memo, scorecard=scorecard, pal_review=pal_review,
+            news_report=news_report, firm_name=firm_name_resolved,
         )
         st.session_state.pipeline_done = True
 
@@ -554,6 +561,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
     analysis    = pr["analysis"]
     risk_report = pr["risk_report"]
     memo        = pr["memo"]
+    scorecard   = pr.get("scorecard", {})
     pal_review  = pr["pal_review"]
     news_report = pr["news_report"]
     firm_name   = pr["firm_name"]
@@ -786,9 +794,179 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
 
     # ── Results Tabs ──────────────────────────────────────────────────────
     st.markdown("---")
-    tab_risk, tab_funds, tab_news, tab_memo, tab_pal, tab_raw = st.tabs([
-        "Risk Dashboard", "Funds", "News Research", "DD Memo", "PAL Consensus", "Raw Data",
+    tab_scorecard, tab_risk, tab_funds, tab_news, tab_memo, tab_pal, tab_raw = st.tabs([
+        "IC Scorecard", "Risk Dashboard", "Funds", "News Research", "DD Memo", "PAL Consensus", "Raw Data",
     ])
+
+    # ─ IC Scorecard ──────────────────────────────────────────────────────
+    with tab_scorecard:
+        if scorecard:
+            rec       = scorecard.get("recommendation", "UNKNOWN")
+            conf      = scorecard.get("confidence", "UNKNOWN")
+            rec_color = {"PROCEED": "#1a7a4a", "REQUEST MORE INFO": "#b06010", "PASS": "#b03030"}.get(rec, "#4a5568")
+            rec_icon  = {"PROCEED": "✅", "REQUEST MORE INFO": "🔄", "PASS": "❌"}.get(rec, "⚪")
+            conf_color = {"HIGH": "#1a7a4a", "MEDIUM": "#b06010", "LOW": "#b03030"}.get(conf, "#4a5568")
+
+            # ── Recommendation banner ─────────────────────────────────────
+            st.markdown(f"""
+            <div style="background:linear-gradient(135deg,#0f1923 0%,#1a2f45 100%);
+                        border-radius:10px;padding:24px 28px;margin-bottom:20px">
+              <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
+                <div style="font-size:2.2rem">{rec_icon}</div>
+                <div>
+                  <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;
+                              letter-spacing:0.1em;color:#8fa3bb;margin-bottom:4px">
+                    IC Recommendation
+                  </div>
+                  <div style="font-size:1.8rem;font-weight:800;color:{rec_color}">
+                    {rec}
+                  </div>
+                </div>
+                <div style="margin-left:auto;text-align:right">
+                  <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;
+                              letter-spacing:0.1em;color:#8fa3bb;margin-bottom:4px">
+                    Confidence
+                  </div>
+                  <div style="font-size:1.2rem;font-weight:700;color:{conf_color}">{conf}</div>
+                </div>
+              </div>
+              <div style="font-size:0.88rem;color:#c8d6e5;line-height:1.6;border-top:1px solid #1e3a5a;padding-top:12px">
+                {scorecard.get("recommendation_summary", "")}
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # ── Overall score + dimension scores ──────────────────────────
+            overall = scorecard.get("overall_score")
+            scores  = scorecard.get("scores", {})
+
+            score_labels = {
+                "regulatory_compliance": "Regulatory & Compliance",
+                "data_availability":     "Data Availability",
+                "key_person_risk":       "Key Person Risk",
+                "fund_structure":        "Fund Structure",
+                "news_reputation":       "News & Reputation",
+                "operational_maturity":  "Operational Maturity",
+            }
+
+            if scores:
+                st.markdown("#### Score Breakdown")
+                for key, label in score_labels.items():
+                    dim = scores.get(key, {})
+                    s   = dim.get("score")
+                    rat = dim.get("rationale", "")
+                    if s is None:
+                        continue
+                    s = int(s)
+                    bar_color = "#1a7a4a" if s >= 7 else "#b06010" if s >= 5 else "#b03030"
+                    bar_pct   = s * 10
+
+                    st.markdown(f"""
+                    <div style="margin-bottom:12px">
+                      <div style="display:flex;justify-content:space-between;
+                                  margin-bottom:4px;align-items:baseline">
+                        <span style="font-size:0.82rem;font-weight:600;color:#0f1923">{label}</span>
+                        <span style="font-size:1rem;font-weight:700;color:{bar_color}">{s}/10</span>
+                      </div>
+                      <div style="background:#e8ecf0;border-radius:4px;height:8px;overflow:hidden">
+                        <div style="background:{bar_color};width:{bar_pct}%;height:100%;
+                                    border-radius:4px;transition:width 0.3s"></div>
+                      </div>
+                      <div style="font-size:0.75rem;color:#6b7a8d;margin-top:3px">{rat}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                if overall is not None:
+                    ov_color = "#1a7a4a" if float(overall) >= 7 else "#b06010" if float(overall) >= 5 else "#b03030"
+                    st.markdown(f"""
+                    <div style="background:#f7f9fc;border:1px solid #e8ecf0;border-radius:8px;
+                                padding:14px 18px;margin-top:8px;display:flex;
+                                justify-content:space-between;align-items:center">
+                      <span style="font-size:0.85rem;font-weight:700;color:#0f1923;
+                                   text-transform:uppercase;letter-spacing:0.05em">
+                        Overall Score
+                      </span>
+                      <span style="font-size:1.6rem;font-weight:800;color:{ov_color}">
+                        {overall}/10
+                      </span>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            st.markdown("---")
+
+            # ── Reasons to proceed / pause ────────────────────────────────
+            col_pros, col_cons = st.columns(2)
+            with col_pros:
+                st.markdown("#### Reasons to Proceed")
+                for r in scorecard.get("reasons_to_proceed", []):
+                    st.markdown(
+                        f'<div style="display:flex;gap:8px;margin-bottom:8px">'
+                        f'<span style="color:#1a7a4a;font-size:1rem;flex-shrink:0">✓</span>'
+                        f'<span style="font-size:0.85rem;color:#0f1923">{r}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+            with col_cons:
+                st.markdown("#### Reasons to Pause")
+                for r in scorecard.get("reasons_to_pause", []):
+                    st.markdown(
+                        f'<div style="display:flex;gap:8px;margin-bottom:8px">'
+                        f'<span style="color:#b03030;font-size:1rem;flex-shrink:0">⚠</span>'
+                        f'<span style="font-size:0.85rem;color:#0f1923">{r}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+            st.markdown("---")
+
+            # ── Minimum diligence checklist ───────────────────────────────
+            diligence = scorecard.get("minimum_diligence_items", [])
+            if diligence:
+                st.markdown("#### Minimum Diligence Checklist")
+                must  = [d for d in diligence if d.get("priority") == "MUST HAVE"]
+                nice  = [d for d in diligence if d.get("priority") != "MUST HAVE"]
+                for group, label, color in [(must, "Must Have", "#b03030"), (nice, "Nice to Have", "#b06010")]:
+                    if group:
+                        st.markdown(
+                            f'<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
+                            f'letter-spacing:0.08em;color:{color};margin:10px 0 6px 0">{label}</div>',
+                            unsafe_allow_html=True,
+                        )
+                        for d in group:
+                            st.markdown(
+                                f'<div style="background:#f7f9fc;border:1px solid #e8ecf0;'
+                                f'border-left:3px solid {color};border-radius:6px;'
+                                f'padding:10px 14px;margin-bottom:6px">'
+                                f'<div style="font-size:0.85rem;font-weight:600;color:#0f1923">'
+                                f'{d.get("item","")}</div>'
+                                f'<div style="font-size:0.75rem;color:#6b7a8d;margin-top:3px">'
+                                f'{d.get("why","")}</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+            # ── Standard LP asks ──────────────────────────────────────────
+            lp_asks = scorecard.get("standard_lp_asks", [])
+            if lp_asks:
+                with st.expander("Standard LP Asks (GP Request List)"):
+                    for ask in lp_asks:
+                        st.markdown(f"- {ask}")
+
+            # ── Data coverage ─────────────────────────────────────────────
+            cov = scorecard.get("data_coverage_assessment", "")
+            cov_note = scorecard.get("data_coverage_note", "")
+            if cov:
+                cov_color = {"HIGH": "#1a7a4a", "MEDIUM": "#b06010", "LOW": "#b03030"}.get(cov, "#4a5568")
+                st.caption(
+                    f"Data coverage: **{cov}** — {cov_note}"
+                )
+
+            # ── Confidence rationale ──────────────────────────────────────
+            if scorecard.get("confidence_rationale"):
+                st.caption(f"Confidence note: {scorecard['confidence_rationale']}")
+
+        else:
+            st.warning("IC Scorecard not available.")
 
     # ─ Risk Dashboard ────────────────────────────────────────────────────
     with tab_risk:
