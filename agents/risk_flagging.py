@@ -33,6 +33,21 @@ def run(analysis: dict, raw_data: dict, client: LLMClient,
 }, indent=2, default=str)}
 </news_findings>"""
 
+    fund_discovery = raw_data.get("fund_discovery", {})
+    fund_block = ""
+    if fund_discovery.get("funds"):
+        fund_block = f"""
+<fund_discovery>
+{json.dumps({
+    "funds": fund_discovery.get("funds", [])[:15],
+    "relying_advisors": fund_discovery.get("relying_advisors", []),
+    "errors": fund_discovery.get("errors", []),
+}, indent=2, default=str)}
+</fund_discovery>
+
+Also flag fund-level risks: vintage concentration, single large fund dominating AUM,
+funds with no Form D filing found, offshore domicile concerns, exemption type mismatches."""
+
     user_message = f"""
 Review the following investment adviser analysis and identify risk flags for LP due diligence.
 
@@ -42,14 +57,14 @@ Review the following investment adviser analysis and identify risk flags for LP 
 
 <raw_data_errors>
 {json.dumps(raw_data.get("errors", []), indent=2)}
-</raw_data_errors>{news_block}
+</raw_data_errors>{news_block}{fund_block}
 
 Return ONLY a JSON object:
 {{
   "overall_risk_tier": "HIGH / MEDIUM / LOW — based on flags found",
   "flags": [
     {{
-      "category": "one of: Regulatory | Concentration | Key Person | Fee/Structure | Disclosure | Data Gap | Operational",
+      "category": "one of: Regulatory | Concentration | Key Person | Fee/Structure | Disclosure | Data Gap | Operational | Fund Structure",
       "severity": "HIGH / MEDIUM / LOW",
       "finding": "specific factual observation from the data",
       "evidence": "quote or reference the exact data field/value that supports this",

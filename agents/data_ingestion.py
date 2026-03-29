@@ -14,7 +14,8 @@ from tools.edgar_client import (
 from tools.fred_client import get_market_context, latest_value
 
 
-def run(firm_input: str, fred_api_key: str = None) -> dict:
+def run(firm_input: str, fred_api_key: str = None,
+        website: str = None, client=None, tavily_key: str = None) -> dict:
     """
     Pull all available data for a firm.
 
@@ -33,14 +34,15 @@ def run(firm_input: str, fred_api_key: str = None) -> dict:
           - errors           : list of any non-fatal errors encountered
     """
     raw_data = {
-        "input":         firm_input,
+        "input":          firm_input,
         "search_results": [],
-        "crd":           None,
-        "adv_summary":   {},
-        "adv_xml_data":  {},
-        "filings_13f":   [],
+        "crd":            None,
+        "adv_summary":    {},
+        "adv_xml_data":   {},
+        "filings_13f":    [],
         "market_context": {},
-        "errors":        [],
+        "fund_discovery": {},
+        "errors":         [],
     }
 
     # ── Step 1: Resolve CRD ───────────────────────────────────────────────────────────────
@@ -113,6 +115,28 @@ def run(firm_input: str, fred_api_key: str = None) -> dict:
             raw_data["errors"].append(f"ADV enrichment failed: {e}")
     else:
         raw_data["errors"].append("ADV enrichment: could not determine firm name")
+
+    # ── Step 6: Fund discovery (Form D + IAPD relying advisors + web) ──────────
+    fund_disc_name = (
+        raw_data["adv_summary"].get("firm_name")
+        or (firm_input if not firm_input.isdigit() else None)
+    )
+    if fund_disc_name:
+        print(f"[Ingestion] Running fund discovery for '{fund_disc_name}'")
+        try:
+            from agents import fund_discovery as _fd
+            raw_data["fund_discovery"] = _fd.run(
+                firm_name=fund_disc_name,
+                crd=raw_data.get("crd"),
+                iacontent=_iacontent,
+                website=website,
+                client=client,
+                tavily_key=tavily_key,
+            )
+        except Exception as e:
+            raw_data["errors"].append(f"Fund discovery failed: {e}")
+    else:
+        raw_data["errors"].append("Fund discovery: could not determine firm name")
 
     print(f"[Ingestion] Done. Errors: {raw_data['errors'] or 'none'}")
     return raw_data

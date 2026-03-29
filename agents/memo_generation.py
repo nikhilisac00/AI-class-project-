@@ -39,6 +39,11 @@ Draft a structured investment due diligence memo with these exact sections:
 
 7. RISK FLAGS SUMMARY — Table: Category | Severity | Finding | Recommended Action
 
+7a. FUND ANALYSIS — Table of discovered funds: Fund Name | Vintage | Size | Type | Exemption | EDGAR Link
+    Include vintage summary and fundraising cadence if data available.
+    For each fund with news, note key headlines.
+    If no funds found, state clearly with reason.
+
 8. MACRO CONTEXT — Current rates/spreads as of data pull date. Brief note on fundraising environment.
 
 9. DATA GAPS & LIMITATIONS — Explicit list of material fields not in public data.
@@ -55,6 +60,20 @@ Every numerical claim must trace back to the analysis data above.
 def run(analysis: dict, risk_report: dict, raw_data: dict, client: LLMClient,
         news_report: dict = None) -> str:
     today = date.today().strftime("%B %d, %Y")
+
+    fund_discovery = raw_data.get("fund_discovery", {})
+    fund_block = ""
+    if fund_discovery:
+        fund_block = f"""
+<fund_discovery>
+{json.dumps({
+    "funds":            fund_discovery.get("funds", [])[:20],
+    "relying_advisors": fund_discovery.get("relying_advisors", []),
+    "total_found":      fund_discovery.get("total_found", 0),
+    "sources_used":     fund_discovery.get("sources_used", []),
+    "errors":           fund_discovery.get("errors", []),
+}, indent=2, default=str)}
+</fund_discovery>"""
 
     news_block = ""
     if news_report and news_report.get("findings"):
@@ -88,6 +107,7 @@ Today's date: {today}
 <data_errors>
 {json.dumps(raw_data.get("errors", []), indent=2)}
 </data_errors>
+{fund_block}
 {news_block}
 {MEMO_TEMPLATE}
 """

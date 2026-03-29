@@ -24,12 +24,18 @@ Output must be valid JSON matching the schema in the user message."""
 
 
 def run(raw_data: dict, client: LLMClient) -> dict:
+    fund_discovery = raw_data.get("fund_discovery", {})
+
     user_message = f"""
 Analyze the following investment adviser data and return a JSON object.
 
 <data>
 {json.dumps(raw_data, indent=2, default=str)}
 </data>
+
+<fund_discovery>
+{json.dumps(fund_discovery, indent=2, default=str)}
+</fund_discovery>
 
 Return ONLY a JSON object with this exact schema (use null for any missing field — never invent values):
 
@@ -80,6 +86,25 @@ Return ONLY a JSON object with this exact schema (use null for any missing field
     "hy_spread": "string or null",
     "ten_yr_yield": "string or null",
     "notes": "1-2 sentences on relevance to alternatives fundraising environment"
+  }},
+  "funds_analysis": {{
+    "total_funds_found": "number or null",
+    "sources_used": ["list of source strings"],
+    "funds": [
+      {{
+        "name": "fund name",
+        "entity_type": "string or null",
+        "offering_amount": "formatted string e.g. $2.5B or null",
+        "date_of_first_sale": "string or null",
+        "jurisdiction": "string or null",
+        "exemptions": ["3C.1 / 3C.7 etc."],
+        "is_private_fund": "boolean",
+        "edgar_url": "string or null",
+        "news_headlines": ["up to 3 headline strings from fund news — only if in data"]
+      }}
+    ],
+    "vintage_summary": "1-2 sentences on fund vintage years and fundraising cadence — only if data supports it",
+    "notes": "any data gaps or limitations"
   }},
   "data_quality_flags": [
     "list of strings noting any missing, null, or inconsistent fields observed"

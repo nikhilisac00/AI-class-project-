@@ -25,6 +25,7 @@ st.set_page_config(
 sys.path.insert(0, str(Path(__file__).parent))
 
 import agents.data_ingestion  as ingestion_agent  # noqa: E402
+import agents.firm_resolver   as resolver_agent   # noqa: E402
 import agents.fund_analysis   as analysis_agent   # noqa: E402
 import agents.news_research   as news_agent       # noqa: E402
 import agents.risk_flagging   as risk_agent       # noqa: E402
@@ -33,7 +34,7 @@ from tools.llm_client import make_client          # noqa: E402
 from tools.pal_client  import is_available as pal_available, call_consensus  # noqa: E402
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
+# ── Helpers ─────────────────────────────────────────────────────────────────
 
 def _badge(label: str, color: str) -> str:
     return (
@@ -47,8 +48,29 @@ def _sev_color(sev: str) -> str:
 def _tier_color(tier: str) -> str:
     return {"HIGH": "#c0392b", "MEDIUM": "#e67e22", "LOW": "#27ae60"}.get(tier, "#95a5a6")
 
+def _score_color(score: float) -> str:
+    if score >= 0.80:
+        return "#27ae60"
+    if score >= 0.55:
+        return "#e67e22"
+    return "#c0392b"
 
-# ── Sidebar ────────────────────────────────────────────────────────────────────
+
+# ── Session state init ───────────────────────────────────────────────────────
+
+for _k, _v in [
+    ("confirmed_firm", None),     # dict with crd, firm_name, city, state
+    ("user_website",   ""),
+    ("candidates",     []),
+    ("search_query",   ""),
+    ("pipeline_done",  False),
+    ("pipeline_result", {}),
+]:
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
+
+
+# ── Sidebar ──────────────────────────────────────────────────────────────────
 
 with st.sidebar:
     st.title("Settings")
@@ -80,14 +102,11 @@ with st.sidebar:
         value=True,
         help="Karpathy autoresearch loop: iterative web research on the manager.",
     )
-    if run_news:
-        news_rounds = st.slider("Research rounds", min_value=1, max_value=5, value=3)
-    else:
-        news_rounds = 3
+    news_rounds = st.slider("Research rounds", min_value=1, max_value=5, value=3) if run_news else 3
 
     st.divider()
 
-    use_pal   = False
+    use_pal    = False
     pal_status = pal_available()
     if pal_status:
         use_pal = st.toggle(
@@ -108,53 +127,160 @@ with st.sidebar:
     )
 
     st.divider()
-    st.caption("Sources: IAPD · SEC EDGAR (13F XML) · FRED")
+    st.caption("Sources: IAPD · SEC EDGAR (13F XML, Form D) · FRED")
     st.caption("No hallucination — every fact traces to a real API call")
 
 
-# ── Header ─────────────────────────────────────────────────────────────────────
+# ── Header ───────────────────────────────────────────────────────────────────
 
 st.title("AI Alternative Investments Research Associate")
-st.caption("Autonomous due diligence — from CRD number to IC-ready memo")
-
-col_search, col_btn = st.columns([4, 1])
-with col_search:
-    firm_input = st.text_input(
-        "Firm",
-        placeholder='Firm name or CRD — e.g. "AQR Capital Management" or "149729"',
-        label_visibility="collapsed",
-    )
-with col_btn:
-    run_button = st.button("Run Analysis", type="primary", use_container_width=True)
+st.caption("Autonomous LP due diligence — from firm name to IC-ready memo")
 
 with st.expander("How it works", expanded=False):
     st.markdown(
         """
-**Pipeline (5 steps):**
-1. **IAPD** — resolve firm name → CRD → ADV registration data
-2. **SEC EDGAR** — fetch latest 13F-HR filing, parse portfolio value from XML
-3. **FRED** — pull macro context (rates, spreads, VIX)
-4. **OpenAI o3** (reasoning mode) — analyze, flag risks, generate memo
-5. *(optional)* **PAL MCP** — Gemini-3-Pro consensus validation of risk flags
+**Pipeline:**
+1. **Firm Resolver** — fuzzy search IAPD, confirm the right entity before spending tokens
+2. **Data Ingestion** — IAPD ADV detail · EDGAR 13F XML · FRED macro · Form D fund discovery
+3. **Fund Discovery** — Form D filings · IAPD relying advisors · web search → fund table
+4. **OpenAI o3** (reasoning) — structured analysis → LP risk flags → IC memo
+5. *(optional)* **PAL MCP** — Gemini-3-Pro consensus on risk flags
 
-**No hallucination:** `null` is returned for any missing field. Data gaps are surfaced explicitly in the memo.
+**No hallucination:** `null` for any missing field. All data gaps surfaced explicitly.
         """
     )
 
 st.divider()
 
 
-# ── Run pipeline ───────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────────
+# STEP 1 — Firm Search & Confirmation
+# ────────────────────────────────────────────────────────────────────────────
+
+st.subheader("Step 1 — Find Firm")
+
+col_q, col_find = st.columns([4, 1])
+with col_q:
+    query_input = st.text_input(
+        "Firm",
+        value=st.session_state.search_query,
+        placeholder='Firm name or CRD — e.g. "Apollo Global Management" or "149729"',
+        label_visibility="collapsed",
+        key="firm_search_input",
+    )
+with col_find:
+    find_btn = st.button("Find Firm", type="secondary", use_container_width=True)
+
+# Trigger search
+if find_btn:
+    if not query_input.strip():
+        st.error("Enter a firm name or CRD to search.")
+    else:
+        with st.spinner("Searching IAPD..."):
+            candidates = resolver_agent.resolve(
+                query_input.strip(),
+                tavily_key=tavily_key or None,
+                max_candidates=5,
+            )
+        st.session_state.candidates    = candidates
+        st.session_state.search_query  = query_input.strip()
+        st.session_state.confirmed_firm = None   # reset if re-searching
+        st.session_state.pipeline_done  = False
+        st.session_state.pipeline_result = {}
+
+# Show candidates
+if st.session_state.candidates and not st.session_state.confirmed_firm:
+    st.markdown("**Select the correct firm:**")
+    for i, c in enumerate(st.session_state.candidates):
+        score = c.get("match_score", 0.0)
+        sc    = _score_color(score)
+        name  = c.get("firm_name", "Unknown")
+        crd   = c.get("crd", "")
+        city  = c.get("city", "")
+        state = c.get("state", "")
+        status = c.get("registration_status", "")
+        website = c.get("website") or ""
+
+        with st.container(border=True):
+            hdr_col, btn_col = st.columns([5, 1])
+            with hdr_col:
+                st.markdown(
+                    f'**{name}** &nbsp;'
+                    f'<span style="background:{sc};color:#fff;padding:1px 7px;'
+                    f'border-radius:3px;font-size:0.75rem">'
+                    f'Match {score:.0%}</span>',
+                    unsafe_allow_html=True,
+                )
+                meta = []
+                if crd:    meta.append(f"CRD: **{crd}**")
+                if city and state: meta.append(f"**{city}, {state}**")
+                if status: meta.append(status)
+                if meta:
+                    st.caption("  ·  ".join(meta))
+                if website:
+                    st.caption(f"[{website}]({website})")
+            with btn_col:
+                if st.button("Use this firm", key=f"use_{i}", use_container_width=True):
+                    st.session_state.confirmed_firm = c
+                    st.session_state.pipeline_done  = False
+                    st.session_state.pipeline_result = {}
+                    st.rerun()
+
+elif st.session_state.candidates and st.session_state.confirmed_firm:
+    # Show confirmed banner
+    cf = st.session_state.confirmed_firm
+    st.success(
+        f"Confirmed: **{cf.get('firm_name')}** "
+        f"(CRD {cf.get('crd')}, {cf.get('city', '')}, {cf.get('state', '')})"
+    )
+    if st.button("Change firm", type="secondary"):
+        st.session_state.confirmed_firm = None
+        st.session_state.pipeline_done  = False
+        st.session_state.pipeline_result = {}
+        st.rerun()
+
+# ── Optional website override ────────────────────────────────────────────────
+if st.session_state.confirmed_firm:
+    detected = st.session_state.confirmed_firm.get("website") or ""
+    website_input = st.text_input(
+        "Firm website (optional — improves fund discovery)",
+        value=st.session_state.user_website or detected,
+        placeholder="https://www.example.com",
+        help="Leave blank to use auto-detected website, or paste the correct URL.",
+    )
+    st.session_state.user_website = website_input.strip()
+
+st.divider()
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# STEP 2 — Run Analysis (only shown after firm confirmation)
+# ────────────────────────────────────────────────────────────────────────────
+
+if st.session_state.confirmed_firm:
+    st.subheader("Step 2 — Run Analysis")
+
+    run_button = st.button(
+        f"Run Due Diligence on {st.session_state.confirmed_firm.get('firm_name', '')}",
+        type="primary",
+        use_container_width=True,
+        disabled=not api_key,
+    )
+    if not api_key:
+        st.caption("Add your OpenAI API key in the sidebar to run.")
+else:
+    run_button = False
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Pipeline execution
+# ────────────────────────────────────────────────────────────────────────────
 
 if run_button:
-    if not api_key:
-        st.error("OpenAI API key required. Add it in the sidebar.")
-        st.stop()
-    if not firm_input.strip():
-        st.error("Enter a fund name or CRD number.")
-        st.stop()
-
-    client = make_client(api_key)
+    cf          = st.session_state.confirmed_firm
+    firm_input  = cf.get("crd") or cf.get("firm_name", "")
+    user_website = st.session_state.user_website or None
+    client      = make_client(api_key)
 
     progress_bar = st.progress(0, text="Starting...")
     status_box   = st.empty()
@@ -164,26 +290,32 @@ if run_button:
     try:
         total_steps = 4 + (1 if run_news else 0) + (1 if use_pal and pal_status else 0)
         step = [0]
-
         def _pct(n): return int(n / total_steps * 100)
 
-        status_box.info("Step 1 — Ingesting: IAPD · EDGAR 13F XML · FRED...")
+        status_box.info("Step 1 — Ingesting: IAPD · EDGAR 13F · FRED · Form D...")
         progress_bar.progress(5, text="Ingesting...")
-        raw_data = ingestion_agent.run(firm_input.strip(), fred_api_key=fred_key or None)
+        raw_data = ingestion_agent.run(
+            firm_input,
+            fred_api_key=fred_key or None,
+            website=user_website,
+            client=client,
+            tavily_key=tavily_key or None,
+        )
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Ingestion complete")
 
+        fd_count = len((raw_data.get("fund_discovery") or {}).get("funds", []))
         if raw_data.get("errors"):
             st.warning("Ingestion notes: " + " | ".join(raw_data["errors"]))
 
-        status_box.info("Step 2 — Fund analysis (OpenAI o3 reasoning)...")
+        status_box.info(f"Step 2 — Fund analysis (o3 reasoning) · {fd_count} funds found...")
         analysis = analysis_agent.run(raw_data, client)
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Analysis complete")
 
         firm_name_resolved = (
             (analysis or {}).get("firm_overview", {}).get("name")
-            or firm_input.strip()
+            or cf.get("firm_name", firm_input)
         )
 
         if run_news:
@@ -200,14 +332,13 @@ if run_button:
             )
             step[0] += 1
             progress_bar.progress(_pct(step[0]), text=(
-                f"News research complete — "
-                f"{news_report['research_rounds']} rounds, "
+                f"News complete — {news_report['research_rounds']} rounds, "
                 f"{news_report['total_sources']} sources"
             ))
             if news_report.get("errors"):
-                st.warning("News research notes: " + " | ".join(news_report["errors"]))
+                st.warning("News notes: " + " | ".join(news_report["errors"]))
 
-        status_box.info("Step — Risk flagging (OpenAI o3 reasoning)...")
+        status_box.info("Step — Risk flagging (o3 reasoning)...")
         risk_report = risk_agent.run(analysis, raw_data, client, news_report=news_report)
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Risk flagging complete")
@@ -224,22 +355,40 @@ if run_button:
             step[0] += 1
             progress_bar.progress(_pct(step[0]), text="PAL complete")
 
-        status_box.info("Step — Generating DD memo (OpenAI o3 reasoning)...")
+        status_box.info("Step — Generating DD memo (o3 reasoning)...")
         memo = memo_agent.run(analysis, risk_report, raw_data, client,
                               news_report=news_report)
         progress_bar.progress(100, text="Done")
         status_box.success("Analysis complete.")
+
+        st.session_state.pipeline_result = dict(
+            raw_data=raw_data, analysis=analysis, risk_report=risk_report,
+            memo=memo, pal_review=pal_review, news_report=news_report,
+            firm_name=firm_name_resolved,
+        )
+        st.session_state.pipeline_done = True
 
     except Exception as e:
         st.error(f"Pipeline error: {e}")
         st.exception(e)
         st.stop()
 
-    # ── Save outputs ──────────────────────────────────────────────────────────
-    firm_name = (
-        (analysis or {}).get("firm_overview", {}).get("name")
-        or firm_input.strip()
-    )
+
+# ────────────────────────────────────────────────────────────────────────────
+# Results display
+# ────────────────────────────────────────────────────────────────────────────
+
+if st.session_state.pipeline_done and st.session_state.pipeline_result:
+    pr          = st.session_state.pipeline_result
+    raw_data    = pr["raw_data"]
+    analysis    = pr["analysis"]
+    risk_report = pr["risk_report"]
+    memo        = pr["memo"]
+    pal_review  = pr["pal_review"]
+    news_report = pr["news_report"]
+    firm_name   = pr["firm_name"]
+
+    # Save outputs
     ts        = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_name = "".join(c if c.isalnum() or c in "_ -" else "_" for c in firm_name)[:40]
     out_dir   = Path(output_dir)
@@ -248,28 +397,31 @@ if run_button:
 
     memo_path = base.parent / f"{base.name}_DD_MEMO.md"
     if memo:
-        memo_path.write_text(memo, encoding="utf-8")
-    for label, obj in [
-        ("raw_data",    raw_data),
-        ("analysis",    analysis),
-        ("risk_report", risk_report),
-    ]:
+        try:
+            memo_path.write_text(memo, encoding="utf-8")
+        except Exception:
+            pass
+    for label, obj in [("raw_data", raw_data), ("analysis", analysis), ("risk_report", risk_report)]:
         if obj:
-            (base.parent / f"{base.name}_{label}.json").write_text(
-                json.dumps(obj, indent=2, default=str), encoding="utf-8"
-            )
+            try:
+                (base.parent / f"{base.name}_{label}.json").write_text(
+                    json.dumps(obj, indent=2, default=str), encoding="utf-8"
+                )
+            except Exception:
+                pass
 
-    # ── Extract display fields ────────────────────────────────────────────────
-    adv     = (raw_data  or {}).get("adv_summary",  {})
-    adv_xml = (raw_data  or {}).get("adv_xml_data", {})
-    ov      = (analysis  or {}).get("firm_overview", {})
-    tf      = adv_xml.get("thirteenf",  {})
-    discl   = adv_xml.get("disclosures", [])
-    broch   = adv_xml.get("brochure",   {})
-    macro   = (raw_data  or {}).get("market_context", {})
-    tier    = (risk_report or {}).get("overall_risk_tier", "UNKNOWN")
+    # Extract display fields
+    adv      = (raw_data  or {}).get("adv_summary",   {})
+    adv_xml  = (raw_data  or {}).get("adv_xml_data",  {})
+    ov       = (analysis  or {}).get("firm_overview",  {})
+    tf       = adv_xml.get("thirteenf",   {})
+    discl    = adv_xml.get("disclosures", [])
+    broch    = adv_xml.get("brochure",    {})
+    macro    = (raw_data  or {}).get("market_context", {})
+    tier     = (risk_report or {}).get("overall_risk_tier", "UNKNOWN")
+    fd       = (raw_data  or {}).get("fund_discovery", {})
 
-    # ── ① Firm Identity Header ────────────────────────────────────────────────
+    # ── Firm Identity Header ──────────────────────────────────────────────
     st.subheader(firm_name)
 
     reg_status = adv.get("registration_status") or ov.get("registration_status")
@@ -287,19 +439,14 @@ if run_button:
         identity_parts.append(_badge("SEC Registered", "#2980b9"))
     if adv.get("is_state_registered"):
         identity_parts.append(_badge("State Registered", "#8e44ad"))
-
     if identity_parts:
         st.markdown(" ".join(identity_parts), unsafe_allow_html=True)
 
     meta_parts = []
-    if crd_str:
-        meta_parts.append(f"CRD: **{crd_str}**")
-    if sec_str:
-        meta_parts.append(f"SEC: **{sec_str}**")
-    if city and state_str:
-        meta_parts.append(f"**{city}, {state_str}**")
-    if adv_date:
-        meta_parts.append(f"Latest ADV: **{adv_date}**")
+    if crd_str:  meta_parts.append(f"CRD: **{crd_str}**")
+    if sec_str:  meta_parts.append(f"SEC: **{sec_str}**")
+    if city and state_str: meta_parts.append(f"**{city}, {state_str}**")
+    if adv_date: meta_parts.append(f"Latest ADV: **{adv_date}**")
     if meta_parts:
         st.caption("  ·  ".join(meta_parts))
 
@@ -307,34 +454,38 @@ if run_button:
     if notice_states:
         st.caption(f"Notice filings in: {', '.join(notice_states)}")
 
-    # ── ② Key Metric Cards ────────────────────────────────────────────────────
+    # ── Key Metric Cards ──────────────────────────────────────────────────
     st.markdown("---")
-    c1, c2, c3, c4, c5 = st.columns(5)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric(
         "13F Portfolio Value",
         tf.get("portfolio_value_fmt") or "N/A",
-        help="Total US public equity holdings from most recent 13F-HR (proxy AUM)",
+        help="Total US public equity holdings from most recent 13F-HR",
     )
     c2.metric(
         "Holdings",
         str(tf.get("holdings_count")) if tf.get("holdings_count") else "—",
-        help="Distinct equity positions in latest 13F",
     )
     c3.metric(
+        "Funds Found",
+        str(fd.get("total_found", 0)),
+        help="Private funds discovered via Form D, IAPD, and web search",
+    )
+    c4.metric(
         "Clients",
         str(ov.get("num_clients")) if ov.get("num_clients") else "—",
     )
-    c4.metric(
+    c5.metric(
         "Employees",
         str(ov.get("num_employees")) if ov.get("num_employees") else "—",
     )
-    c5.metric(
+    c6.metric(
         "Risk Tier",
         tier,
-        help="Overall LP due diligence risk tier from risk flagging agent",
+        help="Overall LP due diligence risk tier",
     )
 
-    # ── ③ Source & Brochure Captions ─────────────────────────────────────────
+    # ── Source / brochure captions ────────────────────────────────────────
     if tf.get("accession") and tf.get("cik"):
         acc_clean  = tf["accession"].replace("-", "")
         filing_url = (
@@ -346,9 +497,7 @@ if run_button:
             f"{tf.get('note', '')}"
         )
     else:
-        st.caption(
-            adv_xml.get("aum_note", "Regulatory AUM not available via free public API.")
-        )
+        st.caption(adv_xml.get("aum_note", "Regulatory AUM not available via free public API."))
 
     if broch.get("brochure_name"):
         st.caption(
@@ -357,12 +506,10 @@ if run_button:
             "PDF at adviserinfo.sec.gov"
         )
 
-    # ── ④ Disclosure Banner ───────────────────────────────────────────────────
+    # ── Disclosure Banner ─────────────────────────────────────────────────
     if discl:
         import pandas as pd
-        with st.expander(
-            f"Disclosure Events ({len(discl)}) — from IAPD", expanded=False
-        ):
+        with st.expander(f"Disclosure Events ({len(discl)}) — from IAPD", expanded=False):
             df_d = pd.DataFrame([{
                 "Type":        d.get("type", ""),
                 "Date":        d.get("date") or "—",
@@ -376,28 +523,27 @@ if run_button:
             "Visit adviserinfo.sec.gov for full details."
         )
 
-    # ── ⑤ Macro Context Panel ────────────────────────────────────────────────
+    # ── Macro Context Panel ───────────────────────────────────────────────
     if macro:
         st.markdown("---")
         st.caption("**Market Context** (FRED — latest readings)")
         m1, m2, m3, m4, m5 = st.columns(5)
         def _m(series): return macro.get(series, {}).get("latest") or "—"
-        m1.metric("Fed Funds",  _m("fed_funds_rate") + "%"  if _m("fed_funds_rate") != "—" else "—")
-        m2.metric("10Y Yield",  _m("ten_yr_yield")   + "%"  if _m("ten_yr_yield")   != "—" else "—")
-        m3.metric("HY Spread",  _m("hy_spread")             if _m("hy_spread")      != "—" else "—")
-        m4.metric("IG Spread",  _m("ig_spread")             if _m("ig_spread")      != "—" else "—")
-        m5.metric("VIX",        _m("vix")                   if _m("vix")            != "—" else "—")
+        m1.metric("Fed Funds", _m("fed_funds_rate") + "%" if _m("fed_funds_rate") != "—" else "—")
+        m2.metric("10Y Yield", _m("ten_yr_yield")   + "%" if _m("ten_yr_yield")   != "—" else "—")
+        m3.metric("HY Spread", _m("hy_spread")             if _m("hy_spread")      != "—" else "—")
+        m4.metric("IG Spread", _m("ig_spread")             if _m("ig_spread")      != "—" else "—")
+        m5.metric("VIX",       _m("vix")                   if _m("vix")            != "—" else "—")
 
-    # ── ⑥ Results Tabs ────────────────────────────────────────────────────────
+    # ── Results Tabs ──────────────────────────────────────────────────────
     st.markdown("---")
-    tab_risk, tab_news, tab_memo, tab_pal, tab_raw = st.tabs([
-        "Risk Dashboard", "News Research", "DD Memo", "PAL Consensus", "Raw Data",
+    tab_risk, tab_funds, tab_news, tab_memo, tab_pal, tab_raw = st.tabs([
+        "Risk Dashboard", "Funds", "News Research", "DD Memo", "PAL Consensus", "Raw Data",
     ])
 
-    # ─ Risk Dashboard ──────────────────────────────────────────────────────────
+    # ─ Risk Dashboard ────────────────────────────────────────────────────
     with tab_risk:
         if risk_report:
-            # Risk tier banner
             tier_c = _tier_color(tier)
             st.markdown(
                 f'<div style="background:{tier_c};color:#fff;padding:10px 16px;'
@@ -405,20 +551,17 @@ if run_button:
                 f'Overall Risk Tier: {tier}</div>',
                 unsafe_allow_html=True,
             )
-
             commentary = risk_report.get("overall_commentary", "")
             if commentary:
                 st.info(commentary)
 
             flags = risk_report.get("flags", [])
             if flags:
-                # Sort: HIGH → MEDIUM → LOW
                 order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
-                flags_sorted = sorted(flags, key=lambda f: order.get(f.get("severity",""), 9))
-
+                flags_sorted = sorted(flags, key=lambda f: order.get(f.get("severity", ""), 9))
                 st.subheader(f"Risk Flags ({len(flags_sorted)})")
                 for f in flags_sorted:
-                    sev  = f.get("severity", "")
+                    sev   = f.get("severity", "")
                     sev_c = _sev_color(sev)
                     label = (
                         f'<span style="background:{sev_c};color:#fff;padding:1px 7px;'
@@ -438,23 +581,109 @@ if run_button:
                 gaps = risk_report.get("critical_data_gaps", [])
                 if gaps:
                     st.subheader("Critical Data Gaps")
-                    for g in gaps:
-                        st.markdown(f"- {g}")
+                    for g in gaps: st.markdown(f"- {g}")
             with col_clean:
                 clean = risk_report.get("clean_items", [])
                 if clean:
                     st.subheader("Clean Items")
-                    for c in clean:
-                        st.markdown(f"- {c}")
+                    for c in clean: st.markdown(f"- {c}")
         else:
             st.warning("Risk report not available.")
 
-    # ─ News Research ───────────────────────────────────────────────────────────
+    # ─ Funds Tab ─────────────────────────────────────────────────────────
+    with tab_funds:
+        funds_list = fd.get("funds", [])
+        ra_list    = fd.get("relying_advisors", [])
+        sources    = fd.get("sources_used", [])
+        fd_errors  = fd.get("errors", [])
+
+        if funds_list or ra_list:
+            # Summary
+            src_str = ", ".join(sources) if sources else "none"
+            st.caption(f"Sources: {src_str}  ·  Total funds discovered: {fd.get('total_found', 0)}")
+
+            if fd_errors:
+                with st.expander("Discovery notes"):
+                    for e in fd_errors: st.caption(e)
+
+            # Fund table
+            if funds_list:
+                import pandas as pd
+                st.subheader(f"Private Funds ({len(funds_list)})")
+
+                rows = []
+                for f in funds_list:
+                    news_titles = "; ".join(
+                        n.get("title", "") for n in (f.get("news") or [])[:2] if n.get("title")
+                    )
+                    rows.append({
+                        "Fund Name":     f.get("name", ""),
+                        "Offering Size": f.get("offering_amount") or "—",
+                        "First Sale":    f.get("date_of_first_sale") or "—",
+                        "Exemptions":    ", ".join(f.get("exemptions", [])) or "—",
+                        "Jurisdiction":  f.get("jurisdiction") or "—",
+                        "Source":        f.get("source", ""),
+                        "Recent News":   news_titles or "—",
+                    })
+                df_f = pd.DataFrame(rows)
+                st.dataframe(df_f, use_container_width=True, hide_index=True)
+
+                # Expandable cards with EDGAR links + news
+                st.subheader("Fund Detail")
+                for f in funds_list:
+                    with st.expander(f.get("name", "Unknown"), expanded=False):
+                        col_a, col_b = st.columns(2)
+                        with col_a:
+                            st.markdown(f"**Offering amount:** {f.get('offering_amount') or '—'}")
+                            st.markdown(f"**Date of first sale:** {f.get('date_of_first_sale') or '—'}")
+                            st.markdown(f"**Entity type:** {f.get('entity_type') or '—'}")
+                            st.markdown(f"**Jurisdiction:** {f.get('jurisdiction') or '—'}")
+                        with col_b:
+                            st.markdown(f"**Exemptions:** {', '.join(f.get('exemptions', [])) or '—'}")
+                            st.markdown(f"**Private fund:** {'Yes' if f.get('is_private_fund') else 'No / Unknown'}")
+                            st.markdown(f"**Source:** {f.get('source', '')}")
+                            if f.get("edgar_url"):
+                                st.markdown(f"[View on EDGAR]({f['edgar_url']})")
+                        news = f.get("news", [])
+                        if news:
+                            st.markdown("**Recent news:**")
+                            for n in news:
+                                title = n.get("title", "")
+                                url   = n.get("url", "")
+                                date  = n.get("date") or ""
+                                date_str = f" _{date}_" if date else ""
+                                if url:
+                                    st.markdown(f"- [{title}]({url}){date_str}")
+                                else:
+                                    st.markdown(f"- {title}{date_str}")
+
+            # Relying advisors
+            if ra_list:
+                st.subheader(f"IAPD Relying Advisors ({len(ra_list)})")
+                import pandas as pd
+                df_ra = pd.DataFrame([{
+                    "Name":   r.get("name", ""),
+                    "CRD":    r.get("crd", ""),
+                    "Status": r.get("status", ""),
+                } for r in ra_list])
+                st.dataframe(df_ra, use_container_width=True, hide_index=True)
+
+        else:
+            st.info(
+                "No private funds discovered. This is expected for advisers that:\n"
+                "- Manage only public equities (no private offerings)\n"
+                "- File under a different entity name\n"
+                "- Have not registered offerings under SEC Rule 506"
+            )
+            if fd_errors:
+                for e in fd_errors: st.caption(e)
+
+    # ─ News Research ─────────────────────────────────────────────────────
     with tab_news:
         if news_report and (news_report.get("findings") or news_report.get("news_summary")):
-            nr = news_report
-            overall_nr = nr.get("overall_news_risk", "UNKNOWN")
-            nr_color = _tier_color(overall_nr)
+            nr           = news_report
+            overall_nr   = nr.get("overall_news_risk", "UNKNOWN")
+            nr_color     = _tier_color(overall_nr)
 
             st.markdown(
                 f'<div style="background:{nr_color};color:#fff;padding:10px 16px;'
@@ -471,14 +700,13 @@ if run_button:
             if nr.get("news_summary"):
                 st.info(nr["news_summary"])
 
-            # News flags
             flags = nr.get("news_flags", [])
             if flags:
                 order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "INFO": 3}
                 flags_sorted = sorted(flags, key=lambda f: order.get(f.get("severity", ""), 9))
                 st.subheader(f"News Flags ({len(flags_sorted)})")
                 for f in flags_sorted:
-                    sev = f.get("severity", "INFO")
+                    sev   = f.get("severity", "INFO")
                     sev_c = _sev_color(sev) if sev != "INFO" else "#7f8c8d"
                     label = (
                         f'<span style="background:{sev_c};color:#fff;padding:1px 7px;'
@@ -497,45 +725,34 @@ if run_button:
             else:
                 st.success("No material news flags identified.")
 
-            # Coverage gaps
-            gaps = nr.get("coverage_gaps", [])
-            if gaps:
+            if nr.get("coverage_gaps"):
                 with st.expander("Coverage Gaps"):
-                    for g in gaps:
-                        st.markdown(f"- {g}")
+                    for g in nr["coverage_gaps"]: st.markdown(f"- {g}")
 
-            # Sources
-            sources = nr.get("sources_consulted", [])
-            if sources:
-                with st.expander(f"Sources Consulted ({len(sources)})"):
-                    import pandas as pd
+            if nr.get("sources_consulted"):
+                import pandas as pd
+                with st.expander(f"Sources Consulted ({len(nr['sources_consulted'])})"):
                     df_s = pd.DataFrame([{
                         "Title": s.get("title", "")[:80],
                         "URL":   s.get("url", ""),
                         "Date":  s.get("published_date") or "—",
-                    } for s in sources])
+                    } for s in nr["sources_consulted"]])
                     st.dataframe(df_s, use_container_width=True, hide_index=True)
 
-            # Queries used
-            queries = nr.get("queries_used", [])
-            if queries:
-                with st.expander(f"Search Queries Used ({len(queries)})"):
-                    for q in queries:
-                        st.markdown(f"- `{q}`")
+            if nr.get("queries_used"):
+                with st.expander(f"Search Queries Used ({len(nr['queries_used'])})"):
+                    for q in nr["queries_used"]: st.markdown(f"- `{q}`")
 
             if nr.get("errors"):
                 with st.expander("Errors / Warnings"):
-                    for e in nr["errors"]:
-                        st.warning(e)
+                    for e in nr["errors"]: st.warning(e)
 
         elif not run_news:
-            st.info(
-                "News research was skipped. Enable **Deep News Research** in the sidebar."
-            )
+            st.info("News research was skipped. Enable **Deep News Research** in the sidebar.")
         else:
             st.warning("News research produced no results.")
 
-    # ─ DD Memo ─────────────────────────────────────────────────────────────────
+    # ─ DD Memo ───────────────────────────────────────────────────────────
     with tab_memo:
         if memo:
             dl1, dl2 = st.columns(2)
@@ -565,7 +782,7 @@ if run_button:
         else:
             st.warning("Memo not generated.")
 
-    # ─ PAL Consensus ───────────────────────────────────────────────────────────
+    # ─ PAL Consensus ─────────────────────────────────────────────────────
     with tab_pal:
         if pal_review:
             st.subheader("PAL Multi-Model Consensus Review")
@@ -579,10 +796,12 @@ if run_button:
                 "risk flags with Gemini-3-Pro via PAL MCP."
             )
 
-    # ─ Raw Data ────────────────────────────────────────────────────────────────
+    # ─ Raw Data ──────────────────────────────────────────────────────────
     with tab_raw:
         if raw_data:
-            with st.expander("13F XML Data (EDGAR)", expanded=True):
+            with st.expander("Fund Discovery", expanded=True):
+                st.json(fd)
+            with st.expander("13F XML Data (EDGAR)"):
                 st.json(adv_xml)
             with st.expander("IAPD ADV Summary"):
                 st.json(adv)
@@ -593,5 +812,5 @@ if run_button:
             with st.expander("Ingestion Errors / Notes"):
                 st.json(raw_data.get("errors", []))
         if analysis:
-            with st.expander("Structured Analysis (Claude output)"):
+            with st.expander("Structured Analysis (o3 output)"):
                 st.json(analysis)
