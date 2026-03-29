@@ -212,9 +212,12 @@ if st.session_state.candidates and not st.session_state.confirmed_firm:
                     unsafe_allow_html=True,
                 )
                 meta = []
-                if crd:    meta.append(f"CRD: **{crd}**")
-                if city and state: meta.append(f"**{city}, {state}**")
-                if status: meta.append(status)
+                if crd:
+                    meta.append(f"CRD: **{crd}**")
+                if city and state:
+                    meta.append(f"**{city}, {state}**")
+                if status:
+                    meta.append(status)
                 if meta:
                     st.caption("  ·  ".join(meta))
                 if website:
@@ -443,10 +446,14 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
         st.markdown(" ".join(identity_parts), unsafe_allow_html=True)
 
     meta_parts = []
-    if crd_str:  meta_parts.append(f"CRD: **{crd_str}**")
-    if sec_str:  meta_parts.append(f"SEC: **{sec_str}**")
-    if city and state_str: meta_parts.append(f"**{city}, {state_str}**")
-    if adv_date: meta_parts.append(f"Latest ADV: **{adv_date}**")
+    if crd_str:
+        meta_parts.append(f"CRD: **{crd_str}**")
+    if sec_str:
+        meta_parts.append(f"SEC: **{sec_str}**")
+    if city and state_str:
+        meta_parts.append(f"**{city}, {state_str}**")
+    if adv_date:
+        meta_parts.append(f"Latest ADV: **{adv_date}**")
     if meta_parts:
         st.caption("  ·  ".join(meta_parts))
 
@@ -535,6 +542,56 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
         m4.metric("IG Spread", _m("ig_spread")             if _m("ig_spread")      != "—" else "—")
         m5.metric("VIX",       _m("vix")                   if _m("vix")            != "—" else "—")
 
+    # ── Historical 13F Portfolio Trend ───────────────────────────────────
+    history = (raw_data or {}).get("adv_xml_data", {}).get("thirteenf_history", [])
+    if history and len(history) >= 2:
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+
+        periods  = [h["period"] for h in history]
+        vals_b   = [round(h["portfolio_value_usd"] / 1e9, 3) for h in history]
+        holdings = [h.get("holdings_count") for h in history]
+
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+        fig.add_trace(
+            go.Scatter(
+                x=periods, y=vals_b,
+                name="Portfolio ($B)",
+                fill="tozeroy",
+                fillcolor="rgba(41,128,185,0.15)",
+                line=dict(color="#2980b9", width=2),
+                marker=dict(size=5),
+            ),
+            secondary_y=False,
+        )
+        if any(h is not None for h in holdings):
+            fig.add_trace(
+                go.Scatter(
+                    x=periods, y=holdings,
+                    name="Holdings Count",
+                    line=dict(color="#e67e22", width=2, dash="dot"),
+                    marker=dict(size=5),
+                ),
+                secondary_y=True,
+            )
+        fig.update_layout(
+            title_text="13F Portfolio Trend — Public US Equity Holdings",
+            height=300,
+            margin=dict(l=10, r=10, t=45, b=10),
+            legend=dict(orientation="h", y=-0.2),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+        )
+        fig.update_yaxes(title_text="Portfolio Value ($B)", secondary_y=False, gridcolor="#eee")
+        fig.update_yaxes(title_text="Holdings Count",       secondary_y=True,  showgrid=False)
+
+        st.markdown("---")
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(
+            f"Source: SEC EDGAR 13F-HR · {len(history)} quarters · "
+            "US public equity positions only — not total regulatory AUM"
+        )
+
     # ── Results Tabs ──────────────────────────────────────────────────────
     st.markdown("---")
     tab_risk, tab_funds, tab_news, tab_memo, tab_pal, tab_raw = st.tabs([
@@ -581,12 +638,14 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                 gaps = risk_report.get("critical_data_gaps", [])
                 if gaps:
                     st.subheader("Critical Data Gaps")
-                    for g in gaps: st.markdown(f"- {g}")
+                    for g in gaps:
+                        st.markdown(f"- {g}")
             with col_clean:
                 clean = risk_report.get("clean_items", [])
                 if clean:
                     st.subheader("Clean Items")
-                    for c in clean: st.markdown(f"- {c}")
+                    for c in clean:
+                        st.markdown(f"- {c}")
         else:
             st.warning("Risk report not available.")
 
@@ -604,7 +663,8 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
 
             if fd_errors:
                 with st.expander("Discovery notes"):
-                    for e in fd_errors: st.caption(e)
+                    for e in fd_errors:
+                        st.caption(e)
 
             # Fund table
             if funds_list:
@@ -676,7 +736,8 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                 "- Have not registered offerings under SEC Rule 506"
             )
             if fd_errors:
-                for e in fd_errors: st.caption(e)
+                for e in fd_errors:
+                    st.caption(e)
 
     # ─ News Research ─────────────────────────────────────────────────────
     with tab_news:
@@ -727,7 +788,8 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
 
             if nr.get("coverage_gaps"):
                 with st.expander("Coverage Gaps"):
-                    for g in nr["coverage_gaps"]: st.markdown(f"- {g}")
+                    for g in nr["coverage_gaps"]:
+                        st.markdown(f"- {g}")
 
             if nr.get("sources_consulted"):
                 import pandas as pd
@@ -741,11 +803,13 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
 
             if nr.get("queries_used"):
                 with st.expander(f"Search Queries Used ({len(nr['queries_used'])})"):
-                    for q in nr["queries_used"]: st.markdown(f"- `{q}`")
+                    for q in nr["queries_used"]:
+                        st.markdown(f"- `{q}`")
 
             if nr.get("errors"):
                 with st.expander("Errors / Warnings"):
-                    for e in nr["errors"]: st.warning(e)
+                    for e in nr["errors"]:
+                        st.warning(e)
 
         elif not run_news:
             st.info("News research was skipped. Enable **Deep News Research** in the sidebar.")

@@ -179,6 +179,60 @@ def _parse_13f_xml(cik: str, acc: str, xml_file: str, period: Optional[str]) -> 
     return out
 
 
+def _all_13f_from_submissions(cik: str, max_quarters: int = 8) -> list[dict]:
+    """Return up to max_quarters most recent 13F-HR filings from the submissions API."""
+    url  = SUBMISSIONS.format(cik=cik.zfill(10))
+    data = _json(url)
+    if not data:
+        return []
+    recent  = data.get("filings", {}).get("recent", {})
+    forms   = recent.get("form",          [])
+    dates   = recent.get("filingDate",    [])
+    accs    = recent.get("accessionNumber", [])
+    periods = recent.get("reportDate",    [])
+
+    results = []
+    for i, ft in enumerate(forms):
+        if ft == "13F-HR":
+            results.append({
+                "accession":        accs[i],
+                "filing_date":      dates[i]   if i < len(dates)   else None,
+                "period_of_report": periods[i] if i < len(periods) else None,
+            })
+            if len(results) >= max_quarters:
+                break
+    return results
+
+
+def _fetch_13f_quarters(cik: str, n_quarters: int = 8) -> list[dict]:
+    """
+    Parse the last n_quarters of 13F-HR filings for a known CIK.
+    Each item: {period, filing_date, accession, portfolio_value_usd,
+                portfolio_value_fmt, holdings_count}
+    Returns list sorted ascending by period.
+    """
+    filings = _all_13f_from_submissions(cik, max_quarters=n_quarters)
+    history = []
+    for filing in filings:
+        acc    = filing["accession"]
+        period = filing["period_of_report"]
+        xml_file = _xml_file_from_filing(cik, acc)
+        if xml_file:
+            parsed = _parse_13f_xml(cik, acc, xml_file, period)
+            if parsed.get("portfolio_value_usd"):
+                history.append({
+                    "period":              period,
+                    "filing_date":         filing["filing_date"],
+                    "accession":           acc,
+                    "portfolio_value_usd": parsed["portfolio_value_usd"],
+                    "portfolio_value_fmt": parsed.get("portfolio_value_fmt"),
+                    "holdings_count":      parsed.get("holdings_count"),
+                })
+        time.sleep(0.3)  # respect SEC rate limits
+
+    return sorted(history, key=lambda x: x.get("period") or "")
+
+
 def _get_13f_portfolio_value(firm_name: str) -> dict:
     """
     Find the most recent 13F-HR filing and extract total portfolio value.
@@ -347,9 +401,10 @@ def fetch_adv_data(firm_name: str, iacontent: dict = None) -> dict:
       - aum_note:        Explanation of AUM data availability
     """
     result = {
-        "thirteenf":   {},
-        "disclosures": [],
-        "brochure":    {},
+        "thirteenf":         {},
+        "thirteenf_history": [],
+        "disclosures":       [],
+        "brochure":          {},
         "aum_note": (
             "Regulatory AUM is in ADV Part 1A Item 5 (IARD system). "
             "Not accessible via free public API — requires IAPD website, "
@@ -358,9 +413,15 @@ def fetch_adv_data(firm_name: str, iacontent: dict = None) -> dict:
         "error": None,
     }
 
-    # 13F portfolio value
+    # 13F portfolio value (latest)
     print(f"[ADV Enrichment] Fetching 13F data for '{firm_name}'")
     result["thirteenf"] = _get_13f_portfolio_value(firm_name)
+
+    # 13F history — reuse the CIK already resolved above (no second EFTS search)
+    cik = result["thirteenf"].get("cik")
+    if cik:
+        print(f"[ADV Enrichment] Fetching 13F history for CIK {cik} (up to 8 quarters)")
+        result["thirteenf_history"] = _fetch_13f_quarters(cik, n_quarters=8)
 
     # Disclosures and brochure from iacontent (if provided)
     if iacontent:
