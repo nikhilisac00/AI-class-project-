@@ -59,6 +59,215 @@ def _text(url: str) -> Optional[str]:
         return None
 
 
+def _text_large(url: str) -> Optional[str]:
+    """Fetch a URL with a longer timeout — for large XML files like 13F infotables."""
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=90)
+        r.raise_for_status()
+        return r.text
+    except Exception:
+        return None
+
+
+# ── 13F holdings helpers ───────────────────────────────────────────────────────
+
+def _detect_asset_class(name: str, title: str) -> str:
+    """Classify a holding by asset class from issuer name and title of class."""
+    n = (name  or "").upper()
+    t = (title or "").upper()
+    if any(x in t for x in ("CALL", "PUT")):
+        return "Options"
+    if any(x in t for x in ("NOTE", "BOND", "DEBN", "SR NT", "SUB NT", "PREF")):
+        return "Fixed Income / Pref"
+    if any(x in t for x in ("WART", "WARR", "RTS", "RIGHTS")):
+        return "Warrants / Rights"
+    if any(x in n for x in ("ISHARES", "SPDR", "POWERSHARES", "PROSHARES",
+                             "VANECK", "INVESCO QQQ", "DIREXION")):
+        return "ETF / Fund"
+    if " ETF" in n or n.endswith(" ETF"):
+        return "ETF / Fund"
+    return "Common Stock"
+
+
+def _infotable_file_from_filing(cik: str, acc: str) -> Optional[str]:
+    """
+    Find the information table XML (individual holdings) from a 13F filing index.
+    The index page lists both primary_doc.xml (cover/summary) and infotable.xml (holdings).
+    """
+    acc_clean = acc.replace("-", "")
+    html = _text(
+        f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc_clean}/{acc}-index.htm"
+    )
+    if not html:
+        return None
+
+    lower = html.lower()
+    # Prefer the file described as "information table"
+    idx = lower.find("information table")
+    if idx != -1:
+        snippet = html[max(0, idx - 30): idx + 400]
+        hits = re.findall(r'href="[^"]*?/([^/\"]+\.xml)"', snippet, re.I)
+        if hits:
+            return hits[0]
+
+    # Fallback: any .xml that isn't the primary doc or an xsl stylesheet
+    for name in re.findall(r'href="[^"]*?/([^/\"]+\.xml)"', html, re.I):
+        if name.lower() not in ("primary_doc.xml",) and "xsl" not in name.lower():
+            return name
+    return None
+
+
+def _parse_13f_holdings(
+    cik:             str,
+    acc:             str,
+    infotable_file:  str,
+    use_dollars:     bool,
+    total_value_usd: int,
+    top_n:           int = 25,
+) -> dict:
+    """
+    Parse 13F information table XML → top holdings + asset class breakdown.
+
+    Key detail: the same CUSIP can appear multiple times with different
+    investmentDiscretion types (SOLE / SHARED / OTR).  We aggregate by CUSIP
+    so each issuer appears once in the output.
+
+    Returns dict with: top_holdings, asset_class_breakdown, concentration.
+    Empty dict on failure.
+    """
+    acc_clean = acc.replace("-", "")
+    url = (
+        f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc_clean}/{infotable_file}"
+    )
+    print(f"[ADV Enrichment] Downloading 13F infotable ({infotable_file})...")
+    xml_content = _text_large(url)
+    if not xml_content:
+        return {}
+
+    # Strip XML namespaces so ElementTree can parse cleanly
+    xml_clean = re.sub(r'\s+xmlns(?::\w+)?="[^"]*"', "", xml_content)
+    xml_clean = re.sub(r'\s+\w+:schemaLocation="[^"]*"', "", xml_clean)
+    xml_clean = re.sub(r"<(\w+):(\w[\w.-]*)",  r"<\2",  xml_clean)
+    xml_clean = re.sub(r"</(\w+):(\w[\w.-]*)", r"</\2", xml_clean)
+
+    try:
+        root = ET.fromstring(xml_clean)
+    except ET.ParseError:
+        return {}
+
+    rows = root.findall(".//infoTable") or root.findall(".//InfoTable")
+    if not rows:
+        return {}
+
+    # Aggregate by CUSIP (same position may appear under multiple discretion types)
+    by_cusip: dict[str, dict] = {}
+    for row in rows:
+        name  = (row.findtext("nameOfIssuer") or "").strip()
+        cusip = (row.findtext("cusip") or "").strip()
+        title = (row.findtext("titleOfClass") or "").strip()
+        val_el = row.find("value")
+        if val_el is None or not (val_el.text or "").strip():
+            continue
+        try:
+            raw = int(val_el.text.strip().replace(",", ""))
+        except ValueError:
+            continue
+        value_usd = raw if use_dollars else raw * 1000
+        if value_usd <= 0:
+            continue
+
+        shares_el = row.find(".//sshPrnamt")
+        shares = 0
+        if shares_el is not None and shares_el.text:
+            try:
+                shares = int(shares_el.text.strip().replace(",", ""))
+            except ValueError:
+                pass
+
+        key = cusip or name
+        if key not in by_cusip:
+            by_cusip[key] = {
+                "name":       name,
+                "cusip":      cusip,
+                "title":      title,
+                "value_usd":  0,
+                "shares":     0,
+            }
+        by_cusip[key]["value_usd"] += value_usd
+        by_cusip[key]["shares"]    += shares
+
+    if not by_cusip:
+        return {}
+
+    # Sort all positions descending by value
+    sorted_positions = sorted(
+        by_cusip.values(), key=lambda x: x["value_usd"], reverse=True
+    )
+    denom = total_value_usd or sum(p["value_usd"] for p in sorted_positions)
+
+    def _fmt(v: int) -> str:
+        if v >= 1_000_000_000:
+            return f"${v / 1e9:.2f}B"
+        if v >= 1_000_000:
+            return f"${v / 1e6:.1f}M"
+        return f"${v / 1_000:.0f}K"
+
+    # Build top-N holdings list
+    top_holdings = []
+    for i, pos in enumerate(sorted_positions[:top_n], 1):
+        pct = round(pos["value_usd"] / denom * 100, 2) if denom else None
+        top_holdings.append({
+            "rank":             i,
+            "name":             pos["name"],
+            "cusip":            pos["cusip"],
+            "value_usd":        pos["value_usd"],
+            "value_fmt":        _fmt(pos["value_usd"]),
+            "pct_of_portfolio": pct,
+            "shares":           pos["shares"] or None,
+            "asset_class":      _detect_asset_class(pos["name"], pos["title"]),
+        })
+
+    # Asset class breakdown (over ALL positions, not just top-N)
+    asset_totals: dict[str, dict] = {}
+    for pos in sorted_positions:
+        cls = _detect_asset_class(pos["name"], pos["title"])
+        if cls not in asset_totals:
+            asset_totals[cls] = {"value_usd": 0, "count": 0}
+        asset_totals[cls]["value_usd"] += pos["value_usd"]
+        asset_totals[cls]["count"]     += 1
+
+    asset_breakdown = {
+        cls: {
+            "value_fmt": _fmt(data["value_usd"]),
+            "pct":       round(data["value_usd"] / denom * 100, 1) if denom else 0,
+            "count":     data["count"],
+        }
+        for cls, data in sorted(
+            asset_totals.items(), key=lambda x: -x[1]["value_usd"]
+        )
+    }
+
+    # Concentration metrics
+    top10_val = sum(p["value_usd"] for p in sorted_positions[:10])
+    top25_val = sum(p["value_usd"] for p in sorted_positions[:25])
+    concentration = {
+        "top_10_pct":      round(top10_val / denom * 100, 1) if denom else None,
+        "top_25_pct":      round(top25_val / denom * 100, 1) if denom else None,
+        "total_positions": len(sorted_positions),
+    }
+
+    print(
+        f"[ADV Enrichment] Holdings parsed — "
+        f"{len(sorted_positions)} unique positions, "
+        f"top 10 = {concentration['top_10_pct']}% of portfolio"
+    )
+    return {
+        "top_holdings":          top_holdings,
+        "asset_class_breakdown": asset_breakdown,
+        "concentration":         concentration,
+    }
+
+
 # ── 13F portfolio value (proxy AUM for public equity managers) ─────────────────
 
 def _find_cik_for_13f(firm_name: str) -> Optional[str]:
@@ -285,6 +494,21 @@ def _get_13f_portfolio_value(firm_name: str) -> dict:
         )
     else:
         result["note"] = "13F filing found but could not extract total portfolio value from XML"
+        return result
+
+    # Step 5: parse individual holdings from infotable XML
+    period = filing["period_of_report"] or ""
+    use_dollars = period >= "2024-12-31"
+    infotable = _infotable_file_from_filing(cik, acc)
+    if infotable and result.get("portfolio_value_usd"):
+        holdings_data = _parse_13f_holdings(
+            cik, acc, infotable,
+            use_dollars=use_dollars,
+            total_value_usd=result["portfolio_value_usd"],
+        )
+        result["holdings_breakdown"] = holdings_data
+    else:
+        result["holdings_breakdown"] = {}
 
     return result
 

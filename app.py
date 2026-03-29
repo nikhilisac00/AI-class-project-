@@ -792,6 +792,107 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             "US public equity positions only — not total regulatory AUM"
         )
 
+    # ── 13F Holdings Breakdown ────────────────────────────────────────────
+    holdings_data = tf.get("holdings_breakdown", {})
+    if holdings_data:
+        import plotly.graph_objects as go  # noqa: F811
+
+        top_h    = holdings_data.get("top_holdings", [])
+        ac_break = holdings_data.get("asset_class_breakdown", {})
+        conc     = holdings_data.get("concentration", {})
+
+        st.markdown("---")
+        st.subheader("13F Holdings Breakdown")
+
+        # ── Concentration metric cards ────────────────────────────────────
+        hc1, hc2, hc3 = st.columns(3)
+        hc1.metric(
+            "Total Positions",
+            str(conc.get("total_positions", "—")),
+            help="Unique issuers after aggregating all investment discretion types",
+        )
+        hc2.metric(
+            "Top 10 Concentration",
+            f"{conc['top_10_pct']}%" if conc.get("top_10_pct") is not None else "—",
+            help="% of portfolio held in the 10 largest positions",
+        )
+        hc3.metric(
+            "Top 25 Concentration",
+            f"{conc['top_25_pct']}%" if conc.get("top_25_pct") is not None else "—",
+            help="% of portfolio held in the 25 largest positions",
+        )
+
+        # ── Charts: bar + pie side by side ───────────────────────────────
+        col_bar, col_pie = st.columns([3, 2])
+
+        with col_bar:
+            if top_h:
+                top10 = top_h[:10]
+                bar_names = [h["name"][:30] for h in reversed(top10)]
+                bar_vals  = [round(h["value_usd"] / 1e6, 1) for h in reversed(top10)]
+                bar_fig = go.Figure(go.Bar(
+                    x=bar_vals,
+                    y=bar_names,
+                    orientation="h",
+                    marker_color="#2980b9",
+                    text=[f"${v:.0f}M" for v in bar_vals],
+                    textposition="outside",
+                ))
+                bar_fig.update_layout(
+                    title="Top 10 Positions by Value",
+                    xaxis_title="Value (USD millions)",
+                    height=360,
+                    margin=dict(l=10, r=60, t=45, b=10),
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                )
+                bar_fig.update_xaxes(gridcolor="#eee")
+                st.plotly_chart(bar_fig, use_container_width=True)
+
+        with col_pie:
+            if ac_break:
+                pie_labels = list(ac_break.keys())
+                pie_vals   = [ac_break[k]["pct"] for k in pie_labels]
+                pie_fig = go.Figure(go.Pie(
+                    labels=pie_labels,
+                    values=pie_vals,
+                    hole=0.4,
+                    textinfo="label+percent",
+                    hovertemplate="%{label}: %{value:.1f}%<extra></extra>",
+                ))
+                pie_fig.update_layout(
+                    title="Asset Class Breakdown",
+                    height=360,
+                    margin=dict(l=10, r=10, t=45, b=10),
+                    showlegend=False,
+                    paper_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(pie_fig, use_container_width=True)
+
+        # ── Full top-25 holdings table ────────────────────────────────────
+        if top_h:
+            import pandas as pd
+            with st.expander(f"Top {len(top_h)} Holdings Table"):
+                df = pd.DataFrame([
+                    {
+                        "Rank":        h["rank"],
+                        "Name":        h["name"],
+                        "CUSIP":       h["cusip"],
+                        "Value":       h["value_fmt"],
+                        "% Portfolio": f"{h['pct_of_portfolio']:.2f}%"
+                                       if h.get("pct_of_portfolio") is not None else "—",
+                        "Shares":      f"{h['shares']:,}" if h.get("shares") else "—",
+                        "Asset Class": h["asset_class"],
+                    }
+                    for h in top_h
+                ])
+                st.dataframe(df, use_container_width=True, hide_index=True)
+
+        st.caption(
+            "Source: SEC EDGAR 13F Information Table · Latest quarter only · "
+            "Aggregated by CUSIP across all investment discretion types"
+        )
+
     # ── Results Tabs ──────────────────────────────────────────────────────
     st.markdown("---")
     tab_scorecard, tab_risk, tab_funds, tab_news, tab_memo, tab_pal, tab_raw = st.tabs([
