@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import agents.data_ingestion  as ingestion_agent  # noqa: E402
 import agents.fund_analysis   as analysis_agent   # noqa: E402
+import agents.news_research   as news_agent       # noqa: E402
 import agents.risk_flagging   as risk_agent       # noqa: E402
 import agents.memo_generation as memo_agent       # noqa: E402
 from tools.llm_client import make_client          # noqa: E402
@@ -66,6 +67,23 @@ with st.sidebar:
         type="password",
         help="Free at fred.stlouisfed.org. Adds macro rates/spreads to memo.",
     )
+
+    tavily_key = st.text_input(
+        "Tavily API Key (optional — free tier)",
+        value=os.getenv("TAVILY_API_KEY", ""),
+        type="password",
+        help="Free at tavily.com (1,000 searches/month). Falls back to DuckDuckGo if blank.",
+    )
+
+    run_news = st.toggle(
+        "Deep News Research",
+        value=True,
+        help="Karpathy autoresearch loop: iterative web research on the manager.",
+    )
+    if run_news:
+        news_rounds = st.slider("Research rounds", min_value=1, max_value=5, value=3)
+    else:
+        news_rounds = 3
 
     st.divider()
 
@@ -141,30 +159,61 @@ if run_button:
     progress_bar = st.progress(0, text="Starting...")
     status_box   = st.empty()
 
-    raw_data = analysis = risk_report = memo = pal_review = None
+    raw_data = analysis = risk_report = memo = pal_review = news_report = None
 
     try:
-        status_box.info("Step 1/5 — Ingesting: IAPD · EDGAR 13F XML · FRED...")
+        total_steps = 4 + (1 if run_news else 0) + (1 if use_pal and pal_status else 0)
+        step = [0]
+
+        def _pct(n): return int(n / total_steps * 100)
+
+        status_box.info("Step 1 — Ingesting: IAPD · EDGAR 13F XML · FRED...")
         progress_bar.progress(5, text="Ingesting...")
         raw_data = ingestion_agent.run(firm_input.strip(), fred_api_key=fred_key or None)
-        progress_bar.progress(30, text="Ingestion complete")
+        step[0] += 1
+        progress_bar.progress(_pct(step[0]), text="Ingestion complete")
 
         if raw_data.get("errors"):
             st.warning("Ingestion notes: " + " | ".join(raw_data["errors"]))
 
-        status_box.info("Step 2/5 — Fund analysis (OpenAI o3 reasoning)...")
-        progress_bar.progress(35, text="Analyzing...")
+        status_box.info("Step 2 — Fund analysis (OpenAI o3 reasoning)...")
         analysis = analysis_agent.run(raw_data, client)
-        progress_bar.progress(55, text="Analysis complete")
+        step[0] += 1
+        progress_bar.progress(_pct(step[0]), text="Analysis complete")
 
-        status_box.info("Step 3/5 — Risk flagging (OpenAI o3 reasoning)...")
-        progress_bar.progress(58, text="Flagging risks...")
-        risk_report = risk_agent.run(analysis, raw_data, client)
-        progress_bar.progress(75, text="Risk flagging complete")
+        firm_name_resolved = (
+            (analysis or {}).get("firm_overview", {}).get("name")
+            or firm_input.strip()
+        )
+
+        if run_news:
+            search_backend = "Tavily" if tavily_key else "DuckDuckGo"
+            status_box.info(
+                f"Step 3 — Deep news research ({news_rounds} rounds · {search_backend})..."
+            )
+            news_report = news_agent.run(
+                firm_name=firm_name_resolved,
+                analysis=analysis,
+                client=client,
+                tavily_api_key=tavily_key or None,
+                max_rounds=news_rounds,
+            )
+            step[0] += 1
+            progress_bar.progress(_pct(step[0]), text=(
+                f"News research complete — "
+                f"{news_report['research_rounds']} rounds, "
+                f"{news_report['total_sources']} sources"
+            ))
+            if news_report.get("errors"):
+                st.warning("News research notes: " + " | ".join(news_report["errors"]))
+
+        status_box.info("Step — Risk flagging (OpenAI o3 reasoning)...")
+        risk_report = risk_agent.run(analysis, raw_data, client, news_report=news_report)
+        step[0] += 1
+        progress_bar.progress(_pct(step[0]), text="Risk flagging complete")
 
         if use_pal and pal_status:
             status_box.info("PAL — Multi-model consensus (Gemini-3-Pro)...")
-            progress_bar.progress(77, text="PAL consensus...")
             pal_review = call_consensus(
                 question=(
                     "Validate these LP due diligence risk flags. "
@@ -172,11 +221,12 @@ if run_button:
                 ),
                 content=json.dumps(risk_report, indent=2, default=str),
             )
-            progress_bar.progress(85, text="PAL complete")
+            step[0] += 1
+            progress_bar.progress(_pct(step[0]), text="PAL complete")
 
-        status_box.info("Step 4/5 — Generating DD memo (OpenAI o3 reasoning)...")
-        progress_bar.progress(87, text="Generating memo...")
-        memo = memo_agent.run(analysis, risk_report, raw_data, client)
+        status_box.info("Step — Generating DD memo (OpenAI o3 reasoning)...")
+        memo = memo_agent.run(analysis, risk_report, raw_data, client,
+                              news_report=news_report)
         progress_bar.progress(100, text="Done")
         status_box.success("Analysis complete.")
 
@@ -340,8 +390,8 @@ if run_button:
 
     # ── ⑥ Results Tabs ────────────────────────────────────────────────────────
     st.markdown("---")
-    tab_risk, tab_memo, tab_pal, tab_raw = st.tabs([
-        "Risk Dashboard", "DD Memo", "PAL Consensus", "Raw Data",
+    tab_risk, tab_news, tab_memo, tab_pal, tab_raw = st.tabs([
+        "Risk Dashboard", "News Research", "DD Memo", "PAL Consensus", "Raw Data",
     ])
 
     # ─ Risk Dashboard ──────────────────────────────────────────────────────────
@@ -398,6 +448,92 @@ if run_button:
                         st.markdown(f"- {c}")
         else:
             st.warning("Risk report not available.")
+
+    # ─ News Research ───────────────────────────────────────────────────────────
+    with tab_news:
+        if news_report and (news_report.get("findings") or news_report.get("news_summary")):
+            nr = news_report
+            overall_nr = nr.get("overall_news_risk", "UNKNOWN")
+            nr_color = _tier_color(overall_nr)
+
+            st.markdown(
+                f'<div style="background:{nr_color};color:#fff;padding:10px 16px;'
+                f'border-radius:6px;font-size:1.1rem;font-weight:700;margin-bottom:12px">'
+                f'News Risk: {overall_nr}</div>',
+                unsafe_allow_html=True,
+            )
+
+            meta_cols = st.columns(3)
+            meta_cols[0].metric("Research Rounds", nr.get("research_rounds", 0))
+            meta_cols[1].metric("Sources Consulted", nr.get("total_sources", 0))
+            meta_cols[2].metric("News Flags", len(nr.get("news_flags", [])))
+
+            if nr.get("news_summary"):
+                st.info(nr["news_summary"])
+
+            # News flags
+            flags = nr.get("news_flags", [])
+            if flags:
+                order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "INFO": 3}
+                flags_sorted = sorted(flags, key=lambda f: order.get(f.get("severity", ""), 9))
+                st.subheader(f"News Flags ({len(flags_sorted)})")
+                for f in flags_sorted:
+                    sev = f.get("severity", "INFO")
+                    sev_c = _sev_color(sev) if sev != "INFO" else "#7f8c8d"
+                    label = (
+                        f'<span style="background:{sev_c};color:#fff;padding:1px 7px;'
+                        f'border-radius:3px;font-size:0.75rem;font-weight:600;margin-right:6px">'
+                        f'{sev}</span>'
+                        f'[{f.get("category","")}] {f.get("finding","")[:90]}'
+                    )
+                    with st.expander(label, expanded=(sev == "HIGH")):
+                        st.markdown(f"**Finding:** {f.get('finding', '')}")
+                        if f.get("source_url"):
+                            st.markdown(f"**Source:** [{f['source_url']}]({f['source_url']})")
+                        if f.get("date"):
+                            st.markdown(f"**Date:** {f['date']}")
+                        if f.get("lp_action"):
+                            st.markdown(f"**LP Action:** {f['lp_action']}")
+            else:
+                st.success("No material news flags identified.")
+
+            # Coverage gaps
+            gaps = nr.get("coverage_gaps", [])
+            if gaps:
+                with st.expander("Coverage Gaps"):
+                    for g in gaps:
+                        st.markdown(f"- {g}")
+
+            # Sources
+            sources = nr.get("sources_consulted", [])
+            if sources:
+                with st.expander(f"Sources Consulted ({len(sources)})"):
+                    import pandas as pd
+                    df_s = pd.DataFrame([{
+                        "Title": s.get("title", "")[:80],
+                        "URL":   s.get("url", ""),
+                        "Date":  s.get("published_date") or "—",
+                    } for s in sources])
+                    st.dataframe(df_s, use_container_width=True, hide_index=True)
+
+            # Queries used
+            queries = nr.get("queries_used", [])
+            if queries:
+                with st.expander(f"Search Queries Used ({len(queries)})"):
+                    for q in queries:
+                        st.markdown(f"- `{q}`")
+
+            if nr.get("errors"):
+                with st.expander("Errors / Warnings"):
+                    for e in nr["errors"]:
+                        st.warning(e)
+
+        elif not run_news:
+            st.info(
+                "News research was skipped. Enable **Deep News Research** in the sidebar."
+            )
+        else:
+            st.warning("News research produced no results.")
 
     # ─ DD Memo ─────────────────────────────────────────────────────────────────
     with tab_memo:

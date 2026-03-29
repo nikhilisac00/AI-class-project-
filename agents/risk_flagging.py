@@ -19,7 +19,20 @@ CRITICAL RULES:
 5. Keep it factual. IC teams act on these flags."""
 
 
-def run(analysis: dict, raw_data: dict, client: LLMClient) -> dict:
+def run(analysis: dict, raw_data: dict, client: LLMClient,
+        news_report: dict = None) -> dict:
+    news_block = ""
+    if news_report and news_report.get("findings"):
+        news_block = f"""
+<news_findings>
+{json.dumps({
+    "news_summary":      news_report.get("news_summary"),
+    "overall_news_risk": news_report.get("overall_news_risk"),
+    "news_flags":        news_report.get("news_flags", []),
+    "coverage_gaps":     news_report.get("coverage_gaps", []),
+}, indent=2, default=str)}
+</news_findings>"""
+
     user_message = f"""
 Review the following investment adviser analysis and identify risk flags for LP due diligence.
 
@@ -29,7 +42,7 @@ Review the following investment adviser analysis and identify risk flags for LP 
 
 <raw_data_errors>
 {json.dumps(raw_data.get("errors", []), indent=2)}
-</raw_data_errors>
+</raw_data_errors>{news_block}
 
 Return ONLY a JSON object:
 {{

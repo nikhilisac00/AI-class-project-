@@ -28,6 +28,7 @@ from rich.table import Table
 
 import agents.data_ingestion as ingestion_agent
 import agents.fund_analysis as analysis_agent
+import agents.news_research as news_agent
 import agents.risk_flagging as risk_agent
 import agents.memo_generation as memo_agent
 from tools.llm_client import make_client
@@ -122,17 +123,31 @@ def main():
         action="store_true",
         help="Only run data ingestion, skip Claude analysis",
     )
+    parser.add_argument(
+        "--no-news",
+        action="store_true",
+        help="Skip news research agent (faster; requires no TAVILY_API_KEY)",
+    )
+    parser.add_argument(
+        "--news-rounds",
+        type=int,
+        default=3,
+        help="Max research rounds for news agent (default: 3)",
+    )
     args = parser.parse_args()
 
     api_key = validate_env()
     client  = make_client(api_key)
     fred_key = None if args.no_fred else os.getenv("FRED_API_KEY")
 
+    tavily_key = os.getenv("TAVILY_API_KEY")
+
     console.print(Panel(
         f"[bold]AI Alternatives Research Associate[/]\n"
         f"Target: [cyan]{args.firm}[/]\n"
         f"Model: OpenAI o3 (reasoning mode)\n"
-        f"Sources: IAPD · SEC EDGAR · {'FRED' if not args.no_fred else 'FRED skipped'}",
+        f"Sources: IAPD · SEC EDGAR · {'FRED' if not args.no_fred else 'FRED skipped'}"
+        f" · {'News (' + ('Tavily' if tavily_key else 'DuckDuckGo') + ')' if not args.no_news else 'News skipped'}",
         title="Starting Analysis",
         expand=False,
     ))
@@ -162,32 +177,75 @@ def main():
         return
 
     # ── Agent 2: Fund Analysis ────────────────────────────────────────────────
+
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Running fund analysis (OpenAI o3 reasoning)...", total=None)
         analysis = analysis_agent.run(raw_data, client)
         p.update(task, description="Fund analysis complete", completed=True)
 
-    # ── Agent 3: Risk Flagging ────────────────────────────────────────────────
+    # ── Agent 3: News Research (Karpathy autoresearch) ────────────────────────
+    news_report = None
+    if not args.no_news:
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
+                      console=console) as p:
+            task = p.add_task(
+                f"Deep news research ({args.news_rounds} rounds, "
+                f"{'Tavily' if tavily_key else 'DuckDuckGo'})...",
+                total=None,
+            )
+            news_report = news_agent.run(
+                firm_name=firm_name,
+                analysis=analysis,
+                client=client,
+                tavily_api_key=tavily_key,
+                max_rounds=args.news_rounds,
+            )
+            p.update(task, description=(
+                f"News research complete — "
+                f"{news_report['research_rounds']} rounds, "
+                f"{news_report['total_sources']} sources"
+            ), completed=True)
+
+        if news_report.get("errors"):
+            console.print(f"\n[yellow]News research warnings:[/] {news_report['errors']}")
+
+        risk_color = {"HIGH": "red", "MEDIUM": "yellow", "LOW": "green"}.get(
+            news_report.get("overall_news_risk", ""), "white"
+        )
+        console.print(
+            f"\n[bold {risk_color}]News Risk: "
+            f"{news_report.get('overall_news_risk', 'UNKNOWN')}[/] — "
+            f"{len(news_report.get('news_flags', []))} flags, "
+            f"{news_report.get('total_sources', 0)} sources"
+        )
+
+    # ── Agent 4: Risk Flagging ────────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Running risk flagging (OpenAI o3 reasoning)...", total=None)
-        risk_report = risk_agent.run(analysis, raw_data, client)
+        risk_report = risk_agent.run(analysis, raw_data, client, news_report=news_report)
         p.update(task, description="Risk flagging complete", completed=True)
 
     print_risk_summary(risk_report)
 
-    # ── Agent 4: Memo Generation ──────────────────────────────────────────────
+    # ── Agent 5: Memo Generation ──────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Generating DD memo (OpenAI o3 reasoning)...", total=None)
-        memo = memo_agent.run(analysis, risk_report, raw_data, client)
+        memo = memo_agent.run(analysis, risk_report, raw_data, client,
+                              news_report=news_report)
         p.update(task, description="Memo generation complete", completed=True)
 
     # ── Save outputs ──────────────────────────────────────────────────────────
     memo_path = save_outputs(
         firm_name, raw_data, analysis, risk_report, memo, args.output_dir
     )
+    if news_report:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_name = "".join(c if c.isalnum() or c in "_ -" else "_" for c in firm_name)[:40]
+        news_path = Path(args.output_dir) / f"{ts}_{safe_name}_news_report.json"
+        news_path.write_text(json.dumps(news_report, indent=2, default=str), encoding="utf-8")
 
     console.print(Panel(
         f"[bold green]Done.[/]\n"

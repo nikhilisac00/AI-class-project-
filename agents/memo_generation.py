@@ -52,8 +52,27 @@ Every numerical claim must trace back to the analysis data above.
 """
 
 
-def run(analysis: dict, risk_report: dict, raw_data: dict, client: LLMClient) -> str:
+def run(analysis: dict, risk_report: dict, raw_data: dict, client: LLMClient,
+        news_report: dict = None) -> str:
     today = date.today().strftime("%B %d, %Y")
+
+    news_block = ""
+    if news_report and news_report.get("findings"):
+        news_block = f"""
+<news_report>
+{json.dumps({
+    "news_summary":      news_report.get("news_summary"),
+    "overall_news_risk": news_report.get("overall_news_risk"),
+    "news_flags":        news_report.get("news_flags", []),
+    "sources_consulted": len(news_report.get("sources_consulted", [])),
+    "research_rounds":   news_report.get("research_rounds"),
+    "coverage_gaps":     news_report.get("coverage_gaps", []),
+}, indent=2, default=str)}
+</news_report>
+
+Note: Section 2 (Executive Summary) and a new Section 8a (News & Press) should incorporate
+news_report findings. Cite source URLs inline. If overall_news_risk is HIGH or MEDIUM,
+surface news flags prominently in Section 7 (Risk Flags)."""
 
     user_message = f"""
 Today's date: {today}
@@ -69,7 +88,7 @@ Today's date: {today}
 <data_errors>
 {json.dumps(raw_data.get("errors", []), indent=2)}
 </data_errors>
-
+{news_block}
 {MEMO_TEMPLATE}
 """
 
