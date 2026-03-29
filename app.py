@@ -1260,36 +1260,66 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             if flags:
                 order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
                 flags_sorted = sorted(flags, key=lambda f: order.get(f.get("severity", ""), 9))
-                st.subheader(f"Risk Flags ({len(flags_sorted)})")
+                st.markdown(f"#### Risk Flags &nbsp; `{len(flags_sorted)}`")
                 for f in flags_sorted:
                     sev   = f.get("severity", "")
                     sev_c = _sev_color(sev)
-                    label = (
-                        f'<span style="background:{sev_c};color:#fff;padding:1px 7px;'
-                        f'border-radius:3px;font-size:0.75rem;font-weight:600;margin-right:6px">'
-                        f'{sev}</span>'
-                        f'[{f.get("category","")}] {f.get("finding","")[:90]}'
-                    )
-                    with st.expander(label, expanded=(sev == "HIGH")):
-                        st.markdown(f"**Finding:** {f.get('finding','')}")
-                        st.markdown(f"**Evidence:** {f.get('evidence','')}")
-                        st.markdown(f"**LP Action:** {f.get('lp_action','')}")
+                    cat   = f.get("category", "")
+                    finding  = f.get("finding", "")
+                    evidence = f.get("evidence", "")
+                    action   = f.get("lp_action", "")
+                    st.markdown(f"""
+                    <div style="border:1px solid #e8ecf0;border-left:4px solid {sev_c};
+                                border-radius:8px;padding:16px 18px;margin-bottom:10px;
+                                background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+                      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                        <span style="background:{sev_c};color:#fff;padding:3px 10px;
+                                     border-radius:12px;font-size:0.72rem;font-weight:700;
+                                     letter-spacing:0.05em;text-transform:uppercase">{sev}</span>
+                        <span style="background:#f0f4f8;color:#4a5568;padding:3px 10px;
+                                     border-radius:12px;font-size:0.72rem;font-weight:600">{cat}</span>
+                      </div>
+                      <div style="font-size:0.92rem;font-weight:600;color:#0f1923;
+                                  margin-bottom:10px;line-height:1.5">{finding}</div>
+                      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                        <div style="background:#f7f9fc;border-radius:6px;padding:10px 12px">
+                          <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;
+                                      letter-spacing:0.07em;color:#8fa3bb;margin-bottom:4px">Evidence</div>
+                          <div style="font-size:0.80rem;color:#4a5568;line-height:1.5">{evidence}</div>
+                        </div>
+                        <div style="background:#fff8f0;border-radius:6px;padding:10px 12px">
+                          <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;
+                                      letter-spacing:0.07em;color:#b06010;margin-bottom:4px">LP Action</div>
+                          <div style="font-size:0.80rem;color:#4a5568;line-height:1.5">{action}</div>
+                        </div>
+                      </div>
+                    </div>
+                    """, unsafe_allow_html=True)
             else:
                 st.success("No risk flags identified from available public data.")
 
+            st.markdown("---")
             col_gaps, col_clean = st.columns(2)
             with col_gaps:
                 gaps = risk_report.get("critical_data_gaps", [])
                 if gaps:
-                    st.subheader("Critical Data Gaps")
+                    st.markdown("#### Critical Data Gaps")
                     for g in gaps:
-                        st.markdown(f"- {g}")
+                        st.markdown(f"""
+                        <div style="display:flex;gap:8px;margin-bottom:6px;align-items:flex-start">
+                          <span style="color:#b03030;font-size:0.85rem;flex-shrink:0;margin-top:2px">⚠</span>
+                          <span style="font-size:0.83rem;color:#4a5568">{g}</span>
+                        </div>""", unsafe_allow_html=True)
             with col_clean:
                 clean = risk_report.get("clean_items", [])
                 if clean:
-                    st.subheader("Clean Items")
+                    st.markdown("#### Clean Items")
                     for c in clean:
-                        st.markdown(f"- {c}")
+                        st.markdown(f"""
+                        <div style="display:flex;gap:8px;margin-bottom:6px;align-items:flex-start">
+                          <span style="color:#1a7a4a;font-size:0.85rem;flex-shrink:0;margin-top:2px">✓</span>
+                          <span style="font-size:0.83rem;color:#4a5568">{c}</span>
+                        </div>""", unsafe_allow_html=True)
         else:
             st.warning("Risk report not available.")
 
@@ -1412,24 +1442,40 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             if flags:
                 order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "INFO": 3}
                 flags_sorted = sorted(flags, key=lambda f: order.get(f.get("severity", ""), 9))
-                st.subheader(f"News Flags ({len(flags_sorted)})")
+                st.markdown(f"#### News Flags &nbsp; `{len(flags_sorted)}`")
                 for f in flags_sorted:
                     sev   = f.get("severity", "INFO")
                     sev_c = _sev_color(sev) if sev != "INFO" else "#7f8c8d"
-                    label = (
-                        f'<span style="background:{sev_c};color:#fff;padding:1px 7px;'
-                        f'border-radius:3px;font-size:0.75rem;font-weight:600;margin-right:6px">'
-                        f'{sev}</span>'
-                        f'[{f.get("category","")}] {f.get("finding","")[:90]}'
-                    )
-                    with st.expander(label, expanded=(sev == "HIGH")):
-                        st.markdown(f"**Finding:** {f.get('finding', '')}")
-                        if f.get("source_url"):
-                            st.markdown(f"**Source:** [{f['source_url']}]({f['source_url']})")
-                        if f.get("date"):
-                            st.markdown(f"**Date:** {f['date']}")
-                        if f.get("lp_action"):
-                            st.markdown(f"**LP Action:** {f['lp_action']}")
+                    cat   = f.get("category", "")
+                    finding = f.get("finding", "")
+                    source  = f.get("source_url", "")
+                    date    = f.get("date", "")
+                    action  = f.get("lp_action", "")
+                    source_html = (
+                        f'<a href="{source}" target="_blank" style="color:#1a3d6e;font-size:0.78rem">'
+                        f'{source[:60]}{"…" if len(source) > 60 else ""}</a>'
+                    ) if source else "—"
+                    meta_html = " &nbsp;·&nbsp; ".join(filter(None, [
+                        f'<span style="font-size:0.75rem;color:#8fa3bb">{date}</span>' if date else "",
+                        source_html if source else "",
+                    ]))
+                    st.markdown(f"""
+                    <div style="border:1px solid #e8ecf0;border-left:4px solid {sev_c};
+                                border-radius:8px;padding:16px 18px;margin-bottom:10px;
+                                background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+                      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                        <span style="background:{sev_c};color:#fff;padding:3px 10px;
+                                     border-radius:12px;font-size:0.72rem;font-weight:700;
+                                     letter-spacing:0.05em;text-transform:uppercase">{sev}</span>
+                        <span style="background:#f0f4f8;color:#4a5568;padding:3px 10px;
+                                     border-radius:12px;font-size:0.72rem;font-weight:600">{cat}</span>
+                        <span style="margin-left:auto">{meta_html}</span>
+                      </div>
+                      <div style="font-size:0.92rem;font-weight:600;color:#0f1923;
+                                  margin-bottom:8px;line-height:1.5">{finding}</div>
+                      {f'<div style="background:#fff8f0;border-radius:6px;padding:10px 12px;margin-top:8px"><div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#b06010;margin-bottom:4px">LP Action</div><div style="font-size:0.80rem;color:#4a5568;line-height:1.5">{action}</div></div>' if action else ''}
+                    </div>
+                    """, unsafe_allow_html=True)
             else:
                 st.success("No material news flags identified.")
 
