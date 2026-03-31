@@ -549,7 +549,7 @@ if run_button:
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Comparables complete")
 
-        status_box.info("Step — Research Director review (o3 reasoning)...")
+        status_box.info("Step — Research Director review (Claude reasoning)...")
         director_review = director_agent.run(
             analysis, risk_report, raw_data, scorecard, client,
             news_report=news_report,

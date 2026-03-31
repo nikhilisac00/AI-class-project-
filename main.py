@@ -283,7 +283,7 @@ def main():
     # ── Agent 8: Research Director ────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Research Director review (OpenAI o3 reasoning)...", total=None)
+        task = p.add_task("Research Director review (Claude reasoning)...", total=None)
         director_review = director_agent.run(
             analysis, risk_report, raw_data, scorecard, client,
             news_report=news_report,
