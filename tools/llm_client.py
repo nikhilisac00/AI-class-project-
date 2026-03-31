@@ -49,15 +49,18 @@ class LLMClient:
 
     def chat(self, messages: list[dict], max_tokens: int = 2000) -> str:
         """
-        Fast conversational completion using gpt-4o.
+        Fast conversational completion using claude-haiku-4-5.
         messages: list of {"role": "system"|"user"|"assistant", "content": str}
         """
-        response = self._client.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
+        system = next((m["content"] for m in messages if m["role"] == "system"), "")
+        convo = [m for m in messages if m["role"] != "system"]
+        message = self._client.messages.create(
+            model="claude-haiku-4-5-20251001",
             max_tokens=max_tokens,
+            system=system,
+            messages=convo,
         )
-        return (response.choices[0].message.content or "").strip()
+        return (message.content[0].text or "").strip()
 
 
 def make_client(api_key: str) -> LLMClient:
