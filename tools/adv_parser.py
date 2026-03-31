@@ -106,12 +106,13 @@ def _infotable_file_from_filing(cik: str, acc: str) -> Optional[str]:
     idx = lower.find("information table")
     if idx != -1:
         snippet = html[max(0, idx - 30): idx + 400]
-        hits = re.findall(r'href="[^"]*?/([^/\"]+\.xml)"', snippet, re.I)
+        # Handle both absolute paths (/Archives/.../file.xml) and relative (file.xml)
+        hits = re.findall(r'href="(?:[^"]*?/)?([^/\"]+\.xml)"', snippet, re.I)
         if hits:
             return hits[0]
 
     # Fallback: any .xml that isn't the primary doc or an xsl stylesheet
-    for name in re.findall(r'href="[^"]*?/([^/\"]+\.xml)"', html, re.I):
+    for name in re.findall(r'href="(?:[^"]*?/)?([^/\"]+\.xml)"', html, re.I):
         if name.lower() not in ("primary_doc.xml",) and "xsl" not in name.lower():
             return name
     return None
@@ -132,8 +133,12 @@ def _parse_13f_holdings(
     investmentDiscretion types (SOLE / SHARED / OTR).  We aggregate by CUSIP
     so each issuer appears once in the output.
 
-    Returns dict with: top_holdings, asset_class_breakdown, concentration.
-    Empty dict on failure.
+    Also detects possible confidential treatment: if the sum of all parsed
+    positions is materially less than the declared tableValueTotal, some
+    positions may have been omitted under a confidential treatment request.
+
+    Returns dict with: top_holdings, asset_class_breakdown, concentration,
+    possible_confidential_positions. Empty dict on failure.
     """
     acc_clean = acc.replace("-", "")
     url = (
@@ -256,15 +261,31 @@ def _parse_13f_holdings(
         "total_positions": len(sorted_positions),
     }
 
+    # Confidential treatment check: if parsed total is materially less than declared
+    # tableValueTotal, the firm likely received permission to omit certain positions.
+    parsed_total = sum(p["value_usd"] for p in sorted_positions)
+    possible_confidential = (
+        bool(total_value_usd)
+        and parsed_total < total_value_usd * 0.95
+    )
+    parsed_pct = (
+        round(parsed_total / total_value_usd * 100, 1)
+        if total_value_usd else None
+    )
+
     print(
         f"[ADV Enrichment] Holdings parsed — "
         f"{len(sorted_positions)} unique positions, "
         f"top 10 = {concentration['top_10_pct']}% of portfolio"
+        + (f", possible confidential treatment (parsed {parsed_pct}% of declared total)"
+           if possible_confidential else "")
     )
     return {
-        "top_holdings":          top_holdings,
-        "asset_class_breakdown": asset_breakdown,
-        "concentration":         concentration,
+        "top_holdings":               top_holdings,
+        "asset_class_breakdown":      asset_breakdown,
+        "concentration":              concentration,
+        "possible_confidential_positions": possible_confidential,
+        "parsed_pct_of_declared_total":    parsed_pct,
     }
 
 
@@ -285,7 +306,8 @@ def _find_cik_for_13f(firm_name: str) -> Optional[str]:
 
 def _latest_13f_from_submissions(cik: str) -> Optional[dict]:
     """
-    Use EDGAR submissions API to find the most recent 13F-HR filing.
+    Use EDGAR submissions API to find the most recent 13F-HR filing (or amendment).
+    Prefers 13F-HR/A over 13F-HR for the same reporting period.
     Returns dict with accession, filing_date, period_of_report or None.
     """
     url = SUBMISSIONS.format(cik=cik.lstrip("0").zfill(10))
@@ -297,14 +319,24 @@ def _latest_13f_from_submissions(cik: str) -> Optional[dict]:
     dates   = recent.get("filingDate", [])
     accs    = recent.get("accessionNumber", [])
     periods = recent.get("reportDate", [])
+
+    best = None
     for i, ft in enumerate(forms):
-        if ft == "13F-HR":
-            return {
-                "accession":       accs[i],
-                "filing_date":     dates[i],
+        if ft in ("13F-HR", "13F-HR/A"):
+            entry = {
+                "accession":        accs[i],
+                "filing_date":      dates[i]   if i < len(dates)   else None,
                 "period_of_report": periods[i] if i < len(periods) else None,
             }
-    return None
+            if best is None:
+                best = entry
+            elif ft.endswith("/A") and entry["period_of_report"] == best["period_of_report"]:
+                # Prefer the amendment for the same reporting period
+                best = entry
+            else:
+                # Submissions are newest-first; once past the latest period, stop
+                break
+    return best
 
 
 def _xml_file_from_filing(cik: str, acc: str) -> Optional[str]:
@@ -318,7 +350,7 @@ def _xml_file_from_filing(cik: str, acc: str) -> Optional[str]:
     if not html:
         return None
     # Look for primary_doc.xml (has tableValueTotal) but NOT inside xslForm subdir
-    for name in re.findall(r'href="[^"]*?/([^/\"]+\.xml)"', html, re.I):
+    for name in re.findall(r'href="(?:[^"]*?/)?([^/\"]+\.xml)"', html, re.I):
         if name.lower() == "primary_doc.xml":
             return name
     # Fallback to any .xml not in an xsl subdirectory
@@ -389,7 +421,7 @@ def _parse_13f_xml(cik: str, acc: str, xml_file: str, period: Optional[str]) -> 
 
 
 def _all_13f_from_submissions(cik: str, max_quarters: int = 8) -> list[dict]:
-    """Return up to max_quarters most recent 13F-HR filings from the submissions API."""
+    """Return up to max_quarters most recent 13F-HR filings, preferring amendments over originals."""
     url  = SUBMISSIONS.format(cik=cik.lstrip("0").zfill(10))
     data = _json(url)
     if not data:
@@ -400,24 +432,28 @@ def _all_13f_from_submissions(cik: str, max_quarters: int = 8) -> list[dict]:
     accs    = recent.get("accessionNumber", [])
     periods = recent.get("reportDate",    [])
 
-    results = []
+    # Deduplicate by reporting period — prefer 13F-HR/A over 13F-HR for same period
+    seen_periods: dict[str, dict] = {}
     for i, ft in enumerate(forms):
-        if ft == "13F-HR":
-            results.append({
+        if ft in ("13F-HR", "13F-HR/A"):
+            entry = {
                 "accession":        accs[i],
                 "filing_date":      dates[i]   if i < len(dates)   else None,
                 "period_of_report": periods[i] if i < len(periods) else None,
-            })
-            if len(results) >= max_quarters:
-                break
-    return results
+            }
+            period_key = entry["period_of_report"] or accs[i]
+            if period_key not in seen_periods or ft.endswith("/A"):
+                seen_periods[period_key] = entry
+        if len(seen_periods) >= max_quarters:
+            break
+    return list(seen_periods.values())
 
 
 def _fetch_13f_quarters(cik: str, n_quarters: int = 8) -> list[dict]:
     """
     Parse the last n_quarters of 13F-HR filings for a known CIK.
     Each item: {period, filing_date, accession, portfolio_value_usd,
-                portfolio_value_fmt, holdings_count}
+                portfolio_value_fmt, holdings_count, qoq_change_pct}
     Returns list sorted ascending by period.
     """
     filings = _all_13f_from_submissions(cik, max_quarters=n_quarters)
@@ -436,10 +472,20 @@ def _fetch_13f_quarters(cik: str, n_quarters: int = 8) -> list[dict]:
                     "portfolio_value_usd": parsed["portfolio_value_usd"],
                     "portfolio_value_fmt": parsed.get("portfolio_value_fmt"),
                     "holdings_count":      parsed.get("holdings_count"),
+                    "qoq_change_pct":      None,
                 })
         time.sleep(0.3)  # respect SEC rate limits
 
-    return sorted(history, key=lambda x: x.get("period") or "")
+    history.sort(key=lambda x: x.get("period") or "")
+
+    # Compute quarter-over-quarter portfolio value change
+    for i in range(1, len(history)):
+        prev = history[i - 1]["portfolio_value_usd"]
+        curr = history[i]["portfolio_value_usd"]
+        if prev:
+            history[i]["qoq_change_pct"] = round((curr - prev) / prev * 100, 1)
+
+    return history
 
 
 def _get_13f_portfolio_value(firm_name: str) -> dict:
@@ -466,15 +512,15 @@ def _get_13f_portfolio_value(firm_name: str) -> dict:
         return result
     result["cik"] = cik
 
-    # Step 2: get most recent 13F-HR accession via submissions API
+    # Step 2: get most recent 13F-HR accession via submissions API (prefers /A amendments)
     filing = _latest_13f_from_submissions(cik)
     if not filing:
         result["note"] = f"CIK {cik} found but no 13F-HR in recent submissions"
         return result
 
     acc    = filing["accession"]
-    result["accession"]       = acc
-    result["filing_date"]     = filing["filing_date"]
+    result["accession"]        = acc
+    result["filing_date"]      = filing["filing_date"]
     result["period_of_report"] = filing["period_of_report"]
 
     # Step 3: find the XML file via HTML index
@@ -620,6 +666,7 @@ def fetch_adv_data(firm_name: str, iacontent: dict = None) -> dict:
 
     Returns dict with:
       - thirteenf:       13F portfolio value data (proxy AUM for equity managers)
+      - thirteenf_history: QoQ history (up to 8 quarters, with qoq_change_pct)
       - disclosures:     Detailed disclosure events from IAPD iacontent
       - brochure:        ADV Part 2A brochure metadata
       - aum_note:        Explanation of AUM data availability

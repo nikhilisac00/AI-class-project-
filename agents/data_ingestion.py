@@ -10,6 +10,7 @@ from tools.edgar_client import (
     get_adviser_detail,
     extract_adv_summary,
     search_13f_filings,
+    search_13f_by_cik,
 )
 from tools.fred_client import get_market_context, latest_value
 
@@ -77,10 +78,10 @@ def run(firm_input: str, fred_api_key: str = None,
         else:
             raw_data["errors"].append(f"IAPD detail fetch failed for CRD {crd}")
 
-    # ── Step 3: Search 13F filings on EDGAR ─────────────────────────────────────────────
+    # ── Step 3: 13F filing list — name-based fallback (will be upgraded in Step 5b) ───────
     search_name = firm_input if not firm_input.isdigit() else raw_data["adv_summary"].get("firm_name", "")
     if search_name:
-        print(f"[Ingestion] Searching EDGAR for 13F filings: '{search_name}'")
+        print(f"[Ingestion] Searching EDGAR for 13F filings (name): '{search_name}'")
         filings = search_13f_filings(search_name, max_results=5)
         raw_data["filings_13f"] = filings
         if not filings:
@@ -115,6 +116,19 @@ def run(firm_input: str, fred_api_key: str = None,
             raw_data["errors"].append(f"ADV enrichment failed: {e}")
     else:
         raw_data["errors"].append("ADV enrichment: could not determine firm name")
+
+    # ── Step 5b: Upgrade 13F filing list using resolved CIK (more accurate than name search) ──
+    cik_from_13f = (raw_data.get("adv_xml_data", {}).get("thirteenf") or {}).get("cik")
+    if cik_from_13f:
+        print(f"[Ingestion] Re-fetching 13F filing list by CIK {cik_from_13f}")
+        filings_by_cik = search_13f_by_cik(cik_from_13f, max_results=5)
+        if filings_by_cik:
+            raw_data["filings_13f"] = filings_by_cik
+            # Clear the name-mismatch error if we now have results
+            raw_data["errors"] = [
+                e for e in raw_data["errors"]
+                if "No 13F filings found" not in e
+            ]
 
     # ── Step 6: Fund discovery (Form D + IAPD relying advisors + web) ──────────
     fund_disc_name = (
