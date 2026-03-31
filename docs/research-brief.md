@@ -82,21 +82,21 @@ Input: Fund name or CRD number
                      │ raw_data dict
                      ▼
 ┌─────────────────────────────────────────────┐
-│  Agent 2: Fund Analysis (OpenAI o3)         │
+│  Agent 2: Fund Analysis (Claude)            │
 │  Structured JSON: firm overview, fees,      │
 │  personnel, 13F data, macro context         │
 └────────────────────┬────────────────────────┘
                      │ analysis dict
                      ▼
 ┌─────────────────────────────────────────────┐
-│  Agent 3: Risk Flagging (OpenAI o3)         │
+│  Agent 3: Risk Flagging (Claude)            │
 │  LP DD risk flags: regulatory, key person,  │
 │  fee/structure, data gaps                   │
 └────────────────────┬────────────────────────┘
                      │ risk_report dict
                      ▼
 ┌─────────────────────────────────────────────┐
-│  Agent 4: Memo Generation (OpenAI o3)       │
+│  Agent 4: Memo Generation (Claude)          │
 │  11-section IC-ready DD memo in Markdown    │
 └────────────────────┬────────────────────────┘
                      │
@@ -136,5 +136,5 @@ The most critical requirement for financial AI is factual grounding. Our design:
 1. **All null by default** — every field initialized to `null`; only populated if found in API response
 2. **Explicit data gaps** — the memo includes a dedicated "DATA GAPS" section listing every null field
 3. **Source tracing** — every fact in the memo maps to a specific API call
-4. **No estimation** — system prompts explicitly forbid Claude/o3 from estimating missing values
+4. **No estimation** — system prompts explicitly forbid Claude from estimating missing values
 5. **LP action items** — data gaps surface as specific asks for the fund manager (audited financials, LPA, etc.)

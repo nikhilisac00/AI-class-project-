@@ -1,7 +1,7 @@
 """
 Fund Analysis Agent
 Takes raw_data from the ingestion agent and produces structured analysis.
-Uses LLMClient (Anthropic or OpenAI) — never invents numbers.
+Uses LLMClient (Anthropic Claude) — never invents numbers.
 """
 
 import json

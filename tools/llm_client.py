@@ -1,29 +1,28 @@
 """
-LLM Client — OpenAI o3 (reasoning model).
+LLM Client — Anthropic Claude (claude-sonnet-4-6).
 """
 
 import json
-import openai
+import anthropic
 
 
 class LLMClient:
     def __init__(self, api_key: str):
-        self._client = openai.OpenAI(api_key=api_key)
-        self.provider = "openai"
-        self.model = "o3"
+        self._client = anthropic.Anthropic(api_key=api_key)
+        self.provider = "anthropic"
+        self.model = "claude-sonnet-4-6"
 
     def complete(self, system: str, user: str,
                  max_tokens: int = 8000, **_) -> str:
-        response = self._client.chat.completions.create(
+        message = self._client.messages.create(
             model=self.model,
+            max_tokens=max_tokens,
+            system=system,
             messages=[
-                {"role": "developer", "content": system},
-                {"role": "user",      "content": user},
+                {"role": "user", "content": user},
             ],
-            max_completion_tokens=max_tokens,
-            reasoning_effort="high",
         )
-        return (response.choices[0].message.content or "").strip()
+        return (message.content[0].text or "").strip()
 
     def complete_json(self, system: str, user: str,
                       max_tokens: int = 8000, **_) -> dict:

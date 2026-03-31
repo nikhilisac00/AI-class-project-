@@ -35,9 +35,9 @@ No hallucination. Every fact in the memo traces to a real API response. Missing 
 ```
 app.py / main.py
 ├── Agent 1: Data Ingestion   → IAPD + EDGAR 13F XML + FRED (no LLM)
-├── Agent 2: Fund Analysis    → OpenAI o3 (reasoning model)
-├── Agent 3: Risk Flagging    → OpenAI o3 (reasoning model)
-└── Agent 4: Memo Generation  → OpenAI o3 (reasoning model)
+├── Agent 2: Fund Analysis    → Claude (claude-sonnet-4-6)
+├── Agent 3: Risk Flagging    → Claude (claude-sonnet-4-6)
+└── Agent 4: Memo Generation  → Claude (claude-sonnet-4-6)
 ```
 
 See [`docs/research-brief.md`](docs/research-brief.md) for full architecture and data source mapping.
@@ -51,7 +51,7 @@ See [`docs/research-brief.md`](docs/research-brief.md) for full architecture and
 | [IAPD](https://adviserinfo.sec.gov) | Registration status, disclosure flags, brochure metadata | None |
 | [SEC EDGAR 13F](https://data.sec.gov) | Portfolio value (USD), holdings count — proxy AUM | None |
 | [FRED](https://fred.stlouisfed.org) | Fed funds rate, 10Y yield, HY spread, VIX | Free key |
-| OpenAI o3 | Fund analysis, risk flagging, memo generation | API key |
+| Anthropic Claude | Fund analysis, risk flagging, memo generation | API key |
 
 ---
 
@@ -68,7 +68,7 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 # Edit .env and add:
-#   OPENAI_API_KEY=your_key
+#   ANTHROPIC_API_KEY=your_key
 #   FRED_API_KEY=your_fred_key  (optional — free at fred.stlouisfed.org)
 ```
 
@@ -156,9 +156,9 @@ PRs from `feature/*` → `dev` → `main`. CI runs on every push.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `OPENAI_API_KEY` | Yes | OpenAI API key for o3 model |
+| `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude |
 | `FRED_API_KEY` | No | Free FRED key — adds macro context |
 
 ---
 
-*AI Finance class project · OpenAI o3 · SEC EDGAR · IAPD · FRED*
+*AI Finance class project · Anthropic Claude · SEC EDGAR · IAPD · FRED*

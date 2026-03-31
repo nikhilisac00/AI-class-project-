@@ -72,7 +72,7 @@ def _extract_funds_from_website(
     if not raw_results:
         return []
 
-    # Ask o3 to extract fund names from the search snippets
+    # Ask Claude to extract fund names from the search snippets
     content = "\n\n".join(
         f"[{r.get('title','')}] {(r.get('content') or '')[:400]}"
         for r in raw_results[:8]

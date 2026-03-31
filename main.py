@@ -10,7 +10,7 @@ Usage:
     python main.py "Two Sigma"     --output-dir ./output/memos
 
 Data sources: SEC EDGAR (IAPD/ADV + 13F), FRED API
-Model: OpenAI o3 (reasoning mode)
+Model: Claude (claude-sonnet-4-6)
 """
 
 import argparse
@@ -41,9 +41,9 @@ console = Console()
 
 
 def validate_env() -> str:
-    key = os.getenv("OPENAI_API_KEY")
+    key = os.getenv("ANTHROPIC_API_KEY")
     if not key:
-        console.print("[bold red]Error:[/] OPENAI_API_KEY not set. Add it to .env")
+        console.print("[bold red]Error:[/] ANTHROPIC_API_KEY not set. Add it to .env")
         sys.exit(1)
     return key
 
@@ -148,7 +148,7 @@ def main():
     console.print(Panel(
         f"[bold]AI Alternatives Research Associate[/]\n"
         f"Target: [cyan]{args.firm}[/]\n"
-        f"Model: OpenAI o3 (reasoning mode)\n"
+        f"Model: Claude (claude-sonnet-4-6)\n"
         f"Sources: IAPD · SEC EDGAR · {'FRED' if not args.no_fred else 'FRED skipped'}"
         f" · {'News (' + ('Tavily' if tavily_key else 'DuckDuckGo') + ')' if not args.no_news else 'News skipped'}",
         title="Starting Analysis",
@@ -183,7 +183,7 @@ def main():
 
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Running fund analysis (OpenAI o3 reasoning)...", total=None)
+        task = p.add_task("Running fund analysis (Claude reasoning)...", total=None)
         analysis = analysis_agent.run(raw_data, client)
         p.update(task, description="Fund analysis complete", completed=True)
 
@@ -226,7 +226,7 @@ def main():
     # ── Agent 4: Risk Flagging ────────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Running risk flagging (OpenAI o3 reasoning)...", total=None)
+        task = p.add_task("Running risk flagging (Claude reasoning)...", total=None)
         risk_report = risk_agent.run(analysis, raw_data, client, news_report=news_report)
         p.update(task, description="Risk flagging complete", completed=True)
 
@@ -235,7 +235,7 @@ def main():
     # ── Agent 5: Memo Generation ──────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Generating DD memo (OpenAI o3 reasoning)...", total=None)
+        task = p.add_task("Generating DD memo (Claude reasoning)...", total=None)
         memo = memo_agent.run(analysis, risk_report, raw_data, client,
                               news_report=news_report)
         p.update(task, description="Memo generation complete", completed=True)
@@ -243,7 +243,7 @@ def main():
     # ── Agent 6: IC Scorecard ─────────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Generating IC Scorecard (OpenAI o3 reasoning)...", total=None)
+        task = p.add_task("Generating IC Scorecard (Claude reasoning)...", total=None)
         scorecard = scorecard_agent.run(analysis, risk_report, raw_data, client,
                                         news_report=news_report)
         p.update(task, description="IC Scorecard complete", completed=True)
