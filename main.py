@@ -31,7 +31,9 @@ import agents.fund_analysis as analysis_agent
 import agents.news_research as news_agent
 import agents.risk_flagging as risk_agent
 import agents.memo_generation as memo_agent
-import agents.ic_scorecard   as scorecard_agent
+import agents.ic_scorecard      as scorecard_agent
+import agents.research_director as director_agent
+import agents.comparables       as comparables_agent
 from tools.llm_client import make_client
 
 load_dotenv()
@@ -266,6 +268,43 @@ def main():
         news_path.write_text(json.dumps(news_report, indent=2, default=str), encoding="utf-8")
     scorecard_path = Path(args.output_dir) / f"{ts}_{safe_name}_ic_scorecard.json"
     scorecard_path.write_text(json.dumps(scorecard, indent=2, default=str), encoding="utf-8")
+
+    # ── Agent 7: Comparables ──────────────────────────────────────────────────
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
+                  console=console) as p:
+        task = p.add_task("Finding comparable managers (IAPD)...", total=None)
+        comparables = comparables_agent.run(
+            firm_name=firm_name,
+            adv_summary=raw_data.get("adv_summary", {}),
+            raw_data=raw_data,
+        )
+        p.update(task, description=f"Comparables complete — {len(comparables.get('peers', []))} peers found", completed=True)
+
+    # ── Agent 8: Research Director ────────────────────────────────────────────
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
+                  console=console) as p:
+        task = p.add_task("Research Director review (OpenAI o3 reasoning)...", total=None)
+        director_review = director_agent.run(
+            analysis, risk_report, raw_data, scorecard, client,
+            news_report=news_report,
+        )
+        p.update(task, description="Director review complete", completed=True)
+
+    verdict = director_review.get("verdict", "UNKNOWN")
+    revised = director_review.get("revised_recommendation", "")
+    verdict_color = {"CONFIRMED": "green", "UPGRADED": "blue",
+                     "DOWNGRADED": "red", "INCONCLUSIVE": "yellow"}.get(verdict, "white")
+    console.print(f"\n[bold {verdict_color}]Director Verdict: {verdict}[/]  "
+                  f"→ {revised}")
+    if director_review.get("director_commentary"):
+        console.print(f"[dim]{director_review['director_commentary']}[/]")
+
+    (Path(args.output_dir) / f"{ts}_{safe_name}_comparables.json").write_text(
+        json.dumps(comparables, indent=2, default=str), encoding="utf-8"
+    )
+    (Path(args.output_dir) / f"{ts}_{safe_name}_director_review.json").write_text(
+        json.dumps(director_review, indent=2, default=str), encoding="utf-8"
+    )
 
     console.print(Panel(
         f"[bold green]Done.[/]\n"

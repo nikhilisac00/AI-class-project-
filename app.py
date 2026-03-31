@@ -160,8 +160,10 @@ import agents.fund_analysis   as analysis_agent   # noqa: E402
 import agents.news_research   as news_agent       # noqa: E402
 import agents.risk_flagging   as risk_agent       # noqa: E402
 import agents.memo_generation as memo_agent       # noqa: E402
-import agents.ic_scorecard   as scorecard_agent  # noqa: E402
-from tools.llm_client import make_client          # noqa: E402
+import agents.ic_scorecard      as scorecard_agent    # noqa: E402
+import agents.research_director as director_agent    # noqa: E402
+import agents.comparables       as comparables_agent # noqa: E402
+from tools.llm_client import make_client             # noqa: E402
 from tools.pal_client  import is_available as pal_available, call_consensus  # noqa: E402
 
 
@@ -459,7 +461,7 @@ if run_button:
     raw_data = analysis = risk_report = memo = pal_review = news_report = None
 
     try:
-        total_steps = 5 + (1 if run_news else 0) + (1 if use_pal and pal_status else 0)
+        total_steps = 7 + (1 if run_news else 0) + (1 if use_pal and pal_status else 0)
         step = [0]
         def _pct(n): return int(n / total_steps * 100)
 
@@ -535,12 +537,30 @@ if run_button:
         status_box.info("Step — Generating IC Scorecard (o3 reasoning)...")
         scorecard = scorecard_agent.run(analysis, risk_report, raw_data, client,
                                         news_report=news_report)
+        step[0] += 1
+        progress_bar.progress(_pct(step[0]), text="Scorecard complete")
+
+        status_box.info("Step — Finding comparable managers...")
+        comparables = comparables_agent.run(
+            firm_name=firm_name_resolved,
+            adv_summary=raw_data.get("adv_summary", {}),
+            raw_data=raw_data,
+        )
+        step[0] += 1
+        progress_bar.progress(_pct(step[0]), text="Comparables complete")
+
+        status_box.info("Step — Research Director review (o3 reasoning)...")
+        director_review = director_agent.run(
+            analysis, risk_report, raw_data, scorecard, client,
+            news_report=news_report,
+        )
         progress_bar.progress(100, text="Done")
         status_box.success("Analysis complete.")
 
         st.session_state.pipeline_result = dict(
             raw_data=raw_data, analysis=analysis, risk_report=risk_report,
-            memo=memo, scorecard=scorecard, pal_review=pal_review,
+            memo=memo, scorecard=scorecard, comparables=comparables,
+            director_review=director_review, pal_review=pal_review,
             news_report=news_report, firm_name=firm_name_resolved,
         )
         st.session_state.pipeline_done = True
@@ -561,8 +581,10 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
     analysis    = pr["analysis"]
     risk_report = pr["risk_report"]
     memo        = pr["memo"]
-    scorecard   = pr.get("scorecard", {})
-    pal_review  = pr["pal_review"]
+    scorecard       = pr.get("scorecard", {})
+    comparables     = pr.get("comparables", {})
+    director_review = pr.get("director_review", {})
+    pal_review      = pr["pal_review"]
     news_report = pr["news_report"]
     firm_name   = pr["firm_name"]
 
@@ -901,12 +923,12 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
     enf_icon    = _enf_icons.get(enf_sev, "⚪")
 
     (
-        tab_scorecard, tab_enf, tab_risk, tab_funds,
-        tab_news, tab_memo, tab_pal, tab_raw,
+        tab_scorecard, tab_director, tab_comparables, tab_enf, tab_risk,
+        tab_funds, tab_news, tab_memo, tab_pal, tab_raw,
     ) = st.tabs([
-        "IC Scorecard", f"Enforcement {enf_icon}",
-        "Risk Dashboard", "Funds",
-        "News Research", "DD Memo", "PAL Consensus", "Raw Data",
+        "IC Scorecard", "Director Review", "Comparables",
+        f"Enforcement {enf_icon}", "Risk Dashboard",
+        "Funds", "News Research", "DD Memo", "PAL Consensus", "Raw Data",
     ])
 
     # ─ IC Scorecard ──────────────────────────────────────────────────────
@@ -1253,6 +1275,162 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             "SEC EDGAR EFTS · EDGAR Submissions · "
             "adviserinfo.sec.gov"
         )
+
+    # ─ Director Review ───────────────────────────────────────────────────
+    with tab_director:
+        if director_review:
+            verdict     = director_review.get("verdict", "UNKNOWN")
+            revised_rec = director_review.get("revised_recommendation", "")
+            orig_rec    = director_review.get("original_recommendation", "")
+            verdict_color = {
+                "CONFIRMED":    "#1a7a4a",
+                "UPGRADED":     "#1a3d6e",
+                "DOWNGRADED":   "#b03030",
+                "INCONCLUSIVE": "#b06010",
+            }.get(verdict, "#4a5568")
+            verdict_icon = {
+                "CONFIRMED": "✅", "UPGRADED": "⬆️",
+                "DOWNGRADED": "⬇️", "INCONCLUSIVE": "🔄",
+            }.get(verdict, "⚪")
+
+            st.markdown(f"""
+            <div style="background:linear-gradient(135deg,#0f1923 0%,#1a2f45 100%);
+                        border-radius:10px;padding:22px 28px;margin-bottom:20px">
+              <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;
+                          letter-spacing:0.1em;color:#8fa3bb;margin-bottom:8px">
+                Research Director Verdict
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+                <span style="font-size:1.8rem">{verdict_icon}</span>
+                <span style="font-size:1.6rem;font-weight:800;color:{verdict_color}">{verdict}</span>
+                <span style="font-size:0.85rem;color:#8fa3bb;margin-left:8px">
+                  {orig_rec} → <strong style="color:#ffffff">{revised_rec}</strong>
+                </span>
+              </div>
+              <div style="font-size:0.88rem;color:#c8d6e5;line-height:1.6;
+                          border-top:1px solid #1e3a5a;padding-top:12px">
+                {director_review.get("director_commentary", "")}
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            col_inc, col_miss = st.columns(2)
+            with col_inc:
+                inconsistencies = director_review.get("inconsistencies", [])
+                if inconsistencies:
+                    st.markdown("#### Inconsistencies Found")
+                    for item in inconsistencies:
+                        st.markdown(f"""
+                        <div style="border:1px solid #e8ecf0;border-left:4px solid #b03030;
+                                    border-radius:8px;padding:14px 16px;margin-bottom:8px;background:#fff">
+                          <div style="font-size:0.85rem;font-weight:600;color:#0f1923;margin-bottom:6px">
+                            {item.get("finding","")}
+                          </div>
+                          <div style="font-size:0.75rem;color:#6b7a8d;margin-bottom:4px">
+                            <strong>A:</strong> {item.get("field_a","")}
+                          </div>
+                          <div style="font-size:0.75rem;color:#6b7a8d;margin-bottom:6px">
+                            <strong>B:</strong> {item.get("field_b","")}
+                          </div>
+                          <div style="background:#fff5f5;border-radius:4px;padding:8px 10px;
+                                      font-size:0.75rem;color:#b03030">
+                            {item.get("implication","")}
+                          </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.success("No inconsistencies found between data sources.")
+
+            with col_miss:
+                missed = director_review.get("missed_signals", [])
+                if missed:
+                    st.markdown("#### Missed Signals")
+                    for item in missed:
+                        sev = item.get("severity", "MEDIUM")
+                        sev_c = _sev_color(sev)
+                        st.markdown(f"""
+                        <div style="border:1px solid #e8ecf0;border-left:4px solid {sev_c};
+                                    border-radius:8px;padding:14px 16px;margin-bottom:8px;background:#fff">
+                          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <span style="background:{sev_c};color:#fff;padding:2px 8px;
+                                         border-radius:10px;font-size:0.70rem;font-weight:700">
+                              {sev}
+                            </span>
+                          </div>
+                          <div style="font-size:0.85rem;font-weight:600;color:#0f1923;margin-bottom:4px">
+                            {item.get("signal","")}
+                          </div>
+                          <div style="font-size:0.75rem;color:#6b7a8d">{item.get("why_it_matters","")}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+            questions = director_review.get("questions_for_gp", [])
+            if questions:
+                st.markdown("#### Questions for the GP")
+                for i, q in enumerate(questions, 1):
+                    st.markdown(f"""
+                    <div style="display:flex;gap:10px;margin-bottom:8px;align-items:flex-start">
+                      <span style="background:#1a3d6e;color:#fff;border-radius:50%;
+                                   width:22px;height:22px;display:flex;align-items:center;
+                                   justify-content:center;font-size:0.72rem;font-weight:700;
+                                   flex-shrink:0;margin-top:1px">{i}</span>
+                      <span style="font-size:0.85rem;color:#0f1923">{q}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.warning("Director Review not available.")
+
+    # ─ Comparables ───────────────────────────────────────────────────────
+    with tab_comparables:
+        if comparables and comparables.get("table"):
+            import pandas as pd
+            table   = comparables["table"]
+            note    = comparables.get("note", "")
+            sr      = comparables.get("size_rank")
+            target  = comparables.get("target", {})
+
+            if sr:
+                st.markdown(f"""
+                <div style="background:#f7f9fc;border:1px solid #e8ecf0;border-radius:8px;
+                            padding:14px 18px;margin-bottom:16px;display:flex;
+                            align-items:center;gap:12px">
+                  <div style="font-size:1.6rem;font-weight:800;color:#1a3d6e">#{sr}</div>
+                  <div>
+                    <div style="font-size:0.85rem;font-weight:600;color:#0f1923">
+                      Size rank among {comparables.get("total_in_comparison",0)} managers
+                    </div>
+                    <div style="font-size:0.75rem;color:#8fa3bb">by 13F public equity portfolio</div>
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            rows = []
+            for r in table:
+                rows.append({
+                    "":              "▶ YOU" if r.get("is_target") else "",
+                    "Firm":          r.get("firm_name", ""),
+                    "CRD":           r.get("crd") or "—",
+                    "Status":        r.get("registration_status") or "—",
+                    "13F Portfolio": r.get("portfolio_value_fmt") or "—",
+                    "Holdings":      str(r.get("holdings_count")) if r.get("holdings_count") else "—",
+                    "Disclosures":   "Yes" if r.get("has_disclosures") else "No" if r.get("has_disclosures") is False else "—",
+                    "Location":      f"{r.get('city','')}, {r.get('state','')}" if r.get("city") else r.get("state") or "—",
+                    "ADV Filed":     r.get("adv_filing_date") or "—",
+                })
+
+            df = pd.DataFrame(rows)
+            st.dataframe(
+                df.style.apply(
+                    lambda x: ["background-color:#e8f4fd;font-weight:600" if x[""] == "▶ YOU"
+                               else "" for _ in x],
+                    axis=1,
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+            st.caption(note)
+        else:
+            st.info("Comparables not available.")
 
     # ─ Risk Dashboard ────────────────────────────────────────────────────
     with tab_risk:
