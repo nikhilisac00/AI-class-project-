@@ -47,5 +47,18 @@ class LLMClient:
             )
 
 
+    def chat(self, messages: list[dict], max_tokens: int = 2000) -> str:
+        """
+        Fast conversational completion using gpt-4o.
+        messages: list of {"role": "system"|"user"|"assistant", "content": str}
+        """
+        response = self._client.chat.completions.create(
+            model="gpt-4o",
+            messages=messages,
+            max_tokens=max_tokens,
+        )
+        return (response.choices[0].message.content or "").strip()
+
+
 def make_client(api_key: str) -> LLMClient:
     return LLMClient(api_key=api_key)

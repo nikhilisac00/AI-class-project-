@@ -192,12 +192,13 @@ def _score_color(score: float) -> str:
 # ── Session state init ───────────────────────────────────────────────────────
 
 for _k, _v in [
-    ("confirmed_firm", None),     # dict with crd, firm_name, city, state
-    ("user_website",   ""),
-    ("candidates",     []),
-    ("search_query",   ""),
-    ("pipeline_done",  False),
+    ("confirmed_firm",  None),
+    ("user_website",    ""),
+    ("candidates",      []),
+    ("search_query",    ""),
+    ("pipeline_done",   False),
     ("pipeline_result", {}),
+    ("chat_messages",   []),   # list of {"role": ..., "content": ...}
 ]:
     if _k not in st.session_state:
         st.session_state[_k] = _v
@@ -924,11 +925,12 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
 
     (
         tab_scorecard, tab_director, tab_comparables, tab_enf, tab_risk,
-        tab_funds, tab_news, tab_memo, tab_pal, tab_raw,
+        tab_funds, tab_news, tab_memo, tab_pal, tab_raw, tab_chat,
     ) = st.tabs([
         "IC Scorecard", "Director Review", "Comparables",
         f"Enforcement {enf_icon}", "Risk Dashboard",
         "Funds", "News Research", "DD Memo", "PAL Consensus", "Raw Data",
+        "💬 AI Assistant",
     ])
 
     # ─ IC Scorecard ──────────────────────────────────────────────────────
@@ -1766,3 +1768,92 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
         if analysis:
             with st.expander("Structured Analysis (Claude output)"):
                 st.json(analysis)
+
+    # ─ AI Assistant ──────────────────────────────────────────────────────
+    with tab_chat:
+        st.markdown("""
+        <div style="margin-bottom:16px">
+          <div style="font-size:1.05rem;font-weight:700;color:#0f1923">AI Research Assistant</div>
+          <div style="font-size:0.80rem;color:#8fa3bb;margin-top:2px">
+            Powered by GPT-4o · Knows everything about the analyzed firm
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Build context-aware system prompt
+        if st.session_state.pipeline_done and st.session_state.pipeline_result:
+            pr      = st.session_state.pipeline_result
+            _firm   = pr.get("firm_name", "the analyzed firm")
+            _ov     = (pr.get("analysis") or {}).get("firm_overview", {})
+            _tier   = (pr.get("risk_report") or {}).get("overall_risk_tier", "UNKNOWN")
+            _rec    = (pr.get("scorecard") or {}).get("recommendation", "UNKNOWN")
+            _flags  = (pr.get("risk_report") or {}).get("flags", [])
+            _gaps   = (pr.get("risk_report") or {}).get("critical_data_gaps", [])
+            _commentary = (pr.get("risk_report") or {}).get("overall_commentary", "")
+            _director   = (pr.get("director_review") or {}).get("director_commentary", "")
+            _news_risk  = (pr.get("news_report") or {}).get("overall_news_risk", "N/A")
+
+            import json as _json
+            system_prompt = f"""You are an expert LP due diligence analyst assistant.
+You have just completed a full due diligence analysis on {_firm}.
+
+Here is a summary of the findings:
+- Risk Tier: {_tier}
+- IC Recommendation: {_rec}
+- News Risk: {_news_risk}
+- Overall Commentary: {_commentary}
+- Director Commentary: {_director}
+- Risk Flags ({len(_flags)} total): {_json.dumps([f.get('finding','') for f in _flags[:5]], default=str)}
+- Critical Data Gaps: {_json.dumps(_gaps[:5], default=str)}
+- Firm Overview: {_json.dumps(_ov, default=str)}
+
+Answer the user's questions about this firm, the due diligence findings, or general LP/alternatives investing topics.
+Be direct, concise, and professional. Cite specific findings when relevant.
+If asked about data not in the analysis, say so clearly — do not fabricate."""
+            placeholder = f"Ask anything about {_firm} or the due diligence findings..."
+        else:
+            system_prompt = """You are an expert LP due diligence analyst assistant specializing in
+alternative investments, hedge funds, private equity, and institutional investing.
+Answer questions about due diligence, SEC filings, IAPD, investment manager evaluation,
+LP/GP dynamics, fund structures, and related topics.
+Be direct, concise, and professional. No firm has been analyzed yet in this session."""
+            placeholder = "Ask anything about LP due diligence, fund managers, or investing..."
+
+        # Render chat history
+        for msg in st.session_state.chat_messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+        # Chat input
+        if prompt := st.chat_input(placeholder, key="chat_input"):
+            if not api_key:
+                st.error("Add your OpenAI API key in the sidebar to use the AI Assistant.")
+            else:
+                # Add user message
+                st.session_state.chat_messages.append({"role": "user", "content": prompt})
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+
+                # Build messages for API call
+                messages = [{"role": "system", "content": system_prompt}]
+                messages += st.session_state.chat_messages
+
+                # Get response
+                with st.chat_message("assistant"):
+                    with st.spinner(""):
+                        try:
+                            client_chat = make_client(api_key)
+                            response = client_chat.chat(messages)
+                        except Exception as e:
+                            response = f"Sorry, I encountered an error: {e}"
+                    st.markdown(response)
+
+                st.session_state.chat_messages.append(
+                    {"role": "assistant", "content": response}
+                )
+
+        # Clear chat button
+        if st.session_state.chat_messages:
+            if st.button("Clear conversation", type="secondary", key="clear_chat"):
+                st.session_state.chat_messages = []
+                st.rerun()
