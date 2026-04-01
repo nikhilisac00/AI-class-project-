@@ -187,18 +187,16 @@ def search_funds_for_gp(
 
     candidates = list(seen.values())
 
-    # Filter to private funds if requested
-    if only_private_funds:
-        candidates = [
-            c for c in candidates
-            if set(c.get("exemptions", [])) & FUND_EXEMPTIONS
-        ]
-
-    # Sort by filing date desc, cap
+    # Sort by filing date desc.
+    # NOTE: Do NOT pre-filter by exemptions here — the EFTS `items` field is
+    # unreliably populated and often empty even for real private funds. We fetch
+    # XML for all candidates first and apply the filter using the XML-derived
+    # `is_private_fund` flag, which reads the actual exemption elements.
     candidates.sort(key=lambda x: x.get("file_date") or "", reverse=True)
-    candidates = candidates[:max_funds]
+    # Fetch up to 3x max_funds so we have enough after the post-XML filter
+    candidates = candidates[:max(max_funds * 3, 60)]
 
-    # Step 3: Fetch XML for each to get offering amounts
+    # Step 3: Fetch XML for each to get offering amounts + accurate exemptions
     funds = []
     for c in candidates:
         cik = c.get("cik")
@@ -212,6 +210,12 @@ def search_funds_for_gp(
             fund = {**c, **{k: v for k, v in parsed.items() if v is not None}}
         else:
             fund = c
+
+        # Apply private fund filter HERE using XML-derived is_private_fund flag
+        # (EFTS items field is not reliable; XML exemptions are authoritative)
+        if only_private_funds and not fund.get("is_private_fund", False):
+            time.sleep(0.05)
+            continue
 
         # Format offering amount for display
         amt = fund.get("total_offering_amount") or fund.get("amount_sold")
@@ -227,5 +231,8 @@ def search_funds_for_gp(
 
         funds.append(fund)
         time.sleep(0.1)   # polite rate limiting
+
+        if len(funds) >= max_funds:
+            break
 
     return funds

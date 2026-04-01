@@ -39,7 +39,7 @@ Your job is to plan targeted web search queries to gather LP-relevant news on an
 
 Focus areas (generate 1-2 queries each, prioritize by materiality):
 - Regulatory actions, SEC/CFTC/DOJ enforcement, fines, consent orders
-- Fundraising activity: new fund launches, closes, capital raised
+- Fundraising activity: new fund launches, closes, capital raised (use specific fund names if provided)
 - Personnel changes: key departures, new hires, succession
 - Litigation: lawsuits filed or settled involving the firm or principals
 - Performance or strategy news: notable wins/losses, style drift, mandate changes
@@ -47,8 +47,9 @@ Focus areas (generate 1-2 queries each, prioritize by materiality):
 
 Rules:
 - Queries must be specific and news-oriented (include firm name in each)
+- If specific fund names are listed in the context, generate 1-2 queries using those exact names
 - Return ONLY a JSON array of query strings, no other text
-- 4 to 6 queries total"""
+- 5 to 8 queries total"""
 
 
 _EXTRACTOR_SYSTEM = """You are a due diligence analyst extracting structured facts from web search results.
@@ -80,11 +81,18 @@ Return ONLY a valid JSON object — no markdown, no preamble."""
 
 def _plan_queries(firm_name: str, analysis: dict, client: LLMClient) -> list:
     """Ask the LLM to generate an initial set of targeted search queries."""
+    # Include discovered fund names so the planner can generate fund-specific queries
+    fund_names = [
+        f.get("name") for f in
+        (analysis or {}).get("funds_analysis", {}).get("funds", [])[:8]
+        if f.get("name")
+    ]
     firm_context = {
-        "firm_name":    firm_name,
-        "overview":     (analysis or {}).get("firm_overview", {}),
+        "firm_name":     firm_name,
+        "overview":      (analysis or {}).get("firm_overview", {}),
         "key_personnel": (analysis or {}).get("key_personnel", [])[:4],
-        "disclosures":  (analysis or {}).get("regulatory_disclosures", {}),
+        "disclosures":   (analysis or {}).get("regulatory_disclosures", {}),
+        "fund_names":    fund_names,   # enables fund-specific news queries
     }
     user_msg = f"""Plan search queries for LP due diligence news research on:
 
@@ -92,7 +100,7 @@ def _plan_queries(firm_name: str, analysis: dict, client: LLMClient) -> list:
 {json.dumps(firm_context, indent=2, default=str)}
 </firm>
 
-Return a JSON array of 4-6 query strings. No other text."""
+Return a JSON array of 5-8 query strings. No other text."""
 
     print("[News Research] Planning queries...")
     raw = client.complete(system=_PLANNER_SYSTEM, user=user_msg, max_tokens=800)

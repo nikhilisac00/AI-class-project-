@@ -24,18 +24,13 @@ Output must be valid JSON matching the schema in the user message."""
 
 
 def run(raw_data: dict, client: LLMClient) -> dict:
-    fund_discovery = raw_data.get("fund_discovery", {})
-
     user_message = f"""
 Analyze the following investment adviser data and return a JSON object.
+Note: raw_data.fund_discovery already contains all fund discovery results.
 
 <data>
 {json.dumps(raw_data, indent=2, default=str)}
 </data>
-
-<fund_discovery>
-{json.dumps(fund_discovery, indent=2, default=str)}
-</fund_discovery>
 
 Return ONLY a JSON object with this exact schema (use null for any missing field — never invent values):
 

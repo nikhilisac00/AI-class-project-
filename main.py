@@ -159,7 +159,12 @@ def main():
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Ingesting data from EDGAR / IAPD / FRED...", total=None)
-        raw_data = ingestion_agent.run(args.firm, fred_api_key=fred_key)
+        raw_data = ingestion_agent.run(
+            args.firm,
+            fred_api_key=fred_key,
+            client=client,
+            tavily_key=tavily_key,
+        )
         p.update(task, description="Data ingestion complete", completed=True)
 
     firm_name = (

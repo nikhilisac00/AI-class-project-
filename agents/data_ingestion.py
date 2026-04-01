@@ -14,13 +14,13 @@ the CIK resolved by ADV enrichment (more accurate than name-based search).
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from tools.edgar_client import (
-    search_adviser_by_name,
     get_adviser_detail,
     extract_adv_summary,
     search_13f_filings,
     search_13f_by_cik,
 )
 from tools.fred_client import get_market_context, latest_value
+from agents.firm_resolver import resolve as _resolve_firm
 
 
 def run(firm_input: str, fred_api_key: str = None,
@@ -64,18 +64,23 @@ def run(firm_input: str, fred_api_key: str = None,
         print(f"[Ingestion] Using CRD directly: {crd}")
     else:
         print(f"[Ingestion] Searching IAPD for: '{firm_input}'")
-        results = search_adviser_by_name(firm_input, max_results=5)
-        raw_data["search_results"] = results
+        # Use firm_resolver for scored matching — avoids blindly picking the
+        # first IAPD result (BM25 rank) which often returns subsidiaries or
+        # state-only registrants before the main SEC-registered entity.
+        candidates = _resolve_firm(firm_input, tavily_key=tavily_key, max_candidates=5)
+        raw_data["search_results"] = candidates
 
-        if not results:
+        if not candidates:
             msg = f"No IAPD results found for '{firm_input}'"
             raw_data["errors"].append(msg)
             print(f"[Ingestion] WARNING: {msg}")
             crd = None
         else:
-            crd = results[0]["crd"]
+            best = candidates[0]
+            crd = best["crd"]
             raw_data["crd"] = crd
-            print(f"[Ingestion] Resolved to CRD {crd}: {results[0]['firm_name']}")
+            print(f"[Ingestion] Resolved to CRD {crd}: {best['firm_name']} "
+                  f"(match score: {best.get('match_score', '?')})")
 
     # ── Step 2: Pull IAPD/ADV detail ────────────────────────────────────────
     _iacontent = None
