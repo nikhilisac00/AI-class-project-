@@ -1,238 +1,221 @@
 """
-Fund Discovery Agent
-====================
-Discovers the private funds managed by an investment adviser and enriches
-each fund with Form D filing data, news, and website information.
+Fund Discovery Agent — Tool-Use Agent
+======================================
+Claude autonomously decides which EDGAR Form D searches and web queries to run,
+tries name variants, and loops until it's confident it has found all discoverable funds.
 
-Sources (in priority order):
-  1. EDGAR Form D — definitive SEC filings for each fund entity
-  2. IAPD relyingAdvisors — affiliated adviser entities (may manage sub-funds)
-  3. Web search on firm website — fund names from marketing pages / ADV brochure
+This is a real agent: Claude uses tool_use to call EDGAR and web search,
+sees the results, decides what to try next, and stops when done.
 
-For each discovered fund:
-  - Form D: fund name, offering amount, date of first sale, entity type, exemption
-  - News: web search for recent news on that specific fund
-  - EDGAR link: direct link to the Form D filing index
+Tools available to the agent:
+  search_form_d(gp_name)      — EDGAR Form D search
+  search_web(query)           — Tavily / DuckDuckGo web search
+  get_relying_advisors(crd)   — IAPD relying advisor list
 
-Output feeds directly into:
-  - fund_analysis agent (adds "funds" section to structured analysis)
-  - risk_flagging agent (fund-level concentration / vintage / regulatory risks)
-  - memo_generation agent (Fund Analysis section of the memo)
+Output: same shape as before so downstream agents need no changes:
+  {funds, relying_advisors, total_found, sources_used, errors}
 """
 
-import re
 import json
+import re
 from tools.llm_client import LLMClient
 from tools.formd_client import search_funds_for_gp
 from tools import web_search_client
 
-# Common legal suffixes to strip when building abbreviated name variants
-_STOP_WORDS = {
-    "llc", "lp", "inc", "corp", "ltd", "co", "management", "capital",
-    "advisors", "advisers", "partners", "group", "fund", "investments",
-    "asset", "assets", "financial", "services", "global",
+
+# ── Tool definitions (Anthropic format) ──────────────────────────────────────
+
+TOOLS = [
+    {
+        "name": "search_form_d",
+        "description": (
+            "Search SEC EDGAR Form D filings for private funds associated with a GP name. "
+            "Returns a list of funds with offering amounts, exemptions (3C.1 / 3C.7), "
+            "and filing dates. Try the full legal name AND shorter variants "
+            "(e.g. first word only, two meaningful words). Many GPs file Form D under "
+            "slightly different entity names than their adviser registration."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "gp_name": {
+                    "type": "string",
+                    "description": "GP / adviser name to search on EDGAR Form D",
+                }
+            },
+            "required": ["gp_name"],
+        },
+    },
+    {
+        "name": "search_web",
+        "description": (
+            "Search the web for fund names, fundraising news, or information about "
+            "the investment manager. Use this to find funds not registered on Form D "
+            "(e.g. offshore funds, separately managed accounts, funds closed before "
+            "Form D was required). Also useful for finding fund names to then look up "
+            "on EDGAR."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Web search query",
+                }
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "get_relying_advisors",
+        "description": (
+            "Get the list of relying advisor entities from IAPD for a given CRD number. "
+            "These are affiliated advisers that may manage sub-funds under the umbrella registration."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "crd": {
+                    "type": "string",
+                    "description": "SEC CRD number of the investment adviser",
+                }
+            },
+            "required": ["crd"],
+        },
+    },
+]
+
+
+SYSTEM_PROMPT = """You are a fund discovery agent performing LP due diligence on an investment manager.
+
+Your goal: find ALL private funds this manager has ever raised or managed, using SEC EDGAR Form D
+filings and web search.
+
+HOW TO DO THIS:
+1. Start with search_form_d using the full legal firm name
+2. If that returns 0 results, try shorter variants:
+   - First meaningful word only (e.g. "Ares" from "Ares Management LLC")
+   - Two meaningful words (e.g. "Ares Management")
+   Strip common suffixes: LLC, LP, Inc, Corp, Management, Capital, Advisors, Partners
+3. Search the web for fund names if Form D search is sparse:
+   - "[firm name] private equity fund"
+   - "[firm name] fund I II III IV V"
+   - "[firm name] hedge fund strategy"
+4. For any fund names found via web but not on Form D, search Form D for that specific fund name
+5. If a CRD is provided, call get_relying_advisors to find affiliated entities
+
+Stop when you've tried at least 2 name variants AND at least 1 web search.
+
+FINAL OUTPUT:
+After all tool calls, output ONLY a JSON object:
+{
+  "funds": [
+    {
+      "name": "fund entity name",
+      "offering_amount": "$X.XB or null",
+      "date_of_first_sale": "YYYY-MM-DD or null",
+      "entity_type": "Limited Partnership or null",
+      "exemptions": ["3C.1", "3C.7"],
+      "is_private_fund": true,
+      "jurisdiction": "state or null",
+      "edgar_url": "url or null",
+      "source": "EDGAR Form D | web search | web search + EDGAR Form D"
+    }
+  ],
+  "relying_advisors": [],
+  "sources_used": ["EDGAR Form D", "Web search"],
+  "search_variants_tried": ["full name", "abbreviated"],
+  "notes": "any caveats about coverage"
 }
 
+Rules:
+- No hallucination. Only include funds you actually found via tool calls.
+- If a fund appears in web search but not Form D, include it with source "web search".
+- Deduplicate by fund name (case-insensitive).
+"""
 
-def _get_relying_advisors(iacontent: dict) -> list[dict]:
-    """Extract relying advisor entities from IAPD iacontent."""
-    ra = iacontent.get("relyingAdvisors", []) if iacontent else []
+
+# ── Tool executor functions ───────────────────────────────────────────────────
+
+def _exec_search_form_d(inputs: dict, max_funds: int = 20) -> list[dict]:
+    gp_name = inputs.get("gp_name", "").strip()
+    if not gp_name:
+        return []
+    try:
+        funds = search_funds_for_gp(gp_name, max_funds=max_funds)
+        # Return slim dicts to keep context manageable
+        return [
+            {
+                "name":               f.get("entity_name"),
+                "offering_amount":    f.get("offering_fmt"),
+                "date_of_first_sale": f.get("date_of_first_sale"),
+                "entity_type":        f.get("entity_type"),
+                "exemptions":         f.get("exemptions", []),
+                "is_private_fund":    f.get("is_private_fund", False),
+                "jurisdiction":       f.get("jurisdiction"),
+                "cik":                f.get("cik"),
+                "accession":          f.get("accession"),
+                "edgar_url": (
+                    f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany"
+                    f"&CIK={f['cik']}&type=D&dateb=&owner=include&count=10"
+                    if f.get("cik") else None
+                ),
+                "source": "EDGAR Form D",
+            }
+            for f in funds
+        ]
+    except Exception as e:
+        return [{"error": str(e)}]
+
+
+def _exec_search_web(inputs: dict, tavily_key: str = None) -> list[dict]:
+    query = inputs.get("query", "").strip()
+    if not query:
+        return []
+    try:
+        results = web_search_client.search(query, api_key=tavily_key, max_results=5)
+        return [
+            {
+                "title":   r.get("title", ""),
+                "url":     r.get("url", ""),
+                "date":    r.get("published_date"),
+                "snippet": (r.get("content") or "")[:400],
+            }
+            for r in results
+        ]
+    except Exception as e:
+        return [{"error": str(e)}]
+
+
+def _exec_get_relying_advisors(inputs: dict, iacontent: dict = None) -> list[dict]:
+    crd = inputs.get("crd", "")
+    ra = (iacontent or {}).get("relyingAdvisors", [])
     return [
         {"name": r.get("name"), "crd": r.get("firmId"), "status": r.get("status")}
         for r in ra if isinstance(r, dict) and r.get("name")
     ]
 
 
-def _name_variants(firm_name: str) -> list[str]:
-    """
-    Generate search variants of a firm name for broader Form D coverage.
+# ── News enrichment (post-agent, not part of the loop) ───────────────────────
 
-    Form D filings list the GP in related-persons XML, not the primary entity
-    name — so an exact quoted search on the adviser's legal name often returns 0
-    hits. Trying shorter / abbreviated variants substantially increases recall.
-    """
-    variants = [firm_name]
-    words = re.findall(r"\w+", firm_name)
-    meaningful = [w for w in words if w.lower() not in _STOP_WORDS]
-    if meaningful:
-        # Single most distinctive word (e.g. "Ares" from "Ares Management LLC")
-        variants.append(meaningful[0])
-        # Two-word abbreviation (e.g. "Ares Management")
-        if len(meaningful) > 1:
-            variants.append(f"{meaningful[0]} {meaningful[1]}")
-    # Deduplicate while preserving order
-    seen: set = set()
-    out = []
-    for v in variants:
-        if v.lower() not in seen:
-            seen.add(v.lower())
-            out.append(v)
-    return out
-
-
-def _search_formd_variants(firm_name: str, max_funds: int) -> list[dict]:
-    """
-    Search Form D using multiple name variants and merge deduplicated results.
-
-    Tries the full legal name first, then progressively shorter variants.
-    Stops early if enough funds are already found from a variant.
-    """
-    all_funds: list[dict] = []
-    seen_keys: set[str] = set()
-
-    for variant in _name_variants(firm_name):
-        try:
-            funds = search_funds_for_gp(variant, max_funds=max_funds)
-        except Exception:
-            continue
-        for f in funds:
-            key = (f.get("entity_name") or "").upper()
-            if key and key not in seen_keys:
-                seen_keys.add(key)
-                all_funds.append(f)
-        # If the full name already returned good results, skip shorter variants
-        if variant == firm_name and len(all_funds) >= 5:
-            break
-
-    return all_funds
-
-
-def _search_fund_news(fund_name: str, gp_name: str,
-                      tavily_key: str = None) -> list[dict]:
-    """Quick news search for a specific fund."""
-    query = f'"{fund_name}" {gp_name} fund fundraising close news'
+def _fetch_fund_news(fund_name: str, firm_name: str, tavily_key: str = None) -> list[dict]:
+    query = f'"{fund_name}" {firm_name} fund fundraising close news'
     try:
         results = web_search_client.search(query, api_key=tavily_key, max_results=3)
-        return [{"title": r.get("title"), "url": r.get("url"),
-                 "date": r.get("published_date"), "snippet": (r.get("content") or "")[:300]}
-                for r in results]
+        return [
+            {
+                "title":   r.get("title"),
+                "url":     r.get("url"),
+                "date":    r.get("published_date"),
+                "snippet": (r.get("content") or "")[:300],
+            }
+            for r in results
+        ]
     except Exception:
         return []
 
 
-def _extract_funds_from_website(
-    firm_name: str,
-    website: str,
-    client: LLMClient,
-    tavily_key: str = None,
-) -> list[str]:
-    """
-    Web search the firm's website/brochure pages for fund names.
-    Returns a list of fund name strings.
-    """
-    if website:
-        queries = [
-            f'site:{website} fund strategy portfolio',
-            f'"{firm_name}" private fund names',
-        ]
-    else:
-        # Better fallback queries — avoid site:sec.gov which returns boilerplate
-        queries = [
-            f'"{firm_name}" private equity fund portfolio launch close',
-            f'"{firm_name}" hedge fund strategy series',
-            f'"{firm_name}" fund Roman numeral II III IV V VI VII VIII IX X',
-        ]
-
-    raw_results = []
-    for q in queries:
-        try:
-            hits = web_search_client.search(q, api_key=tavily_key, max_results=4)
-            raw_results.extend(hits)
-        except Exception:
-            pass
-
-    if not raw_results:
-        return []
-
-    content = "\n\n".join(
-        f"[{r.get('title','')}] {(r.get('content') or '')[:400]}"
-        for r in raw_results[:8]
-    )
-
-    system = """You are extracting private fund names from web search results about an investment manager.
-Return ONLY a JSON array of fund name strings. No other text.
-Rules: only include named funds (e.g. "Blackstone Capital Partners IX"), not strategy descriptions."""
-
-    user = f"""Investment manager: {firm_name}
-
-Search results:
-{content}
-
-Extract all specific private fund names mentioned. Return JSON array only."""
-
-    try:
-        raw = client.complete(system=system, user=user, max_tokens=500)
-        raw = raw.strip()
-        if raw.startswith("```"):
-            lines = raw.split("\n")
-            raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-        names = json.loads(raw)
-        if isinstance(names, list):
-            return [str(n) for n in names if n]
-    except Exception:
-        pass
-    return []
-
-
-def _enrich_web_funds_from_formd(
-    web_names: list[str],
-    existing_keys: set[str],
-) -> list[dict]:
-    """
-    For fund names discovered via web search, attempt to find their actual
-    Form D filing on EDGAR to get offering amounts, exemptions, and filing date.
-    Returns a list of enriched fund dicts (or minimal stubs if EDGAR has no match).
-    """
-    enriched = []
-    for name in web_names[:5]:   # cap to avoid excessive API calls
-        key = name.upper()
-        if key in existing_keys:
-            continue
-        existing_keys.add(key)
-        try:
-            hits = search_funds_for_gp(name, max_funds=3)
-            if hits:
-                # Use the best matching hit
-                f = hits[0]
-                enriched.append({
-                    "name":               f.get("entity_name") or name,
-                    "entity_type":        f.get("entity_type"),
-                    "exemptions":         f.get("exemptions", []),
-                    "is_private_fund":    f.get("is_private_fund", False),
-                    "offering_amount":    f.get("offering_fmt"),
-                    "offering_amount_raw": f.get("total_offering_amount"),
-                    "date_of_first_sale": f.get("date_of_first_sale"),
-                    "jurisdiction":       f.get("jurisdiction"),
-                    "cik":               f.get("cik"),
-                    "accession":         f.get("accession"),
-                    "filing_date":       f.get("file_date"),
-                    "edgar_url": (
-                        f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={f['cik']}&type=D&dateb=&owner=include&count=10"
-                        if f.get("cik") else None
-                    ),
-                    "news":              [],
-                    "source":            "web search + EDGAR Form D",
-                })
-            else:
-                enriched.append({
-                    "name":               name,
-                    "source":             "web search",
-                    "entity_type":        None,
-                    "offering_amount":    None,
-                    "date_of_first_sale": None,
-                    "news":              [],
-                })
-        except Exception:
-            enriched.append({
-                "name":               name,
-                "source":             "web search",
-                "entity_type":        None,
-                "offering_amount":    None,
-                "date_of_first_sale": None,
-                "news":              [],
-            })
-    return enriched
-
+# ── Main entry point ──────────────────────────────────────────────────────────
 
 def run(
     firm_name: str,
@@ -244,16 +227,9 @@ def run(
     max_funds: int = 15,
 ) -> dict:
     """
-    Discover and enrich all private funds managed by this adviser.
+    Run the fund discovery agent.
 
-    Returns:
-        {
-          "funds":              list of enriched fund dicts
-          "relying_advisors":   list from IAPD
-          "total_found":        int
-          "sources_used":       list of strings
-          "errors":             list of strings
-        }
+    If no LLMClient is provided, falls back to a direct Form D search (no agent loop).
     """
     report = {
         "funds":            [],
@@ -263,89 +239,96 @@ def run(
         "errors":           [],
     }
 
-    # ── Source 1: EDGAR Form D (with name variant fallback) ───────────────────
-    print(f"[Fund Discovery] Searching EDGAR Form D for '{firm_name}'...")
-    try:
-        formd_funds = _search_formd_variants(firm_name, max_funds=max_funds)
-        if formd_funds:
-            report["sources_used"].append("EDGAR Form D")
-            print(f"[Fund Discovery] Found {len(formd_funds)} Form D funds")
-        else:
-            report["errors"].append(
-                f"No Form D filings found for '{firm_name}' — "
-                "firm may not manage SEC-registered private offerings, "
-                "or funds may be registered under a different entity name"
-            )
-    except Exception as e:
-        formd_funds = []
-        report["errors"].append(f"Form D search failed: {e}")
-
-    # Build fund map from Form D results
-    fund_map: dict[str, dict] = {}
-    for f in formd_funds:
-        key = (f.get("entity_name") or "").upper()
-        fund_map[key] = {
-            "name":                 f.get("entity_name"),
-            "entity_type":          f.get("entity_type"),
-            "exemptions":           f.get("exemptions", []),
-            "is_private_fund":      f.get("is_private_fund", False),
-            "offering_amount":      f.get("offering_fmt"),
-            "offering_amount_raw":  f.get("total_offering_amount"),
-            "date_of_first_sale":   f.get("date_of_first_sale"),
-            "jurisdiction":         f.get("jurisdiction"),
-            "cik":                  f.get("cik"),
-            "accession":            f.get("accession"),
-            "filing_date":          f.get("file_date"),
-            "edgar_url": (
-                f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={f['cik']}&type=D&dateb=&owner=include&count=10"
-                if f.get("cik") else None
-            ),
-            "news":                 [],
-            "source":               "EDGAR Form D",
-        }
-
-    # ── Source 2: IAPD relyingAdvisors ───────────────────────────────────────
-    ra = _get_relying_advisors(iacontent or {})
-    report["relying_advisors"] = ra
-    if ra:
-        report["sources_used"].append("IAPD Relying Advisors")
-
-    # ── Source 3: Website / web search for additional fund names ─────────────
-    if client:
-        print("[Fund Discovery] Web search for fund names from website/brochures...")
+    if client is None:
+        # Fallback: direct Form D search without agent
+        print(f"[Fund Discovery] No LLM client — running direct Form D search for '{firm_name}'")
         try:
-            web_names = _extract_funds_from_website(
-                firm_name, website or "", client, tavily_key=tavily_key
-            )
-            if web_names:
-                report["sources_used"].append("Web search / firm website")
-                # Re-resolve each web-found name against Form D to get structured data
-                enriched = _enrich_web_funds_from_formd(web_names, set(fund_map.keys()))
-                for fd in enriched:
-                    key = (fd.get("name") or "").upper()
-                    if key:
-                        fund_map[key] = fd
+            funds = search_funds_for_gp(firm_name, max_funds=max_funds)
+            report["funds"] = [
+                {
+                    "name":               f.get("entity_name"),
+                    "offering_amount":    f.get("offering_fmt"),
+                    "date_of_first_sale": f.get("date_of_first_sale"),
+                    "entity_type":        f.get("entity_type"),
+                    "exemptions":         f.get("exemptions", []),
+                    "is_private_fund":    f.get("is_private_fund", False),
+                    "jurisdiction":       f.get("jurisdiction"),
+                    "edgar_url": (
+                        f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany"
+                        f"&CIK={f['cik']}&type=D&dateb=&owner=include&count=10"
+                        if f.get("cik") else None
+                    ),
+                    "news":   [],
+                    "source": "EDGAR Form D",
+                }
+                for f in funds
+            ]
+            if funds:
+                report["sources_used"].append("EDGAR Form D")
+            report["total_found"] = len(report["funds"])
         except Exception as e:
-            report["errors"].append(f"Web fund name extraction failed: {e}")
-    else:
-        report["errors"].append(
-            "No LLMClient provided — web fund name extraction skipped (Source 3)"
+            report["errors"].append(f"Form D search failed: {e}")
+        return report
+
+    # ── Build tool executor ───────────────────────────────────────────────────
+    tool_executor = {
+        "search_form_d": lambda inp: _exec_search_form_d(inp, max_funds=max_funds),
+        "search_web":    lambda inp: _exec_search_web(inp, tavily_key=tavily_key),
+        "get_relying_advisors": lambda inp: _exec_get_relying_advisors(inp, iacontent=iacontent),
+    }
+
+    # Build initial context for the agent
+    crd_line = f"CRD: {crd}" if crd else "CRD: unknown"
+    website_line = f"Website: {website}" if website else ""
+    initial_message = (
+        f"Find all private funds managed by this investment adviser:\n\n"
+        f"Firm name: {firm_name}\n"
+        f"{crd_line}\n"
+        f"{website_line}\n\n"
+        f"Use the available tools. Try multiple name variants on Form D. "
+        f"Also search the web. Output your final JSON when done."
+    )
+
+    print(f"[Fund Discovery Agent] Starting agent loop for '{firm_name}'...")
+    try:
+        result = client.agent_loop_json(
+            system=SYSTEM_PROMPT,
+            initial_message=initial_message,
+            tools=TOOLS,
+            tool_executor=tool_executor,
+            max_tokens=4096,
+            max_iterations=15,
         )
+    except Exception as e:
+        report["errors"].append(f"Agent loop failed: {e}")
+        return report
 
-    # ── Enrich each fund with news ────────────────────────────────────────────
-    funds = list(fund_map.values())
-    print(f"[Fund Discovery] Enriching {len(funds)} funds with news...")
-    for fund in funds[:10]:
-        name = fund.get("name", "")
+    if "parse_error" in result:
+        report["errors"].append(f"Agent output parse error: {result['parse_error'][:200]}")
+        return report
+
+    # ── Enrich with news ──────────────────────────────────────────────────────
+    raw_funds = result.get("funds", [])
+    print(f"[Fund Discovery Agent] Found {len(raw_funds)} funds. Enriching with news...")
+    enriched = []
+    for f in raw_funds[:max_funds]:
+        name = f.get("name") or ""
         if name:
-            try:
-                fund["news"] = _search_fund_news(name, firm_name, tavily_key=tavily_key)
-            except Exception:
-                fund["news"] = []
+            f["news"] = _fetch_fund_news(name, firm_name, tavily_key=tavily_key)
+        else:
+            f["news"] = []
+        enriched.append(f)
 
-    report["funds"]       = funds
-    report["total_found"] = len(funds)
+    report["funds"]            = enriched
+    report["relying_advisors"] = result.get("relying_advisors", [])
+    report["total_found"]      = len(enriched)
+    report["sources_used"]     = result.get("sources_used", [])
 
-    print(f"[Fund Discovery] Done. {len(funds)} funds, "
-          f"sources: {report['sources_used']}, errors: {report['errors'] or 'none'}")
+    if result.get("notes"):
+        report["errors"].append(result["notes"])
+
+    print(
+        f"[Fund Discovery Agent] Done — {len(enriched)} funds, "
+        f"sources: {report['sources_used']}"
+    )
     return report
