@@ -360,7 +360,7 @@ st.markdown("""
 <div class="title-bar">
   <div class="tb-icon">📋</div>
   <span class="tb-title">Alternatives Research Associate</span>
-  <span class="tb-meta">SEC EDGAR &nbsp;·&nbsp; IAPD &nbsp;·&nbsp; FRED &nbsp;·&nbsp; GPT-4o</span>
+  <span class="tb-meta">SEC EDGAR &nbsp;·&nbsp; IAPD &nbsp;·&nbsp; FRED &nbsp;·&nbsp; Claude</span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -536,7 +536,7 @@ if run_button:
         if raw_data.get("errors"):
             st.warning("Ingestion notes: " + " | ".join(raw_data["errors"]))
 
-        status_box.info(f"⏳ Step 2 — Analyzing firm structure · {_ingest_summary} · Running GPT-4o reasoning...")
+        status_box.info(f"⏳ Step 2 — Analyzing firm structure · {_ingest_summary} · Running Claude reasoning...")
         analysis = analysis_agent.run(raw_data, client)
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Analysis complete")
