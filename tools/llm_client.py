@@ -1,15 +1,14 @@
 """
-LLM Client — Anthropic Claude (claude-sonnet-4-6).
+LLM Client — OpenAI GPT-4o.
 
 Provides two modes:
   - complete / complete_json : single-shot LLM call (synthesis, analysis)
-  - agent_loop               : tool-use agentic loop (Claude decides what to call)
+  - agent_loop               : tool-use agentic loop (GPT decides what to call)
 
 Rate limiting:
   All LLMClient instances share a class-level throttle (_last_call_time / _call_lock).
-  _throttle() enforces a minimum gap between consecutive API calls so the org
-  never exceeds the 10,000 input token/minute limit.
-  Default: 12 seconds between calls (~5 calls/min, ~8-9k tokens/min headroom).
+  _throttle() enforces a minimum gap between consecutive API calls.
+  Default: 2 seconds between calls.
   Adjust with: LLMClient.set_call_interval(seconds)
 """
 
@@ -17,15 +16,14 @@ import json
 import re
 import time
 import threading
-import anthropic
-from anthropic import RateLimitError
+from openai import OpenAI, RateLimitError
 
 
 class LLMClient:
     # ── Class-level throttle (shared across all instances) ──────────────────
     _last_call_time: float = 0.0
     _call_lock = threading.Lock()
-    _min_interval: float = 12.0  # seconds between calls
+    _min_interval: float = 2.0  # seconds between calls
 
     @classmethod
     def set_call_interval(cls, seconds: float) -> None:
@@ -46,59 +44,63 @@ class LLMClient:
     # ── Instance setup ──────────────────────────────────────────────────
 
     def __init__(self, api_key: str):
-        self._client = anthropic.Anthropic(api_key=api_key)
-        self.provider = "anthropic"
-        self.model = "claude-sonnet-4-6"
+        self._client = OpenAI(api_key=api_key)
+        self.provider = "openai"
+        self.model = "gpt-4o"
 
-    # ── Single-shot completions ───────────────────────────────────────────
+    # ── Single-shot completions ───────────────────────────────────────────────
 
     def complete(self, system: str, user: str,
                  max_tokens: int = 8000,
                  thinking_tokens: int = 0, **_) -> str:
         """
         Single-shot text completion with throttle + retry on 429.
-        Pass thinking_tokens > 0 to enable extended thinking.
+        thinking_tokens is accepted for API compatibility but not used
+        (OpenAI models reason via system prompt instructions).
         """
-        kwargs: dict = dict(
-            model=self.model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-        )
-        if thinking_tokens > 0:
-            kwargs["max_tokens"] = max(max_tokens, thinking_tokens + 2048)
-            kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_tokens}
-
         self._throttle()
         for attempt in range(4):
             try:
-                message = self._client.messages.create(**kwargs)
+                response = self._client.chat.completions.create(
+                    model=self.model,
+                    max_tokens=max_tokens,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                )
                 break
             except RateLimitError:
                 if attempt == 3:
                     raise
-                wait = 2 ** (attempt + 2)  # 4, 8, 16 seconds
+                wait = 2 ** (attempt + 2)
                 print(f"[LLM] Rate limit hit — retrying in {wait}s (attempt {attempt + 1}/3)...")
                 time.sleep(wait)
-
-        return "".join(
-            block.text for block in message.content
-            if hasattr(block, "text")
-        ).strip()
+        return (response.choices[0].message.content or "").strip()
 
     def complete_json(self, system: str, user: str,
                       max_tokens: int = 8000,
                       thinking_tokens: int = 0, **_) -> dict:
         """complete() but uses OpenAI JSON mode for guaranteed valid JSON."""
-        response = self._client.chat.completions.create(
-            model=self.model,
-            max_tokens=max_tokens,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": system + "\n\nYou MUST respond with valid JSON."},
-                {"role": "user", "content": user},
-            ],
-        )
+        self._throttle()
+        for attempt in range(4):
+            try:
+                response = self._client.chat.completions.create(
+                    model=self.model,
+                    max_tokens=max_tokens,
+                    response_format={"type": "json_object"},
+                    messages=[
+                        {"role": "system", "content": system + "\n\nYou MUST respond with valid JSON."},
+                        {"role": "user", "content": user},
+                    ],
+                )
+                break
+            except RateLimitError:
+                if attempt == 3:
+                    raise
+                wait = 2 ** (attempt + 2)
+                print(f"[LLM] Rate limit hit — retrying in {wait}s (attempt {attempt + 1}/3)...")
+                time.sleep(wait)
         text = (response.choices[0].message.content or "").strip()
         if text.startswith("```"):
             lines = text.split("\n")
@@ -118,17 +120,18 @@ class LLMClient:
             )
 
     def chat(self, messages: list[dict], max_tokens: int = 2000) -> str:
-        """Fast conversational completion using claude-haiku-4-5."""
-        system = next((m["content"] for m in messages if m["role"] == "system"), "")
-        convo = [m for m in messages if m["role"] != "system"]
+        """Fast conversational completion using gpt-4o-mini."""
+        openai_messages = []
+        for m in messages:
+            openai_messages.append({"role": m["role"], "content": m["content"]})
+
         self._throttle()
         for attempt in range(4):
             try:
-                message = self._client.messages.create(
-                    model="claude-haiku-4-5-20251001",
+                response = self._client.chat.completions.create(
+                    model="gpt-4o-mini",
                     max_tokens=max_tokens,
-                    system=system,
-                    messages=convo,
+                    messages=openai_messages,
                 )
                 break
             except RateLimitError:
@@ -137,9 +140,27 @@ class LLMClient:
                 wait = 2 ** (attempt + 2)
                 print(f"[LLM] Rate limit hit — retrying in {wait}s...")
                 time.sleep(wait)
-        return (message.content[0].text or "").strip()
+        return (response.choices[0].message.content or "").strip()
 
-    # ── Agentic tool-use loop ─────────────────────────────────────────────
+    # ── Agentic tool-use loop ─────────────────────────────────────────────────
+
+    @staticmethod
+    def _convert_tools(tools: list[dict]) -> list[dict]:
+        """Convert Anthropic-format tool definitions to OpenAI function-calling format."""
+        openai_tools = []
+        for tool in tools:
+            if "type" in tool and tool["type"] == "function":
+                openai_tools.append(tool)
+            else:
+                openai_tools.append({
+                    "type": "function",
+                    "function": {
+                        "name": tool["name"],
+                        "description": tool.get("description", ""),
+                        "parameters": tool.get("input_schema", tool.get("parameters", {})),
+                    },
+                })
+        return openai_tools
 
     def agent_loop(
         self,
@@ -152,20 +173,23 @@ class LLMClient:
     ) -> str:
         """
         Run an agentic tool-use loop with throttle + retry on 429.
-        Claude decides which tools to call and when to stop.
+        GPT decides which tools to call and when to stop.
         """
-        messages = [{"role": "user", "content": initial_message}]
+        openai_tools = self._convert_tools(tools)
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": initial_message},
+        ]
 
         for iteration in range(max_iterations):
             self._throttle()
             for attempt in range(4):
                 try:
-                    response = self._client.messages.create(
+                    response = self._client.chat.completions.create(
                         model=self.model,
                         max_tokens=max_tokens,
-                        system=system,
-                        tools=tools,
                         messages=messages,
+                        tools=openai_tools,
                     )
                     break
                 except RateLimitError:
@@ -175,23 +199,25 @@ class LLMClient:
                     print(f"[LLM] Rate limit hit — retrying in {wait}s...")
                     time.sleep(wait)
 
-            messages.append({"role": "assistant", "content": response.content})
+            choice = response.choices[0]
+            assistant_msg = choice.message
 
-            if response.stop_reason == "end_turn":
-                for block in response.content:
-                    if hasattr(block, "text"):
-                        return block.text.strip()
-                return ""
+            # Append assistant turn
+            messages.append(assistant_msg)
 
-            tool_results = []
-            for block in response.content:
-                if block.type != "tool_use":
-                    continue
-                tool_name   = block.name
-                tool_inputs = block.input
-                tool_id     = block.id
+            # Done — no more tool calls
+            if choice.finish_reason == "stop" or not assistant_msg.tool_calls:
+                return (assistant_msg.content or "").strip()
 
-                print(f"  [agent] → {tool_name}({json.dumps(tool_inputs)[:120]})")
+            # Process tool calls
+            for tool_call in assistant_msg.tool_calls:
+                tool_name = tool_call.function.name
+                try:
+                    tool_inputs = json.loads(tool_call.function.arguments)
+                except json.JSONDecodeError:
+                    tool_inputs = {}
+
+                print(f"  [agent] -> {tool_name}({json.dumps(tool_inputs)[:120]})")
 
                 if tool_name in tool_executor:
                     try:
@@ -206,30 +232,25 @@ class LLMClient:
                 else:
                     result_str = f"Unknown tool: {tool_name}"
 
-                tool_results.append({
-                    "type":        "tool_result",
-                    "tool_use_id": tool_id,
-                    "content":     result_str,
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result_str,
                 })
 
-            messages.append({"role": "user", "content": tool_results})
-
         # Exceeded max iterations — ask for final answer
+        messages.append({
+            "role": "user",
+            "content": "You've reached the maximum number of tool calls. "
+                       "Please provide your final answer now.",
+        })
         self._throttle()
-        response = self._client.messages.create(
+        response = self._client.chat.completions.create(
             model=self.model,
             max_tokens=max_tokens,
-            system=system,
-            messages=messages + [{
-                "role": "user",
-                "content": "You've reached the maximum number of tool calls. "
-                           "Please provide your final answer now.",
-            }],
+            messages=messages,
         )
-        for block in response.content:
-            if hasattr(block, "text"):
-                return block.text.strip()
-        return ""
+        return (response.choices[0].message.content or "").strip()
 
     def agent_loop_json(self, system: str, initial_message: str,
                         tools: list[dict], tool_executor: dict,
