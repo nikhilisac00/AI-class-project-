@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -34,7 +35,7 @@ import agents.memo_generation as memo_agent
 import agents.ic_scorecard      as scorecard_agent
 import agents.research_director as director_agent
 import agents.comparables       as comparables_agent
-from tools.llm_client import make_client
+from tools.llm_client import make_client, LLMClient
 
 load_dotenv()
 console = Console()
@@ -137,10 +138,17 @@ def main():
         default=3,
         help="Max research rounds for news agent (default: 3)",
     )
+    parser.add_argument(
+        "--tpm-limit",
+        type=int,
+        default=30000,
+        help="Tokens-per-minute rate limit for OpenAI API (default: 30000)",
+    )
     args = parser.parse_args()
 
     api_key = validate_env()
     client  = make_client(api_key)
+    LLMClient.set_tpm_limit(args.tpm_limit)
     fred_key = None if args.no_fred else os.getenv("FRED_API_KEY")
 
     tavily_key = os.getenv("TAVILY_API_KEY")
@@ -184,74 +192,88 @@ def main():
         console.print(f"\nRaw data saved to: {out}")
         return
 
-    # ── Agent 2: Fund Analysis ────────────────────────────────────────────────
-
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
-                  console=console) as p:
-        task = p.add_task("Running fund analysis (GPT-4o reasoning)...", total=None)
-        analysis = analysis_agent.run(raw_data, client)
-        p.update(task, description="Fund analysis complete", completed=True)
-
-    # ── Agent 3: News Research (Karpathy autoresearch) ────────────────────────
+    # ── Group A (parallel): Fund Analysis + News Research + Comparables ─────
+    console.print("\n[bold]Group A:[/] Fund Analysis + News Research + Comparables (parallel)")
+    analysis = None
     news_report = None
-    if not args.no_news:
-        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
-                      console=console) as p:
-            task = p.add_task(
-                f"Deep news research ({args.news_rounds} rounds, "
-                f"{'Tavily' if tavily_key else 'DuckDuckGo'})...",
-                total=None,
-            )
-            news_report = news_agent.run(
-                firm_name=firm_name,
-                analysis=analysis,
-                client=client,
-                tavily_api_key=tavily_key,
-                max_rounds=args.news_rounds,
-            )
-            p.update(task, description=(
-                f"News research complete — "
+    comparables = None
+
+    def _run_analysis():
+        return analysis_agent.run(raw_data, client)
+
+    def _run_news():
+        if args.no_news:
+            return None
+        return news_agent.run(
+            firm_name=firm_name,
+            analysis=None,  # not available yet in parallel mode
+            client=client,
+            tavily_api_key=tavily_key,
+            max_rounds=args.news_rounds,
+        )
+
+    def _run_comparables():
+        return comparables_agent.run(
+            firm_name=firm_name,
+            adv_summary=raw_data.get("adv_summary", {}),
+            raw_data=raw_data,
+        )
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        fut_analysis = pool.submit(_run_analysis)
+        fut_news = pool.submit(_run_news)
+        fut_comparables = pool.submit(_run_comparables)
+
+        analysis = fut_analysis.result()
+        console.print("  [green]Fund analysis complete[/]")
+
+        news_report = fut_news.result()
+        if news_report:
+            console.print(
+                f"  [green]News research complete[/] — "
                 f"{news_report['research_rounds']} rounds, "
                 f"{news_report['total_sources']} sources"
-            ), completed=True)
+            )
+            if news_report.get("errors"):
+                console.print(f"  [yellow]News warnings:[/] {news_report['errors']}")
+        elif not args.no_news:
+            console.print("  [yellow]News research returned no results[/]")
 
-        if news_report.get("errors"):
-            console.print(f"\n[yellow]News research warnings:[/] {news_report['errors']}")
-
-        risk_color = {"HIGH": "red", "MEDIUM": "yellow", "LOW": "green"}.get(
-            news_report.get("overall_news_risk", ""), "white"
-        )
+        comparables = fut_comparables.result()
         console.print(
-            f"\n[bold {risk_color}]News Risk: "
-            f"{news_report.get('overall_news_risk', 'UNKNOWN')}[/] — "
-            f"{len(news_report.get('news_flags', []))} flags, "
-            f"{news_report.get('total_sources', 0)} sources"
+            f"  [green]Comparables complete[/] — "
+            f"{len(comparables.get('peers', []))} peers"
         )
 
-    # ── Agent 4: Risk Flagging ────────────────────────────────────────────────
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
-                  console=console) as p:
-        task = p.add_task("Running risk flagging (GPT-4o reasoning)...", total=None)
-        risk_report = risk_agent.run(analysis, raw_data, client, news_report=news_report)
-        p.update(task, description="Risk flagging complete", completed=True)
+    # ── Group B (sequential): Risk Flagging — needs analysis + news ──────────
+    console.print("\n[bold]Group B:[/] Risk Flagging")
+    risk_report = risk_agent.run(analysis, raw_data, client, news_report=news_report)
+    console.print("  [green]Risk flagging complete[/]")
 
     print_risk_summary(risk_report)
 
-    # ── Agent 5: Memo Generation ──────────────────────────────────────────────
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
-                  console=console) as p:
-        task = p.add_task("Generating DD memo (GPT-4o reasoning)...", total=None)
-        memo = memo_agent.run(analysis, risk_report, raw_data, client,
-                              news_report=news_report)
-        p.update(task, description="Memo generation complete", completed=True)
+    # ── Group C (parallel): Memo + IC Scorecard — both need risk_report ──────
+    console.print("\n[bold]Group C:[/] Memo Generation + IC Scorecard (parallel)")
+    memo = None
+    scorecard = None
 
-    # ── Agent 6: IC Scorecard ─────────────────────────────────────────────────
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
-                  console=console) as p:
-        task = p.add_task("Generating IC Scorecard (GPT-4o reasoning)...", total=None)
-        scorecard = scorecard_agent.run(analysis, risk_report, raw_data, client,
-                                        news_report=news_report)
-        p.update(task, description="IC Scorecard complete", completed=True)
+    def _run_memo():
+        return memo_agent.run(analysis, risk_report, raw_data, client,
+                              news_report=news_report)
+
+    def _run_scorecard():
+        return scorecard_agent.run(analysis, risk_report, raw_data, client,
+                                   news_report=news_report)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        fut_memo = pool.submit(_run_memo)
+        fut_scorecard = pool.submit(_run_scorecard)
+
+        memo = fut_memo.result()
+        console.print("  [green]Memo generation complete[/]")
+
+        scorecard = fut_scorecard.result()
+        console.print("  [green]IC Scorecard complete[/]")
 
     rec       = scorecard.get("recommendation", "UNKNOWN")
     overall   = scorecard.get("overall_score", "—")
@@ -274,26 +296,13 @@ def main():
     scorecard_path = Path(args.output_dir) / f"{ts}_{safe_name}_ic_scorecard.json"
     scorecard_path.write_text(json.dumps(scorecard, indent=2, default=str), encoding="utf-8")
 
-    # ── Agent 7: Comparables ──────────────────────────────────────────────────
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
-                  console=console) as p:
-        task = p.add_task("Finding comparable managers (IAPD)...", total=None)
-        comparables = comparables_agent.run(
-            firm_name=firm_name,
-            adv_summary=raw_data.get("adv_summary", {}),
-            raw_data=raw_data,
-        )
-        p.update(task, description=f"Comparables complete — {len(comparables.get('peers', []))} peers found", completed=True)
-
-    # ── Agent 8: Research Director ────────────────────────────────────────────
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
-                  console=console) as p:
-        task = p.add_task("Research Director review (GPT-4o reasoning)...", total=None)
-        director_review = director_agent.run(
-            analysis, risk_report, raw_data, scorecard, client,
-            news_report=news_report,
-        )
-        p.update(task, description="Director review complete", completed=True)
+    # ── Group D (sequential): Research Director — needs scorecard ─────────────
+    console.print("\n[bold]Group D:[/] Research Director")
+    director_review = director_agent.run(
+        analysis, risk_report, raw_data, scorecard, client,
+        news_report=news_report,
+    )
+    console.print("  [green]Director review complete[/]")
 
     verdict = director_review.get("verdict", "UNKNOWN")
     revised = director_review.get("revised_recommendation", "")

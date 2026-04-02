@@ -6,47 +6,140 @@ Provides two modes:
   - agent_loop               : tool-use agentic loop (GPT decides what to call)
 
 Rate limiting:
-  All LLMClient instances share a class-level throttle (_last_call_time / _call_lock).
-  _throttle() enforces a minimum gap between consecutive API calls.
-  Default: 2 seconds between calls.
-  Adjust with: LLMClient.set_call_interval(seconds)
+  A sliding-window TokenBucket tracks actual tokens consumed per minute across
+  all threads. Before each API call, _acquire_tokens() blocks until there is
+  enough headroom under the TPM cap. After each call, actual usage from the
+  response is recorded.
+  Default: 30,000 TPM. Adjust with: LLMClient.set_tpm_limit(tokens)
 """
 
 import json
 import re
 import time
 import threading
+from collections import deque
 from openai import OpenAI, RateLimitError
 
 
+class _TokenBucket:
+    """Thread-safe sliding-window token rate limiter."""
+
+    def __init__(self, tpm_limit: int = 30_000):
+        self._lock = threading.Lock()
+        self._tpm_limit = tpm_limit
+        self._window: deque[tuple[float, int]] = deque()  # (timestamp, tokens)
+
+    @property
+    def tpm_limit(self) -> int:
+        return self._tpm_limit
+
+    @tpm_limit.setter
+    def tpm_limit(self, value: int) -> None:
+        with self._lock:
+            self._tpm_limit = value
+
+    def _purge_old(self) -> None:
+        """Remove entries older than 60 seconds."""
+        cutoff = time.time() - 60.0
+        while self._window and self._window[0][0] < cutoff:
+            self._window.popleft()
+
+    def tokens_used(self) -> int:
+        """Tokens consumed in the current 60-second window."""
+        with self._lock:
+            self._purge_old()
+            return sum(t for _, t in self._window)
+
+    def acquire(self, estimated_tokens: int) -> None:
+        """Block until estimated_tokens can fit under the TPM limit."""
+        while True:
+            with self._lock:
+                self._purge_old()
+                used = sum(t for _, t in self._window)
+                if used + estimated_tokens <= self._tpm_limit:
+                    # Reserve the tokens now (will be corrected after the call)
+                    self._window.append((time.time(), estimated_tokens))
+                    return
+                # Calculate how long until enough tokens expire
+                needed = used + estimated_tokens - self._tpm_limit
+                cumulative = 0
+                wait_until = time.time()
+                for ts, tok in self._window:
+                    cumulative += tok
+                    if cumulative >= needed:
+                        wait_until = ts + 60.0
+                        break
+            wait = max(0.5, wait_until - time.time())
+            print(f"[LLM] Token budget full ({used:,}/{self._tpm_limit:,} TPM) "
+                  f"— waiting {wait:.1f}s...")
+            time.sleep(wait)
+
+    def record_actual(self, estimated_tokens: int, actual_tokens: int) -> None:
+        """Correct the reservation with actual usage from the API response."""
+        with self._lock:
+            # Find and update the most recent entry matching our estimate
+            for i in range(len(self._window) - 1, -1, -1):
+                ts, tok = self._window[i]
+                if tok == estimated_tokens:
+                    self._window[i] = (ts, actual_tokens)
+                    break
+
+
+# Shared global bucket
+_bucket = _TokenBucket(tpm_limit=30_000)
+
+
 class LLMClient:
-    # ── Class-level throttle (shared across all instances) ──────────────────
-    _last_call_time: float = 0.0
-    _call_lock = threading.Lock()
-    _min_interval: float = 2.0  # seconds between calls
 
     @classmethod
-    def set_call_interval(cls, seconds: float) -> None:
-        """Adjust the minimum gap between API calls. Call before starting a run."""
-        cls._min_interval = seconds
-        print(f"[LLM] Call interval set to {seconds}s")
-
-    def _throttle(self) -> None:
-        """Sleep if the last API call was too recent."""
-        with LLMClient._call_lock:
-            elapsed = time.time() - LLMClient._last_call_time
-            if elapsed < LLMClient._min_interval:
-                wait = LLMClient._min_interval - elapsed
-                print(f"[LLM] Throttling — waiting {wait:.1f}s...")
-                time.sleep(wait)
-            LLMClient._last_call_time = time.time()
-
-    # ── Instance setup ──────────────────────────────────────────────────
+    def set_tpm_limit(cls, tpm: int) -> None:
+        """Set the tokens-per-minute limit for rate limiting."""
+        _bucket.tpm_limit = tpm
+        print(f"[LLM] TPM limit set to {tpm:,}")
 
     def __init__(self, api_key: str):
         self._client = OpenAI(api_key=api_key)
         self.provider = "openai"
         self.model = "gpt-4o"
+
+    # ── Internal helpers ──────────────────────────────────────────────────
+
+    @staticmethod
+    def _estimate_tokens(text: str) -> int:
+        """Rough token estimate: ~4 chars per token."""
+        return max(100, len(text) // 4)
+
+    def _call_with_budget(self, estimated_input: int, max_output: int, api_call):
+        """Acquire token budget, make the API call, record actual usage."""
+        estimated_total = estimated_input + max_output
+        _bucket.acquire(estimated_total)
+        try:
+            response = api_call()
+        except RateLimitError:
+            # On 429, the reservation stays but we'll retry after backoff
+            raise
+        # Record actual usage
+        usage = getattr(response, "usage", None)
+        if usage:
+            actual = usage.prompt_tokens + usage.completion_tokens
+            _bucket.record_actual(estimated_total, actual)
+            print(f"[LLM] Tokens: {usage.prompt_tokens:,} in + "
+                  f"{usage.completion_tokens:,} out = {actual:,} "
+                  f"({_bucket.tokens_used():,}/{_bucket.tpm_limit:,} TPM window)")
+        return response
+
+    def _retry(self, estimated_input: int, max_output: int, api_call, retries: int = 3):
+        """Call with token budget + exponential backoff on 429."""
+        for attempt in range(retries + 1):
+            try:
+                return self._call_with_budget(estimated_input, max_output, api_call)
+            except RateLimitError:
+                if attempt == retries:
+                    raise
+                wait = 2 ** (attempt + 2)
+                print(f"[LLM] Rate limit 429 — retrying in {wait}s "
+                      f"(attempt {attempt + 1}/{retries})...")
+                time.sleep(wait)
 
     # ── Single-shot completions ───────────────────────────────────────────────
 
@@ -54,53 +147,39 @@ class LLMClient:
                  max_tokens: int = 8000,
                  thinking_tokens: int = 0, **_) -> str:
         """
-        Single-shot text completion with throttle + retry on 429.
-        thinking_tokens is accepted for API compatibility but not used
-        (OpenAI models reason via system prompt instructions).
+        Single-shot text completion with token-aware rate limiting.
+        thinking_tokens is accepted for API compatibility but not used.
         """
-        self._throttle()
-        for attempt in range(4):
-            try:
-                response = self._client.chat.completions.create(
-                    model=self.model,
-                    max_tokens=max_tokens,
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user},
-                    ],
-                )
-                break
-            except RateLimitError:
-                if attempt == 3:
-                    raise
-                wait = 2 ** (attempt + 2)
-                print(f"[LLM] Rate limit hit — retrying in {wait}s (attempt {attempt + 1}/3)...")
-                time.sleep(wait)
+        est_input = self._estimate_tokens(system) + self._estimate_tokens(user)
+        response = self._retry(est_input, max_tokens, lambda: (
+            self._client.chat.completions.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            )
+        ))
         return (response.choices[0].message.content or "").strip()
 
     def complete_json(self, system: str, user: str,
                       max_tokens: int = 8000,
                       thinking_tokens: int = 0, **_) -> dict:
         """complete() but uses OpenAI JSON mode for guaranteed valid JSON."""
-        self._throttle()
-        for attempt in range(4):
-            try:
-                response = self._client.chat.completions.create(
-                    model=self.model,
-                    max_tokens=max_tokens,
-                    response_format={"type": "json_object"},
-                    messages=[
-                        {"role": "system", "content": system + "\n\nYou MUST respond with valid JSON."},
-                        {"role": "user", "content": user},
-                    ],
-                )
-                break
-            except RateLimitError:
-                if attempt == 3:
-                    raise
-                wait = 2 ** (attempt + 2)
-                print(f"[LLM] Rate limit hit — retrying in {wait}s (attempt {attempt + 1}/3)...")
-                time.sleep(wait)
+        augmented_system = system + "\n\nYou MUST respond with valid JSON."
+        est_input = self._estimate_tokens(augmented_system) + self._estimate_tokens(user)
+        response = self._retry(est_input, max_tokens, lambda: (
+            self._client.chat.completions.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": augmented_system},
+                    {"role": "user", "content": user},
+                ],
+            )
+        ))
         text = (response.choices[0].message.content or "").strip()
         if text.startswith("```"):
             lines = text.split("\n")
@@ -121,25 +200,15 @@ class LLMClient:
 
     def chat(self, messages: list[dict], max_tokens: int = 2000) -> str:
         """Fast conversational completion using gpt-4o-mini."""
-        openai_messages = []
-        for m in messages:
-            openai_messages.append({"role": m["role"], "content": m["content"]})
-
-        self._throttle()
-        for attempt in range(4):
-            try:
-                response = self._client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    max_tokens=max_tokens,
-                    messages=openai_messages,
-                )
-                break
-            except RateLimitError:
-                if attempt == 3:
-                    raise
-                wait = 2 ** (attempt + 2)
-                print(f"[LLM] Rate limit hit — retrying in {wait}s...")
-                time.sleep(wait)
+        openai_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
+        est_input = sum(self._estimate_tokens(m["content"]) for m in messages)
+        response = self._retry(est_input, max_tokens, lambda: (
+            self._client.chat.completions.create(
+                model="gpt-4o-mini",
+                max_tokens=max_tokens,
+                messages=openai_messages,
+            )
+        ))
         return (response.choices[0].message.content or "").strip()
 
     # ── Agentic tool-use loop ─────────────────────────────────────────────────
@@ -172,7 +241,7 @@ class LLMClient:
         max_iterations: int = 15,
     ) -> str:
         """
-        Run an agentic tool-use loop with throttle + retry on 429.
+        Run an agentic tool-use loop with token-aware rate limiting.
         GPT decides which tools to call and when to stop.
         """
         openai_tools = self._convert_tools(tools)
@@ -182,34 +251,30 @@ class LLMClient:
         ]
 
         for iteration in range(max_iterations):
-            self._throttle()
-            for attempt in range(4):
-                try:
-                    response = self._client.chat.completions.create(
-                        model=self.model,
-                        max_tokens=max_tokens,
-                        messages=messages,
-                        tools=openai_tools,
-                    )
-                    break
-                except RateLimitError:
-                    if attempt == 3:
-                        raise
-                    wait = 2 ** (attempt + 2)
-                    print(f"[LLM] Rate limit hit — retrying in {wait}s...")
-                    time.sleep(wait)
+            est_input = sum(
+                self._estimate_tokens(
+                    m["content"] if isinstance(m, dict) and "content" in m
+                    else str(m)
+                )
+                for m in messages
+            )
+            response = self._retry(est_input, max_tokens, lambda: (
+                self._client.chat.completions.create(
+                    model=self.model,
+                    max_tokens=max_tokens,
+                    messages=messages,
+                    tools=openai_tools,
+                )
+            ))
 
             choice = response.choices[0]
             assistant_msg = choice.message
 
-            # Append assistant turn
             messages.append(assistant_msg)
 
-            # Done — no more tool calls
             if choice.finish_reason == "stop" or not assistant_msg.tool_calls:
                 return (assistant_msg.content or "").strip()
 
-            # Process tool calls
             for tool_call in assistant_msg.tool_calls:
                 tool_name = tool_call.function.name
                 try:
@@ -244,12 +309,20 @@ class LLMClient:
             "content": "You've reached the maximum number of tool calls. "
                        "Please provide your final answer now.",
         })
-        self._throttle()
-        response = self._client.chat.completions.create(
-            model=self.model,
-            max_tokens=max_tokens,
-            messages=messages,
+        est_input = sum(
+            self._estimate_tokens(
+                m["content"] if isinstance(m, dict) and "content" in m
+                else str(m)
+            )
+            for m in messages
         )
+        response = self._retry(est_input, max_tokens, lambda: (
+            self._client.chat.completions.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                messages=messages,
+            )
+        ))
         return (response.choices[0].message.content or "").strip()
 
     def agent_loop_json(self, system: str, initial_message: str,
