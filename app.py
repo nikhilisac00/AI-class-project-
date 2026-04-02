@@ -40,14 +40,14 @@ html, body, [class*="css"] {
     color: #0f1923;
 }
 .block-container {
-    padding-top: 0.5rem !important;
-    padding-bottom: 0.5rem !important;
+    padding-top: 1.2rem !important;
+    padding-bottom: 1.2rem !important;
     background: #f7f8fa;
 }
 
 /* ── Tighten Streamlit layout gaps ───────────────────────────── */
-[data-testid="stVerticalBlock"]   { gap: 0.3rem !important; }
-[data-testid="stHorizontalBlock"] { gap: 0.4rem !important; }
+[data-testid="stVerticalBlock"]   { gap: 0.65rem !important; }
+[data-testid="stHorizontalBlock"] { gap: 0.6rem !important; }
 section[data-testid="stMain"] > div { padding-top: 0 !important; }
 
 /* ── Sidebar ─────────────────────────────────────────────────── */
@@ -62,7 +62,7 @@ section[data-testid="stMain"] > div { padding-top: 0 !important; }
     border-color: #1e3a5a !important;
     font-size: 0.78rem !important;
     padding: 4px 8px !important;
-    height: 30px !important;
+    height: 34px !important;
 }
 [data-testid="stSidebar"] .stTextInput label,
 [data-testid="stSidebar"] .stSlider label,
@@ -84,8 +84,8 @@ section[data-testid="stMain"] > div { padding-top: 0 !important; }
 .title-bar {
     background: #0f1923;
     border-radius: 4px;
-    height: 44px;
-    padding: 0 16px;
+    height: 52px;
+    padding: 0 20px;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -109,8 +109,8 @@ section[data-testid="stMain"] > div { padding-top: 0 !important; }
 .firm-header {
     background: #0f1923;
     border-radius: 4px;
-    padding: 10px 16px;
-    margin-bottom: 8px;
+    padding: 14px 20px;
+    margin-bottom: 12px;
     border-left: 3px solid #c9a84c;
 }
 .firm-header h2 {
@@ -130,7 +130,7 @@ section[data-testid="stMain"] > div { padding-top: 0 !important; }
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
 }
 .step-label .step-num {
     background: #1a3d6e;
@@ -150,7 +150,7 @@ section[data-testid="stMain"] > div { padding-top: 0 !important; }
     border: 1px solid #e2e6ea;
     border-left: 2px solid #1a3d6e;
     border-radius: 4px;
-    padding: 7px 10px;
+    padding: 12px 14px;
     text-align: left;
 }
 .metric-card .metric-label {
@@ -159,13 +159,13 @@ section[data-testid="stMain"] > div { padding-top: 0 !important; }
     text-transform: uppercase;
     letter-spacing: 0.07em;
     color: #8fa3bb;
-    margin-bottom: 2px;
+    margin-bottom: 4px;
 }
 .metric-card .metric-value {
-    font-size: 1.1rem;
+    font-size: 1.25rem;
     font-weight: 700;
     color: #0f1923;
-    line-height: 1.15;
+    line-height: 1.2;
 }
 .metric-card .metric-sub {
     font-size: 0.62rem;
@@ -181,8 +181,8 @@ section[data-testid="stMain"] > div { padding-top: 0 !important; }
 /* ── Risk tier banner ────────────────────────────────────────── */
 .risk-tier-banner {
     border-radius: 3px;
-    padding: 6px 12px;
-    font-size: 0.82rem;
+    padding: 10px 16px;
+    font-size: 0.88rem;
     font-weight: 700;
     letter-spacing: 0.03em;
     margin-bottom: 6px;
@@ -203,7 +203,7 @@ section[data-testid="stMain"] > div { padding-top: 0 !important; }
     font-weight: 600 !important;
     text-transform: uppercase !important;
     letter-spacing: 0.05em !important;
-    padding: 5px 12px !important;
+    padding: 8px 16px !important;
     background: transparent !important;
     border: none !important;
     border-bottom: 2px solid transparent !important;
@@ -231,8 +231,8 @@ section[data-testid="stMain"] > div { padding-top: 0 !important; }
 
 /* ── Buttons ─────────────────────────────────────────────────── */
 .stButton > button {
-    height: 34px !important;
-    padding: 0 16px !important;
+    height: 38px !important;
+    padding: 0 20px !important;
     font-size: 0.78rem !important;
     font-weight: 600 !important;
     border-radius: 4px !important;
@@ -252,9 +252,9 @@ section[data-testid="stMain"] > div { padding-top: 0 !important; }
 
 /* ── Text inputs ─────────────────────────────────────────────── */
 .stTextInput input {
-    height: 34px !important;
+    height: 38px !important;
     font-size: 0.82rem !important;
-    padding: 4px 10px !important;
+    padding: 6px 12px !important;
     border-radius: 4px !important;
 }
 
@@ -267,7 +267,7 @@ section[data-testid="stMain"] > div { padding-top: 0 !important; }
 [data-testid="stExpander"] summary {
     font-size: 0.78rem !important;
     font-weight: 600 !important;
-    padding: 6px 10px !important;
+    padding: 9px 12px !important;
     min-height: 0 !important;
     color: #0f1923 !important;
 }
@@ -293,15 +293,15 @@ section[data-testid="stMain"] > div { padding-top: 0 !important; }
     border: 1px solid #e2e6ea;
     border-left: 2px solid #1a3d6e;
     border-radius: 4px;
-    padding: 6px 10px !important;
+    padding: 10px 12px !important;
 }
 [data-testid="stMetricLabel"] { font-size: 0.60rem !important; color: #8fa3bb !important; }
 [data-testid="stMetricValue"] { font-size: 1.05rem !important; font-weight: 700 !important; }
 
 /* ── Alerts ──────────────────────────────────────────────────── */
 [data-testid="stAlert"] {
-    padding: 7px 12px !important;
-    font-size: 0.80rem !important;
+    padding: 10px 14px !important;
+    font-size: 0.82rem !important;
     border-radius: 4px !important;
 }
 
@@ -309,7 +309,7 @@ section[data-testid="stMain"] > div { padding-top: 0 !important; }
 .stCaption, small, caption { font-size: 0.70rem !important; color: #8fa3bb !important; }
 
 /* ── Dividers ────────────────────────────────────────────────── */
-hr { border-color: #e2e6ea !important; margin: 4px 0 !important; }
+hr { border-color: #e2e6ea !important; margin: 8px 0 !important; }
 
 /* ── Progress bar ────────────────────────────────────────────── */
 [data-testid="stProgress"] > div { height: 4px !important; border-radius: 2px !important; }
