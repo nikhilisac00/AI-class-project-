@@ -388,27 +388,7 @@ with col_q:
 with col_find:
     find_btn = st.button("Find Firm", type="secondary", use_container_width=True)
 
-# ── Example firm chips (shown only on empty state) ───────────────────────────
-if not st.session_state.candidates and not st.session_state.confirmed_firm:
-    _examples = ["AQR Capital Management", "Two Sigma", "Ares Management", "Bridgewater Associates"]
-    st.markdown('<div style="margin:4px 0 2px 0;font-size:0.68rem;color:#8fa3bb;text-transform:uppercase;letter-spacing:0.06em">Try an example</div>', unsafe_allow_html=True)
-    _chip_cols = st.columns(len(_examples))
-    for _ci, _ex in enumerate(_examples):
-        with _chip_cols[_ci]:
-            if st.button(_ex, key=f"chip_{_ci}", use_container_width=True):
-                st.session_state.search_query   = _ex
-                st.session_state._auto_search   = True
-                st.session_state.candidates     = []
-                st.session_state.confirmed_firm = None
-                st.session_state.pipeline_done  = False
-                st.session_state.pipeline_result = {}
-                st.rerun()
-
 # Trigger search
-if find_btn or st.session_state._auto_search:
-    if st.session_state._auto_search:
-        query_input = st.session_state.search_query
-        st.session_state._auto_search = False
 if find_btn:
     if not query_input.strip():
         st.error("Enter a firm name or CRD to search.")
