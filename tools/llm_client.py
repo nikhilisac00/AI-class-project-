@@ -89,9 +89,17 @@ class LLMClient:
     def complete_json(self, system: str, user: str,
                       max_tokens: int = 8000,
                       thinking_tokens: int = 0, **_) -> dict:
-        """complete() but parses the response as JSON."""
-        text = self.complete(system, user, max_tokens,
-                             thinking_tokens=thinking_tokens)
+        """complete() but uses OpenAI JSON mode for guaranteed valid JSON."""
+        response = self._client.chat.completions.create(
+            model=self.model,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": system + "\n\nYou MUST respond with valid JSON."},
+                {"role": "user", "content": user},
+            ],
+        )
+        text = (response.choices[0].message.content or "").strip()
         if text.startswith("```"):
             lines = text.split("\n")
             text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])

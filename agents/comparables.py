@@ -123,7 +123,7 @@ def run(firm_name: str, adv_summary: dict, raw_data: dict,
         score = 0.0
         if c.get("state") == target_state:
             score += 0.4
-        if c.get("registration_status", "").upper() in ("ACTIVE", ""):
+        if (c.get("registration_status") or "").upper() in ("ACTIVE", ""):
             score += 0.3
         if not c.get("has_disclosures"):
             score += 0.1
