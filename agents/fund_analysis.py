@@ -12,6 +12,7 @@ Extended thinking lets Claude work through:
 - Whether the data picture is internally consistent
 """
 
+import copy
 import json
 from tools.llm_client import LLMClient
 
@@ -67,12 +68,73 @@ CRITICAL RULES:
 """
 
 
+def _slim_raw_data(raw_data: dict) -> dict:
+    """
+    Trim raw_data before sending to the LLM to stay within token limits.
+
+    Removes high-volume fields that add tokens without adding analytical value:
+    - search_results (IAPD search hits — not needed by the analyst)
+    - Top holdings truncated to 10 (from 25)
+    - 13F history trimmed to period/value/qoq only
+    - Fund news trimmed to title + date (no snippets)
+    - Disclosure details arrays dropped (type/date/description kept)
+    """
+    d = copy.deepcopy(raw_data)
+
+    # Not useful for synthesis
+    d.pop("search_results", None)
+
+    # Trim 13F holdings to top 10
+    try:
+        hb = d["adv_xml_data"]["thirteenf"]["holdings_breakdown"]
+        if hb.get("top_holdings"):
+            hb["top_holdings"] = hb["top_holdings"][:10]
+    except (KeyError, TypeError):
+        pass
+
+    # Trim 13F history to essential fields only
+    try:
+        history = d["adv_xml_data"]["thirteenf_history"]
+        d["adv_xml_data"]["thirteenf_history"] = [
+            {
+                "period":              q.get("period"),
+                "portfolio_value_fmt": q.get("portfolio_value_fmt"),
+                "holdings_count":      q.get("holdings_count"),
+                "qoq_change_pct":      q.get("qoq_change_pct"),
+            }
+            for q in history
+        ]
+    except (KeyError, TypeError):
+        pass
+
+    # Trim fund news to title + date (drop snippet text)
+    try:
+        for fund in d["fund_discovery"]["funds"]:
+            fund["news"] = [
+                {"title": n.get("title"), "date": n.get("date")}
+                for n in (fund.get("news") or [])
+            ]
+    except (KeyError, TypeError):
+        pass
+
+    # Drop verbose details arrays from disclosures (keep type/date/description)
+    try:
+        for disc in d["adv_xml_data"]["disclosures"]:
+            disc.pop("details", None)
+    except (KeyError, TypeError):
+        pass
+
+    return d
+
+
 def run(raw_data: dict, client: LLMClient) -> dict:
+    slimmed = _slim_raw_data(raw_data)
+
     user_message = f"""
 Analyze this investment adviser data. Think carefully about what it means before responding.
 
 <data>
-{json.dumps(raw_data, indent=2, default=str)}
+{json.dumps(slimmed, indent=2, default=str)}
 </data>
 
 Work through the following in your analysis:
@@ -127,7 +189,7 @@ Return ONLY a JSON object with this exact schema (null for any missing field):
     "disclosure_count": "number or null",
     "disclosure_types": ["list"],
     "severity_assessment": "CLEAN | LOW | MEDIUM | HIGH | CRITICAL",
-    "assessment": "your interpretation of what these disclosures mean for an LP — not just a restatement"
+    "assessment": "your interpretation of what these disclosures mean for an LP"
   }},
   "13f_filings": {{
     "available": "boolean",
@@ -143,7 +205,7 @@ Return ONLY a JSON object with this exact schema (null for any missing field):
     "fed_funds_rate": "string or null",
     "hy_spread": "string or null",
     "ten_yr_yield": "string or null",
-    "notes": "what this rate environment means specifically for this firm type's fundraising and strategy"
+    "notes": "what this rate environment means specifically for this firm type"
   }},
   "funds_analysis": {{
     "total_funds_found": "number or null",
@@ -159,11 +221,11 @@ Return ONLY a JSON object with this exact schema (null for any missing field):
         "is_private_fund": "boolean",
         "exemption_interpretation": "what 3C.1 vs 3C.7 means for this specific fund",
         "edgar_url": "string or null",
-        "news_headlines": ["up to 3 headlines from fund news"]
+        "news_headlines": ["up to 3 headlines"]
       }}
     ],
     "vintage_summary": "what the fund launch dates tell us about fundraising cadence",
-    "fundraising_pattern": "your read on the fundraising trajectory — accelerating, steady, declining?",
+    "fundraising_pattern": "your read on the fundraising trajectory",
     "notes": "data gaps or limitations"
   }},
   "data_quality_flags": [
@@ -177,6 +239,6 @@ Return ONLY a JSON object with this exact schema (null for any missing field):
     return client.complete_json(
         system=SYSTEM_PROMPT,
         user=user_message,
-        max_tokens=10000,
-        thinking_tokens=8000,
+        max_tokens=8000,
+        thinking_tokens=3000,
     )

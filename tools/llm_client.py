@@ -8,7 +8,9 @@ Provides two modes:
 
 import json
 import re
+import time
 import anthropic
+from anthropic import RateLimitError
 
 
 class LLMClient:
@@ -17,15 +19,14 @@ class LLMClient:
         self.provider = "anthropic"
         self.model = "claude-sonnet-4-6"
 
-    # ── Single-shot completions ───────────────────────────────────────────────
+    # ── Single-shot completions ───────────────────────────────────────────
 
     def complete(self, system: str, user: str,
                  max_tokens: int = 8000,
                  thinking_tokens: int = 0, **_) -> str:
         """
-        Single-shot text completion.
-        Pass thinking_tokens > 0 to enable extended thinking (Claude reasons
-        step-by-step before answering — significantly improves analysis quality).
+        Single-shot text completion with automatic retry on 429 rate limit errors.
+        Pass thinking_tokens > 0 to enable extended thinking.
         """
         kwargs: dict = dict(
             model=self.model,
@@ -34,13 +35,20 @@ class LLMClient:
             messages=[{"role": "user", "content": user}],
         )
         if thinking_tokens > 0:
-            # Extended thinking requires max_tokens > budget_tokens
             kwargs["max_tokens"] = max(max_tokens, thinking_tokens + 2048)
             kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_tokens}
 
-        message = self._client.messages.create(**kwargs)
+        for attempt in range(4):
+            try:
+                message = self._client.messages.create(**kwargs)
+                break
+            except RateLimitError:
+                if attempt == 3:
+                    raise
+                wait = 2 ** (attempt + 2)  # 4, 8, 16 seconds
+                print(f"[LLM] Rate limit hit — retrying in {wait}s (attempt {attempt + 1}/3)...")
+                time.sleep(wait)
 
-        # Collect text blocks (skip ThinkingBlock)
         return "".join(
             block.text for block in message.content
             if hasattr(block, "text")
@@ -73,15 +81,24 @@ class LLMClient:
         """Fast conversational completion using claude-haiku-4-5."""
         system = next((m["content"] for m in messages if m["role"] == "system"), "")
         convo = [m for m in messages if m["role"] != "system"]
-        message = self._client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=max_tokens,
-            system=system,
-            messages=convo,
-        )
+        for attempt in range(4):
+            try:
+                message = self._client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=max_tokens,
+                    system=system,
+                    messages=convo,
+                )
+                break
+            except RateLimitError:
+                if attempt == 3:
+                    raise
+                wait = 2 ** (attempt + 2)
+                print(f"[LLM] Rate limit hit — retrying in {wait}s...")
+                time.sleep(wait)
         return (message.content[0].text or "").strip()
 
-    # ── Agentic tool-use loop ─────────────────────────────────────────────────
+    # ── Agentic tool-use loop ─────────────────────────────────────────────
 
     def agent_loop(
         self,
@@ -93,41 +110,37 @@ class LLMClient:
         max_iterations: int = 15,
     ) -> str:
         """
-        Run an agentic tool-use loop. Claude decides which tools to call and when to stop.
-
-        Args:
-            system          : system prompt defining the agent's role and goal
-            initial_message : the user message that starts the loop
-            tools           : list of Anthropic tool definitions (name, description, input_schema)
-            tool_executor   : dict mapping tool_name → callable(inputs: dict) → str
-            max_tokens      : max tokens per LLM call
-            max_iterations  : safety cap on tool-use rounds
-
-        Returns:
-            The agent's final text response (after all tool calls are complete).
+        Run an agentic tool-use loop with automatic retry on 429 errors.
+        Claude decides which tools to call and when to stop.
         """
         messages = [{"role": "user", "content": initial_message}]
 
         for iteration in range(max_iterations):
-            response = self._client.messages.create(
-                model=self.model,
-                max_tokens=max_tokens,
-                system=system,
-                tools=tools,
-                messages=messages,
-            )
+            for attempt in range(4):
+                try:
+                    response = self._client.messages.create(
+                        model=self.model,
+                        max_tokens=max_tokens,
+                        system=system,
+                        tools=tools,
+                        messages=messages,
+                    )
+                    break
+                except RateLimitError:
+                    if attempt == 3:
+                        raise
+                    wait = 2 ** (attempt + 2)
+                    print(f"[LLM] Rate limit hit — retrying in {wait}s...")
+                    time.sleep(wait)
 
-            # Append assistant turn
             messages.append({"role": "assistant", "content": response.content})
 
-            # Done — no more tool calls
             if response.stop_reason == "end_turn":
                 for block in response.content:
                     if hasattr(block, "text"):
                         return block.text.strip()
                 return ""
 
-            # Process tool_use blocks
             tool_results = []
             for block in response.content:
                 if block.type != "tool_use":
