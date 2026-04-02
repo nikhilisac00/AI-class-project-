@@ -19,7 +19,7 @@ st.set_page_config(
     page_title="AI Alternatives Research Associate",
     page_icon="📋",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 st.markdown("""
@@ -56,21 +56,21 @@ html, body, [class*="css"] {
 .metric-card {
     background: #ffffff;
     border: 1px solid #e8ecf0;
-    border-radius: 8px;
-    padding: 16px 18px;
+    border-radius: 6px;
+    padding: 10px 12px;
     text-align: center;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 .metric-card .metric-label {
-    font-size: 0.70rem;
+    font-size: 0.65rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: #8fa3bb;
-    margin-bottom: 6px;
+    margin-bottom: 3px;
 }
 .metric-card .metric-value {
-    font-size: 1.45rem;
+    font-size: 1.2rem;
     font-weight: 700;
     color: #0f1923;
     line-height: 1.2;
@@ -78,54 +78,54 @@ html, body, [class*="css"] {
 
 /* ── Risk tier badge ─────────────────────────────────────────── */
 .risk-tier-banner {
-    border-radius: 8px;
-    padding: 14px 20px;
-    font-size: 1.05rem;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 0.92rem;
     font-weight: 700;
     letter-spacing: 0.04em;
-    margin-bottom: 14px;
+    margin-bottom: 8px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
 }
 
 /* ── Tab styling ─────────────────────────────────────────────── */
 [data-testid="stTabs"] [data-baseweb="tab"] {
-    font-size: 0.82rem;
+    font-size: 0.75rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    padding: 8px 18px;
+    padding: 5px 10px;
 }
 
 /* ── Section subheaders ──────────────────────────────────────── */
 .section-label {
-    font-size: 0.68rem;
+    font-size: 0.65rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: #8fa3bb;
-    margin-bottom: 4px;
+    margin-bottom: 3px;
 }
 
 /* ── Firm header card ────────────────────────────────────────── */
 .firm-header {
     background: linear-gradient(135deg, #0f1923 0%, #1a2f45 100%);
-    border-radius: 10px;
-    padding: 22px 28px;
-    margin-bottom: 20px;
+    border-radius: 8px;
+    padding: 14px 20px;
+    margin-bottom: 10px;
     color: #ffffff;
 }
 .firm-header h2 {
-    margin: 0 0 6px 0;
-    font-size: 1.55rem;
+    margin: 0 0 4px 0;
+    font-size: 1.3rem;
     font-weight: 700;
     color: #ffffff;
 }
 .firm-header .firm-meta {
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     color: #8fa3bb;
-    margin-top: 8px;
+    margin-top: 4px;
 }
 
 /* ── Primary button ──────────────────────────────────────────── */
@@ -134,7 +134,7 @@ html, body, [class*="css"] {
     border: none;
     font-weight: 600;
     letter-spacing: 0.03em;
-    padding: 10px 24px;
+    padding: 8px 20px;
     border-radius: 6px;
 }
 .stButton > button[kind="primary"]:hover {
@@ -143,12 +143,45 @@ html, body, [class*="css"] {
 
 /* ── Expander ────────────────────────────────────────────────── */
 [data-testid="stExpander"] summary {
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     font-weight: 600;
 }
 
 /* ── Divider ─────────────────────────────────────────────────── */
-hr { border-color: #e8ecf0 !important; }
+hr {
+    border-color: #e8ecf0 !important;
+    margin: 0.4rem 0 !important;
+}
+
+/* ── Compact main container ──────────────────────────────────── */
+.block-container {
+    padding-top: 0.75rem !important;
+    padding-bottom: 0.75rem !important;
+}
+
+/* ── Tighten element spacing ─────────────────────────────────── */
+[data-testid="stVerticalBlock"] {
+    gap: 0.4rem !important;
+}
+[data-testid="stHorizontalBlock"] {
+    gap: 0.5rem !important;
+}
+
+/* ── Streamlit native metric ─────────────────────────────────── */
+[data-testid="stMetric"] {
+    padding: 8px 10px !important;
+    background: #ffffff;
+    border: 1px solid #e8ecf0;
+    border-radius: 6px;
+}
+[data-testid="stMetricLabel"] { font-size: 0.65rem !important; }
+[data-testid="stMetricValue"] { font-size: 1.1rem !important; }
+
+/* ── Info / warning / success boxes ─────────────────────────── */
+[data-testid="stAlert"] {
+    padding: 8px 12px !important;
+    font-size: 0.83rem !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -276,38 +309,21 @@ with st.sidebar:
 
 st.markdown("""
 <div style="background:linear-gradient(135deg,#0f1923 0%,#1a2f45 100%);
-            border-radius:10px;padding:28px 32px;margin-bottom:24px">
-  <div style="display:flex;align-items:center;gap:14px;margin-bottom:8px">
-    <div style="background:#c9a84c;border-radius:6px;width:36px;height:36px;
-                display:flex;align-items:center;justify-content:center;
-                font-size:1.2rem;flex-shrink:0">📋</div>
-    <div>
-      <div style="font-size:1.45rem;font-weight:700;color:#ffffff;line-height:1.2">
-        Alternatives Research Associate
-      </div>
-      <div style="font-size:0.82rem;color:#8fa3bb;margin-top:3px">
-        Autonomous LP due diligence &nbsp;·&nbsp; SEC EDGAR &nbsp;·&nbsp; IAPD &nbsp;·&nbsp; FRED &nbsp;·&nbsp; GPT-4o
-      </div>
+            border-radius:8px;padding:14px 20px;margin-bottom:10px;
+            display:flex;align-items:center;gap:12px">
+  <div style="background:#c9a84c;border-radius:5px;width:28px;height:28px;
+              display:flex;align-items:center;justify-content:center;
+              font-size:1rem;flex-shrink:0">📋</div>
+  <div>
+    <div style="font-size:1.1rem;font-weight:700;color:#ffffff;line-height:1.2">
+      Alternatives Research Associate
+    </div>
+    <div style="font-size:0.75rem;color:#8fa3bb;margin-top:1px">
+      Autonomous LP due diligence &nbsp;·&nbsp; SEC EDGAR &nbsp;·&nbsp; IAPD &nbsp;·&nbsp; FRED &nbsp;·&nbsp; GPT-4o
     </div>
   </div>
 </div>
 """, unsafe_allow_html=True)
-
-with st.expander("How it works", expanded=False):
-    st.markdown(
-        """
-**Pipeline:**
-1. **Firm Resolver** — fuzzy search IAPD, confirm the right entity before spending tokens
-2. **Data Ingestion** — IAPD ADV detail · EDGAR 13F XML · FRED macro · Form D fund discovery
-3. **Fund Discovery** — Form D filings · IAPD relying advisors · web search → fund table
-4. **GPT-4o** (OpenAI) — structured analysis → LP risk flags → IC memo
-5. *(optional)* **PAL MCP** — Gemini-3-Pro consensus on risk flags
-
-**No hallucination:** `null` for any missing field. All data gaps surfaced explicitly.
-        """
-    )
-
-st.divider()
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -315,11 +331,11 @@ st.divider()
 # ────────────────────────────────────────────────────────────────────────────
 
 st.markdown("""
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-  <div style="background:#1a3d6e;color:#fff;border-radius:50%;width:28px;height:28px;
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+  <div style="background:#1a3d6e;color:#fff;border-radius:50%;width:22px;height:22px;
               display:flex;align-items:center;justify-content:center;
-              font-size:0.85rem;font-weight:700;flex-shrink:0">1</div>
-  <div style="font-size:1.1rem;font-weight:700;color:#0f1923">Find Firm</div>
+              font-size:0.75rem;font-weight:700;flex-shrink:0">1</div>
+  <div style="font-size:0.95rem;font-weight:700;color:#0f1923">Find Firm</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -417,8 +433,6 @@ if st.session_state.confirmed_firm:
     )
     st.session_state.user_website = website_input.strip()
 
-st.divider()
-
 
 # ────────────────────────────────────────────────────────────────────────────
 # STEP 2 — Run Analysis (only shown after firm confirmation)
@@ -426,11 +440,11 @@ st.divider()
 
 if st.session_state.confirmed_firm:
     st.markdown("""
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-      <div style="background:#1a3d6e;color:#fff;border-radius:50%;width:28px;height:28px;
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <div style="background:#1a3d6e;color:#fff;border-radius:50%;width:22px;height:22px;
                   display:flex;align-items:center;justify-content:center;
-                  font-size:0.85rem;font-weight:700;flex-shrink:0">2</div>
-      <div style="font-size:1.1rem;font-weight:700;color:#0f1923">Run Analysis</div>
+                  font-size:0.75rem;font-weight:700;flex-shrink:0">2</div>
+      <div style="font-size:0.95rem;font-weight:700;color:#0f1923">Run Analysis</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -665,12 +679,12 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
 
     st.markdown(f"""
     <div style="background:linear-gradient(135deg,#0f1923 0%,#1a2f45 100%);
-                border-radius:10px;padding:22px 28px;margin-bottom:20px">
-      <div style="font-size:1.5rem;font-weight:700;color:#ffffff;margin-bottom:8px">
+                border-radius:8px;padding:14px 20px;margin-bottom:10px">
+      <div style="font-size:1.25rem;font-weight:700;color:#ffffff;margin-bottom:6px">
         {firm_name}
       </div>
-      <div style="margin-bottom:10px">{badges_html}</div>
-      <div style="font-size:0.82rem;color:#8fa3bb">{meta_html}</div>
+      <div style="margin-bottom:6px">{badges_html}</div>
+      <div style="font-size:0.78rem;color:#8fa3bb">{meta_html}</div>
       {notice_html}
     </div>
     """, unsafe_allow_html=True)
@@ -956,7 +970,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             # ── Recommendation banner ─────────────────────────────────────
             st.markdown(f"""
             <div style="background:linear-gradient(135deg,#0f1923 0%,#1a2f45 100%);
-                        border-radius:10px;padding:24px 28px;margin-bottom:20px">
+                        border-radius:8px;padding:14px 18px;margin-bottom:12px">
               <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
                 <div style="font-size:2.2rem">{rec_icon}</div>
                 <div>
@@ -1308,9 +1322,9 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
 
             st.markdown(f"""
             <div style="background:linear-gradient(135deg,#0f1923 0%,#1a2f45 100%);
-                        border-radius:10px;padding:22px 28px;margin-bottom:20px">
-              <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;
-                          letter-spacing:0.1em;color:#8fa3bb;margin-bottom:8px">
+                        border-radius:8px;padding:14px 18px;margin-bottom:12px">
+              <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;
+                          letter-spacing:0.1em;color:#8fa3bb;margin-bottom:6px">
                 Research Director Verdict
               </div>
               <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
