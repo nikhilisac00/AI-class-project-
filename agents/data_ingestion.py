@@ -156,6 +156,8 @@ def run(firm_input: str, fred_api_key: str = None,
         print(f"[Ingestion] Running enforcement check for '{firm_name}'")
         try:
             from agents import enforcement as _enf
+            # Note: cik is not read here to avoid a race condition with _fetch_adv
+            # (both run in parallel). The enforcement agent works without cik.
             return "enforcement", _enf.run(
                 firm_name=firm_name,
                 crd=raw_data.get("crd"),

@@ -16,6 +16,7 @@ PAL tools used:
 import asyncio
 import os
 import sys
+import threading
 from pathlib import Path
 
 # Path to the local PAL server installation
@@ -25,6 +26,32 @@ PAL_SERVER_SCRIPT = PAL_SERVER_DIR / "server.py"
 
 def _pal_available() -> bool:
     return PAL_SERVER_SCRIPT.exists()
+
+
+def _run_async(coro) -> str | None:
+    """
+    Run an async coroutine safely regardless of whether an event loop is already
+    running (e.g. inside Streamlit). Spawns a daemon thread with its own loop.
+    """
+    result: list = [None]
+    exc: list = [None]
+
+    def target():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result[0] = loop.run_until_complete(coro)
+        except Exception as e:
+            exc[0] = e
+        finally:
+            loop.close()
+
+    t = threading.Thread(target=target, daemon=True)
+    t.start()
+    t.join(timeout=60)
+    if exc[0]:
+        raise exc[0]
+    return result[0]
 
 
 async def _call_pal_tool(tool_name: str, arguments: dict) -> str | None:
@@ -85,7 +112,7 @@ def call_thinkdeep(problem: str, findings: str, model: str = "gemini-3-pro-previ
         "model": model,
         "focus_areas": ["regulatory risk", "key person risk", "fee structure", "data completeness"],
     }
-    return asyncio.run(_call_pal_tool("thinkdeep", args))
+    return _run_async(_call_pal_tool("thinkdeep", args))
 
 
 def call_consensus(question: str, content: str,
@@ -122,7 +149,7 @@ Be specific. Reference exact sections. Do not rewrite the memo."""
         "message": prompt,
         "model": model,
     }
-    return asyncio.run(_call_pal_tool("chat", args))
+    return _run_async(_call_pal_tool("chat", args))
 
 
 def is_available() -> bool:

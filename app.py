@@ -297,10 +297,20 @@ for _k, _v in [
 with st.sidebar:
     st.markdown('<div class="sb-title">⚙ Configuration</div>', unsafe_allow_html=True)
 
+    def _secret(key: str) -> str:
+        """Read from env vars first, then Streamlit secrets (for Cloud deployments)."""
+        val = os.getenv(key, "")
+        if not val:
+            try:
+                val = st.secrets.get(key, "")
+            except Exception:
+                pass
+        return val or ""
+
     st.markdown('<div class="section-label">API Keys</div>', unsafe_allow_html=True)
     api_key = st.text_input(
         "Anthropic API Key",
-        value=os.getenv("ANTHROPIC_API_KEY", ""),
+        value=_secret("ANTHROPIC_API_KEY"),
         type="password",
         help="Required. Get one at console.anthropic.com",
     )
@@ -308,16 +318,23 @@ with st.sidebar:
 
     fred_key = st.text_input(
         "FRED API Key (optional)",
-        value=os.getenv("FRED_API_KEY", ""),
+        value=_secret("FRED_API_KEY"),
         type="password",
         help="Free at fred.stlouisfed.org — adds macro rates/spreads.",
     )
 
     tavily_key = st.text_input(
         "Tavily API Key (optional)",
-        value=os.getenv("TAVILY_API_KEY", ""),
+        value=_secret("TAVILY_API_KEY"),
         type="password",
         help="Free tier at tavily.com (1,000/mo). Falls back to DuckDuckGo.",
+    )
+
+    openai_key = st.text_input(
+        "OpenAI API Key (for AI Assistant)",
+        value=_secret("OPENAI_API_KEY"),
+        type="password",
+        help="Powers the AI Assistant chat tab with GPT-4o. Get one at platform.openai.com",
     )
 
     st.divider()
@@ -1958,8 +1975,8 @@ Be direct, concise, and professional. No firm has been analyzed yet in this sess
 
         # Chat input
         if prompt := st.chat_input(placeholder, key="chat_input"):
-            if not api_key:
-                st.error("Add your Anthropic API key in the sidebar to use the AI Assistant.")
+            if not openai_key and not api_key:
+                st.error("Add your OpenAI API key (or Anthropic key as fallback) in the sidebar to use the AI Assistant.")
             else:
                 # Add user message
                 st.session_state.chat_messages.append({"role": "user", "content": prompt})
@@ -1975,7 +1992,7 @@ Be direct, concise, and professional. No firm has been analyzed yet in this sess
                     with st.spinner(""):
                         try:
                             client_chat = make_client(api_key)
-                            response = client_chat.chat(messages)
+                            response = client_chat.chat(messages, openai_key=openai_key or None)
                         except Exception as e:
                             response = f"Sorry, I encountered an error: {e}"
                     st.markdown(response)

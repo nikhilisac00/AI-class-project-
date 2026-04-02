@@ -183,8 +183,25 @@ class LLMClient:
                 f"First 200 chars: {text[:200]!r}"
             )
 
-    def chat(self, messages: list[dict], max_tokens: int = 2000) -> str:
-        """Conversational completion — separates system message from the turn list."""
+    def chat(self, messages: list[dict], max_tokens: int = 2000,
+             openai_key: str = None) -> str:
+        """
+        Conversational completion.
+        Uses GPT-4o if openai_key is provided, otherwise falls back to Claude Haiku.
+        """
+        if openai_key:
+            try:
+                import openai as _openai
+                oa = _openai.OpenAI(api_key=openai_key)
+                resp = oa.chat.completions.create(
+                    model="gpt-4o",
+                    messages=messages,
+                    max_tokens=max_tokens,
+                )
+                return (resp.choices[0].message.content or "").strip()
+            except Exception as e:
+                print(f"[Chat] OpenAI failed ({e}), falling back to Claude Haiku")
+
         system = ""
         turn_messages = []
         for m in messages:
@@ -194,7 +211,7 @@ class LLMClient:
                 turn_messages.append({"role": m["role"], "content": m["content"]})
 
         est_input = sum(self._estimate_tokens(m["content"]) for m in messages)
-        kwargs: dict = dict(model=self.model, max_tokens=max_tokens, messages=turn_messages)
+        kwargs: dict = dict(model="claude-haiku-4-5-20251001", max_tokens=max_tokens, messages=turn_messages)
         if system:
             kwargs["system"] = system
 
