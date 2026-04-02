@@ -24,163 +24,325 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-/* ── Hide Streamlit chrome ───────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════
+   BLOOMBERG-STYLE TERMINAL THEME
+   Base: 0.82rem body · 0.70rem meta · #f7f8fa bg · #0f1923 sidebar
+═══════════════════════════════════════════════════════════════ */
+
+/* ── Chrome ──────────────────────────────────────────────────── */
 #MainMenu, footer, header { visibility: hidden; }
 .stDeployButton { display: none; }
 
-/* ── Global typography ───────────────────────────────────────── */
+/* ── Root & body ─────────────────────────────────────────────── */
 html, body, [class*="css"] {
-    font-family: "Inter", "Segoe UI", sans-serif;
+    font-family: "Inter", "Segoe UI", ui-sans-serif, sans-serif;
+    font-size: 0.82rem;
+    color: #0f1923;
 }
+.block-container {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+    background: #f7f8fa;
+}
+
+/* ── Tighten Streamlit layout gaps ───────────────────────────── */
+[data-testid="stVerticalBlock"]   { gap: 0.3rem !important; }
+[data-testid="stHorizontalBlock"] { gap: 0.4rem !important; }
+section[data-testid="stMain"] > div { padding-top: 0 !important; }
 
 /* ── Sidebar ─────────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
     background: #0f1923;
+    min-width: 220px !important;
+    max-width: 240px !important;
 }
-[data-testid="stSidebar"] * {
-    color: #d4dce8 !important;
+[data-testid="stSidebar"] * { color: #c8d6e5 !important; }
+[data-testid="stSidebar"] .stTextInput input {
+    background: #162333 !important;
+    border-color: #1e3a5a !important;
+    font-size: 0.78rem !important;
+    padding: 4px 8px !important;
+    height: 30px !important;
 }
 [data-testid="stSidebar"] .stTextInput label,
 [data-testid="stSidebar"] .stSlider label,
-[data-testid="stSidebar"] .stToggle label {
-    color: #8fa3bb !important;
-    font-size: 0.78rem !important;
+[data-testid="stSidebar"] .stToggle label,
+[data-testid="stSidebar"] .stSelectbox label {
+    color: #5d7a96 !important;
+    font-size: 0.65rem !important;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.07em;
+    margin-bottom: 2px !important;
 }
-[data-testid="stSidebar"] hr {
-    border-color: #1e2f42 !important;
+[data-testid="stSidebar"] hr { border-color: #1a2f42 !important; margin: 6px 0 !important; }
+[data-testid="stSidebar"] .stCaption,
+[data-testid="stSidebar"] small { font-size: 0.65rem !important; color: #4a6278 !important; }
+[data-testid="stSidebar"] [data-testid="stSlider"] { padding: 2px 0 !important; }
+[data-testid="stSidebar"] [data-testid="stToggle"] { gap: 6px !important; }
+
+/* ── Title bar (slim, ≤48px) ─────────────────────────────────── */
+.title-bar {
+    background: #0f1923;
+    border-radius: 4px;
+    height: 44px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.title-bar .tb-icon {
+    background: #c9a84c;
+    border-radius: 3px;
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.8rem; flex-shrink: 0;
+}
+.title-bar .tb-title {
+    font-size: 0.92rem; font-weight: 700; color: #ffffff; white-space: nowrap;
+}
+.title-bar .tb-meta {
+    font-size: 0.68rem; color: #5d7a96; margin-left: 4px; white-space: nowrap;
+}
+
+/* ── Firm result header ───────────────────────────────────────── */
+.firm-header {
+    background: #0f1923;
+    border-radius: 4px;
+    padding: 10px 16px;
+    margin-bottom: 8px;
+    border-left: 3px solid #c9a84c;
+}
+.firm-header h2 {
+    margin: 0 0 3px 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+.firm-header .firm-meta {
+    font-size: 0.70rem;
+    color: #5d7a96;
+    margin-top: 2px;
+}
+
+/* ── Section step labels ─────────────────────────────────────── */
+.step-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+.step-label .step-num {
+    background: #1a3d6e;
+    color: #fff;
+    border-radius: 50%;
+    width: 20px; height: 20px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.68rem; font-weight: 700; flex-shrink: 0;
+}
+.step-label .step-title {
+    font-size: 0.82rem; font-weight: 700; color: #0f1923;
 }
 
 /* ── Metric cards ────────────────────────────────────────────── */
 .metric-card {
     background: #ffffff;
-    border: 1px solid #e8ecf0;
-    border-radius: 6px;
-    padding: 10px 12px;
-    text-align: center;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    border: 1px solid #e2e6ea;
+    border-left: 2px solid #1a3d6e;
+    border-radius: 4px;
+    padding: 7px 10px;
+    text-align: left;
 }
 .metric-card .metric-label {
-    font-size: 0.65rem;
-    font-weight: 600;
+    font-size: 0.60rem;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.07em;
     color: #8fa3bb;
-    margin-bottom: 3px;
+    margin-bottom: 2px;
 }
 .metric-card .metric-value {
-    font-size: 1.2rem;
+    font-size: 1.1rem;
     font-weight: 700;
     color: #0f1923;
-    line-height: 1.2;
+    line-height: 1.15;
+}
+.metric-card .metric-sub {
+    font-size: 0.62rem;
+    color: #8fa3bb;
+    margin-top: 1px;
 }
 
-/* ── Risk tier badge ─────────────────────────────────────────── */
+/* ── Risk tier metric card override ──────────────────────────── */
+.metric-card.risk-card {
+    border-left: 2px solid #c0392b;
+}
+
+/* ── Risk tier banner ────────────────────────────────────────── */
 .risk-tier-banner {
-    border-radius: 6px;
-    padding: 8px 14px;
-    font-size: 0.92rem;
+    border-radius: 3px;
+    padding: 6px 12px;
+    font-size: 0.82rem;
     font-weight: 700;
-    letter-spacing: 0.04em;
-    margin-bottom: 8px;
+    letter-spacing: 0.03em;
+    margin-bottom: 6px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
-/* ── Tab styling ─────────────────────────────────────────────── */
+/* ── Tabs — underline pill style ──────────────────────────────── */
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+    gap: 0 !important;
+    border-bottom: 1px solid #e2e6ea !important;
+    background: transparent !important;
+    padding: 0 !important;
+}
 [data-testid="stTabs"] [data-baseweb="tab"] {
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 5px 10px;
+    font-size: 0.72rem !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    padding: 5px 12px !important;
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    border-radius: 0 !important;
+    color: #6b7a8d !important;
+    margin-bottom: -1px !important;
 }
+[data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] {
+    border-bottom: 2px solid #1a3d6e !important;
+    color: #0f1923 !important;
+    background: transparent !important;
+}
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] { display: none !important; }
+[data-testid="stTabs"] [data-baseweb="tab-border"]    { display: none !important; }
 
-/* ── Section subheaders ──────────────────────────────────────── */
+/* ── Section subheader label ─────────────────────────────────── */
 .section-label {
-    font-size: 0.65rem;
+    font-size: 0.62rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #8fa3bb;
+    letter-spacing: 0.09em;
+    color: #5d7a96;
     margin-bottom: 3px;
 }
 
-/* ── Firm header card ────────────────────────────────────────── */
-.firm-header {
-    background: linear-gradient(135deg, #0f1923 0%, #1a2f45 100%);
-    border-radius: 8px;
-    padding: 14px 20px;
-    margin-bottom: 10px;
-    color: #ffffff;
+/* ── Buttons ─────────────────────────────────────────────────── */
+.stButton > button {
+    height: 34px !important;
+    padding: 0 16px !important;
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+    border-radius: 4px !important;
+    letter-spacing: 0.02em !important;
 }
-.firm-header h2 {
-    margin: 0 0 4px 0;
-    font-size: 1.3rem;
-    font-weight: 700;
-    color: #ffffff;
-}
-.firm-header .firm-meta {
-    font-size: 0.78rem;
-    color: #8fa3bb;
-    margin-top: 4px;
-}
-
-/* ── Primary button ──────────────────────────────────────────── */
 .stButton > button[kind="primary"] {
-    background: #1a3d6e;
-    border: none;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-    padding: 8px 20px;
-    border-radius: 6px;
+    background: #1a3d6e !important;
+    border: none !important;
+    color: #fff !important;
 }
-.stButton > button[kind="primary"]:hover {
-    background: #1e4d8c;
+.stButton > button[kind="primary"]:hover { background: #1e4d8c !important; }
+.stButton > button[kind="secondary"] {
+    background: transparent !important;
+    border: 1px solid #c8d2dc !important;
+    color: #0f1923 !important;
 }
 
-/* ── Expander ────────────────────────────────────────────────── */
+/* ── Text inputs ─────────────────────────────────────────────── */
+.stTextInput input {
+    height: 34px !important;
+    font-size: 0.82rem !important;
+    padding: 4px 10px !important;
+    border-radius: 4px !important;
+}
+
+/* ── Expanders ───────────────────────────────────────────────── */
+[data-testid="stExpander"] {
+    border: 1px solid #e2e6ea !important;
+    border-radius: 4px !important;
+    background: #ffffff !important;
+}
 [data-testid="stExpander"] summary {
-    font-size: 0.82rem;
-    font-weight: 600;
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+    padding: 6px 10px !important;
+    min-height: 0 !important;
+    color: #0f1923 !important;
 }
+[data-testid="stExpander"] summary:hover { background: #f2f4f6 !important; }
+[data-testid="stExpander"] > div > div { padding: 6px 10px !important; }
 
-/* ── Divider ─────────────────────────────────────────────────── */
-hr {
-    border-color: #e8ecf0 !important;
-    margin: 0.4rem 0 !important;
+/* ── Dataframes: compact rows ────────────────────────────────── */
+[data-testid="stDataFrame"] table { font-size: 0.75rem !important; }
+[data-testid="stDataFrame"] th {
+    font-size: 0.65rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    padding: 4px 8px !important;
+    background: #f2f4f6 !important;
+    color: #5d7a96 !important;
 }
+[data-testid="stDataFrame"] td { padding: 3px 8px !important; }
 
-/* ── Compact main container ──────────────────────────────────── */
-.block-container {
-    padding-top: 0.75rem !important;
-    padding-bottom: 0.75rem !important;
-}
-
-/* ── Tighten element spacing ─────────────────────────────────── */
-[data-testid="stVerticalBlock"] {
-    gap: 0.4rem !important;
-}
-[data-testid="stHorizontalBlock"] {
-    gap: 0.5rem !important;
-}
-
-/* ── Streamlit native metric ─────────────────────────────────── */
+/* ── Native st.metric ────────────────────────────────────────── */
 [data-testid="stMetric"] {
-    padding: 8px 10px !important;
     background: #ffffff;
-    border: 1px solid #e8ecf0;
-    border-radius: 6px;
+    border: 1px solid #e2e6ea;
+    border-left: 2px solid #1a3d6e;
+    border-radius: 4px;
+    padding: 6px 10px !important;
 }
-[data-testid="stMetricLabel"] { font-size: 0.65rem !important; }
-[data-testid="stMetricValue"] { font-size: 1.1rem !important; }
+[data-testid="stMetricLabel"] { font-size: 0.60rem !important; color: #8fa3bb !important; }
+[data-testid="stMetricValue"] { font-size: 1.05rem !important; font-weight: 700 !important; }
 
-/* ── Info / warning / success boxes ─────────────────────────── */
+/* ── Alerts ──────────────────────────────────────────────────── */
 [data-testid="stAlert"] {
+    padding: 7px 12px !important;
+    font-size: 0.80rem !important;
+    border-radius: 4px !important;
+}
+
+/* ── Captions ────────────────────────────────────────────────── */
+.stCaption, small, caption { font-size: 0.70rem !important; color: #8fa3bb !important; }
+
+/* ── Dividers ────────────────────────────────────────────────── */
+hr { border-color: #e2e6ea !important; margin: 4px 0 !important; }
+
+/* ── Progress bar ────────────────────────────────────────────── */
+[data-testid="stProgress"] > div { height: 4px !important; border-radius: 2px !important; }
+
+/* ── Candidate selection cards ───────────────────────────────── */
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 4px !important;
+    border-color: #e2e6ea !important;
     padding: 8px 12px !important;
-    font-size: 0.83rem !important;
+}
+
+/* ── Badges ──────────────────────────────────────────────────── */
+.badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 3px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.6;
+}
+
+/* ── Sidebar config title ────────────────────────────────────── */
+.sb-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #c8d6e5;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 10px 0 6px 0;
+    border-bottom: 1px solid #1a2f42;
+    margin-bottom: 8px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -204,8 +366,7 @@ from tools.pal_client  import is_available as pal_available, call_consensus  # n
 
 def _badge(label: str, color: str) -> str:
     return (
-        f'<span style="background:{color};color:#fff;padding:2px 10px;'
-        f'border-radius:4px;font-size:0.78rem;font-weight:600">{label}</span>'
+        f'<span class="badge" style="background:{color};color:#fff">{label}</span>'
     )
 
 def _sev_color(sev: str) -> str:
@@ -240,13 +401,7 @@ for _k, _v in [
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown("""
-    <div style="padding:18px 4px 10px 4px">
-      <div style="font-size:1.05rem;font-weight:700;color:#ffffff;letter-spacing:0.02em">
-        ⚙️ Configuration
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown('<div class="sb-title">⚙ Configuration</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="section-label">API Keys</div>', unsafe_allow_html=True)
     api_key = st.text_input(
@@ -308,20 +463,10 @@ with st.sidebar:
 # ── Header ───────────────────────────────────────────────────────────────────
 
 st.markdown("""
-<div style="background:linear-gradient(135deg,#0f1923 0%,#1a2f45 100%);
-            border-radius:8px;padding:14px 20px;margin-bottom:10px;
-            display:flex;align-items:center;gap:12px">
-  <div style="background:#c9a84c;border-radius:5px;width:28px;height:28px;
-              display:flex;align-items:center;justify-content:center;
-              font-size:1rem;flex-shrink:0">📋</div>
-  <div>
-    <div style="font-size:1.1rem;font-weight:700;color:#ffffff;line-height:1.2">
-      Alternatives Research Associate
-    </div>
-    <div style="font-size:0.75rem;color:#8fa3bb;margin-top:1px">
-      Autonomous LP due diligence &nbsp;·&nbsp; SEC EDGAR &nbsp;·&nbsp; IAPD &nbsp;·&nbsp; FRED &nbsp;·&nbsp; GPT-4o
-    </div>
-  </div>
+<div class="title-bar">
+  <div class="tb-icon">📋</div>
+  <span class="tb-title">Alternatives Research Associate</span>
+  <span class="tb-meta">SEC EDGAR &nbsp;·&nbsp; IAPD &nbsp;·&nbsp; FRED &nbsp;·&nbsp; GPT-4o</span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -331,11 +476,9 @@ st.markdown("""
 # ────────────────────────────────────────────────────────────────────────────
 
 st.markdown("""
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-  <div style="background:#1a3d6e;color:#fff;border-radius:50%;width:22px;height:22px;
-              display:flex;align-items:center;justify-content:center;
-              font-size:0.75rem;font-weight:700;flex-shrink:0">1</div>
-  <div style="font-size:0.95rem;font-weight:700;color:#0f1923">Find Firm</div>
+<div class="step-label">
+  <div class="step-num">1</div>
+  <div class="step-title">Find Firm</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -440,11 +583,9 @@ if st.session_state.confirmed_firm:
 
 if st.session_state.confirmed_firm:
     st.markdown("""
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <div style="background:#1a3d6e;color:#fff;border-radius:50%;width:22px;height:22px;
-                  display:flex;align-items:center;justify-content:center;
-                  font-size:0.75rem;font-weight:700;flex-shrink:0">2</div>
-      <div style="font-size:0.95rem;font-weight:700;color:#0f1923">Run Analysis</div>
+    <div class="step-label">
+      <div class="step-num">2</div>
+      <div class="step-title">Run Analysis</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -678,13 +819,12 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
         )
 
     st.markdown(f"""
-    <div style="background:linear-gradient(135deg,#0f1923 0%,#1a2f45 100%);
-                border-radius:8px;padding:14px 20px;margin-bottom:10px">
-      <div style="font-size:1.25rem;font-weight:700;color:#ffffff;margin-bottom:6px">
-        {firm_name}
+    <div class="firm-header">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <h2>{firm_name}</h2>
+        <div>{badges_html}</div>
       </div>
-      <div style="margin-bottom:6px">{badges_html}</div>
-      <div style="font-size:0.78rem;color:#8fa3bb">{meta_html}</div>
+      <div class="firm-meta">{meta_html}</div>
       {notice_html}
     </div>
     """, unsafe_allow_html=True)
@@ -693,10 +833,11 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
     tier_color_map = {"HIGH": "#b03030", "MEDIUM": "#b06010", "LOW": "#1a7a4a"}
     tier_c_card = tier_color_map.get(tier, "#4a5568")
 
-    def _metric_card(label: str, value: str, sublabel: str = "") -> str:
-        sub = f'<div style="font-size:0.70rem;color:#8fa3bb;margin-top:3px">{sublabel}</div>' if sublabel else ""
+    def _metric_card(label: str, value: str, sublabel: str = "", risk: bool = False) -> str:
+        sub = f'<div class="metric-sub">{sublabel}</div>' if sublabel else ""
+        cls = "metric-card risk-card" if risk else "metric-card"
         return f"""
-        <div class="metric-card">
+        <div class="{cls}">
           <div class="metric-label">{label}</div>
           <div class="metric-value">{value}</div>
           {sub}
@@ -726,11 +867,11 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
         "Employees",
         str(ov.get("num_employees")) if ov.get("num_employees") else "—",
     ), unsafe_allow_html=True)
-    c6.markdown(f"""
-    <div class="metric-card" style="border-top:3px solid {tier_c_card}">
-      <div class="metric-label">Risk Tier</div>
-      <div class="metric-value" style="color:{tier_c_card}">{tier}</div>
-    </div>""", unsafe_allow_html=True)
+    c6.markdown(_metric_card(
+        "Risk Tier",
+        f'<span style="color:{tier_c_card}">{tier}</span>',
+        risk=True,
+    ), unsafe_allow_html=True)
 
     # ── Analyst Notes (from fund_analysis extended thinking) ─────────────
     analyst_notes = (analysis or {}).get("analyst_notes")
@@ -970,7 +1111,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             # ── Recommendation banner ─────────────────────────────────────
             st.markdown(f"""
             <div style="background:linear-gradient(135deg,#0f1923 0%,#1a2f45 100%);
-                        border-radius:8px;padding:14px 18px;margin-bottom:12px">
+                        border-radius:4px;padding:12px 16px;margin-bottom:8px;border-left:3px solid {rec_color}">
               <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
                 <div style="font-size:2.2rem">{rec_icon}</div>
                 <div>
@@ -1322,7 +1463,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
 
             st.markdown(f"""
             <div style="background:linear-gradient(135deg,#0f1923 0%,#1a2f45 100%);
-                        border-radius:8px;padding:14px 18px;margin-bottom:12px">
+                        border-radius:4px;padding:12px 16px;margin-bottom:8px;border-left:3px solid {rec_color}">
               <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;
                           letter-spacing:0.1em;color:#8fa3bb;margin-bottom:6px">
                 Research Director Verdict
