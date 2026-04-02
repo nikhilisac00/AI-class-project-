@@ -217,12 +217,12 @@ with st.sidebar:
 
     st.markdown('<div class="section-label">API Keys</div>', unsafe_allow_html=True)
     api_key = st.text_input(
-        "Anthropic API Key",
-        value=os.getenv("ANTHROPIC_API_KEY", ""),
+        "OpenAI API Key",
+        value=os.getenv("OPENAI_API_KEY", ""),
         type="password",
-        help="Required. Get one at console.anthropic.com",
+        help="Required. Get one at platform.openai.com",
     )
-    st.caption("Model: claude-sonnet-4-6")
+    st.caption("Model: gpt-4o")
 
     fred_key = st.text_input(
         "FRED API Key (optional)",
@@ -286,7 +286,7 @@ st.markdown("""
         Alternatives Research Associate
       </div>
       <div style="font-size:0.82rem;color:#8fa3bb;margin-top:3px">
-        Autonomous LP due diligence &nbsp;·&nbsp; SEC EDGAR &nbsp;·&nbsp; IAPD &nbsp;·&nbsp; FRED &nbsp;·&nbsp; Claude
+        Autonomous LP due diligence &nbsp;·&nbsp; SEC EDGAR &nbsp;·&nbsp; IAPD &nbsp;·&nbsp; FRED &nbsp;·&nbsp; GPT-4o
       </div>
     </div>
   </div>
@@ -300,7 +300,7 @@ with st.expander("How it works", expanded=False):
 1. **Firm Resolver** — fuzzy search IAPD, confirm the right entity before spending tokens
 2. **Data Ingestion** — IAPD ADV detail · EDGAR 13F XML · FRED macro · Form D fund discovery
 3. **Fund Discovery** — Form D filings · IAPD relying advisors · web search → fund table
-4. **Claude** (claude-sonnet-4-6) — structured analysis → LP risk flags → IC memo
+4. **GPT-4o** (OpenAI) — structured analysis → LP risk flags → IC memo
 5. *(optional)* **PAL MCP** — Gemini-3-Pro consensus on risk flags
 
 **No hallucination:** `null` for any missing field. All data gaps surfaced explicitly.
@@ -441,7 +441,7 @@ if st.session_state.confirmed_firm:
         disabled=not api_key,
     )
     if not api_key:
-        st.caption("Add your Anthropic API key in the sidebar to run.")
+        st.caption("Add your OpenAI API key in the sidebar to run.")
 else:
     run_button = False
 
@@ -482,7 +482,7 @@ if run_button:
         if raw_data.get("errors"):
             st.warning("Ingestion notes: " + " | ".join(raw_data["errors"]))
 
-        status_box.info(f"Step 2 — Fund analysis (Claude reasoning) · {fd_count} funds found...")
+        status_box.info(f"Step 2 — Fund analysis (GPT-4o reasoning) · {fd_count} funds found...")
         analysis = analysis_agent.run(raw_data, client)
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Analysis complete")
@@ -512,7 +512,7 @@ if run_button:
             if news_report.get("errors"):
                 st.warning("News notes: " + " | ".join(news_report["errors"]))
 
-        status_box.info("Step — Risk flagging (Claude reasoning)...")
+        status_box.info("Step — Risk flagging (GPT-4o reasoning)...")
         risk_report = risk_agent.run(analysis, raw_data, client, news_report=news_report)
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Risk flagging complete")
@@ -529,13 +529,13 @@ if run_button:
             step[0] += 1
             progress_bar.progress(_pct(step[0]), text="PAL complete")
 
-        status_box.info("Step — Generating DD memo (Claude reasoning)...")
+        status_box.info("Step — Generating DD memo (GPT-4o reasoning)...")
         memo = memo_agent.run(analysis, risk_report, raw_data, client,
                               news_report=news_report)
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Memo complete")
 
-        status_box.info("Step — Generating IC Scorecard (Claude reasoning)...")
+        status_box.info("Step — Generating IC Scorecard (GPT-4o reasoning)...")
         scorecard = scorecard_agent.run(analysis, risk_report, raw_data, client,
                                         news_report=news_report)
         step[0] += 1
@@ -550,7 +550,7 @@ if run_button:
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Comparables complete")
 
-        status_box.info("Step — Research Director review (Claude reasoning)...")
+        status_box.info("Step — Research Director review (GPT-4o reasoning)...")
         director_review = director_agent.run(
             analysis, risk_report, raw_data, scorecard, client,
             news_report=news_report,
@@ -1786,7 +1786,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             with st.expander("Ingestion Errors / Notes"):
                 st.json(raw_data.get("errors", []))
         if analysis:
-            with st.expander("Structured Analysis (Claude output)"):
+            with st.expander("Structured Analysis (GPT-4o output)"):
                 st.json(analysis)
 
     # ─ AI Assistant ──────────────────────────────────────────────────────

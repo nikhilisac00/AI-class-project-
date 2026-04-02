@@ -1,10 +1,10 @@
 """
 Fund Analysis Agent — Reasoning Agent
 ======================================
-Uses extended thinking so Claude actually reasons through what the data means
-before producing structured output — not just pattern-matching fields to schema.
+Uses GPT-4o to reason through what the data means before producing
+structured output — not just pattern-matching fields to schema.
 
-Extended thinking lets Claude work through:
+The reasoning step works through:
 - What type of firm this is (PE, hedge, VC, multi-strat, credit) and what that implies
 - What the 13F holdings tell us about the actual investment strategy
 - What Form D exemptions (3C.1 vs 3C.7) mean for LP suitability

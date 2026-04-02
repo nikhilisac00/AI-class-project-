@@ -1,7 +1,7 @@
 """
 SEC Enforcement Agent — Tool-Use Agent
 ========================================
-Claude autonomously investigates regulatory history using web search and EDGAR.
+GPT-4o autonomously investigates regulatory history using web search and EDGAR.
 It decides what to search based on what it finds — if it sees a disclosure flag,
 it searches for specifics; if it finds a firm name variant, it searches that too.
 

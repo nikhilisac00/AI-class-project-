@@ -1,8 +1,7 @@
 """
 Risk Flagging Agent — Reasoning Agent
 ======================================
-Uses extended thinking so Claude actually reasons about risk — not just
-matching keywords to categories.
+Uses GPT-4o to reason about risk — not just matching keywords to categories.
 
 An LP risk analyst needs to understand:
 - What's a real red flag vs standard industry practice

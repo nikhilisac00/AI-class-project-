@@ -10,7 +10,7 @@ Usage:
     python main.py "Two Sigma"     --output-dir ./output/memos
 
 Data sources: SEC EDGAR (IAPD/ADV + 13F), FRED API
-Model: Claude (claude-sonnet-4-6)
+Model: OpenAI GPT-4o
 """
 
 import argparse
@@ -41,9 +41,9 @@ console = Console()
 
 
 def validate_env() -> str:
-    key = os.getenv("ANTHROPIC_API_KEY")
+    key = os.getenv("OPENAI_API_KEY")
     if not key:
-        console.print("[bold red]Error:[/] ANTHROPIC_API_KEY not set. Add it to .env")
+        console.print("[bold red]Error:[/] OPENAI_API_KEY not set. Add it to .env")
         sys.exit(1)
     return key
 
@@ -124,7 +124,7 @@ def main():
     parser.add_argument(
         "--raw-only",
         action="store_true",
-        help="Only run data ingestion, skip Claude analysis",
+        help="Only run data ingestion, skip LLM analysis",
     )
     parser.add_argument(
         "--no-news",
@@ -148,7 +148,7 @@ def main():
     console.print(Panel(
         f"[bold]AI Alternatives Research Associate[/]\n"
         f"Target: [cyan]{args.firm}[/]\n"
-        f"Model: Claude (claude-sonnet-4-6)\n"
+        f"Model: OpenAI GPT-4o\n"
         f"Sources: IAPD · SEC EDGAR · {'FRED' if not args.no_fred else 'FRED skipped'}"
         f" · {'News (' + ('Tavily' if tavily_key else 'DuckDuckGo') + ')' if not args.no_news else 'News skipped'}",
         title="Starting Analysis",
@@ -188,7 +188,7 @@ def main():
 
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Running fund analysis (Claude reasoning)...", total=None)
+        task = p.add_task("Running fund analysis (GPT-4o reasoning)...", total=None)
         analysis = analysis_agent.run(raw_data, client)
         p.update(task, description="Fund analysis complete", completed=True)
 
@@ -231,7 +231,7 @@ def main():
     # ── Agent 4: Risk Flagging ────────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Running risk flagging (Claude reasoning)...", total=None)
+        task = p.add_task("Running risk flagging (GPT-4o reasoning)...", total=None)
         risk_report = risk_agent.run(analysis, raw_data, client, news_report=news_report)
         p.update(task, description="Risk flagging complete", completed=True)
 
@@ -240,7 +240,7 @@ def main():
     # ── Agent 5: Memo Generation ──────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Generating DD memo (Claude reasoning)...", total=None)
+        task = p.add_task("Generating DD memo (GPT-4o reasoning)...", total=None)
         memo = memo_agent.run(analysis, risk_report, raw_data, client,
                               news_report=news_report)
         p.update(task, description="Memo generation complete", completed=True)
@@ -248,7 +248,7 @@ def main():
     # ── Agent 6: IC Scorecard ─────────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Generating IC Scorecard (Claude reasoning)...", total=None)
+        task = p.add_task("Generating IC Scorecard (GPT-4o reasoning)...", total=None)
         scorecard = scorecard_agent.run(analysis, risk_report, raw_data, client,
                                         news_report=news_report)
         p.update(task, description="IC Scorecard complete", completed=True)
@@ -288,7 +288,7 @@ def main():
     # ── Agent 8: Research Director ────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Research Director review (Claude reasoning)...", total=None)
+        task = p.add_task("Research Director review (GPT-4o reasoning)...", total=None)
         director_review = director_agent.run(
             analysis, risk_report, raw_data, scorecard, client,
             news_report=news_report,

@@ -1,10 +1,10 @@
 """
 Fund Discovery Agent — Tool-Use Agent
 ======================================
-Claude autonomously decides which EDGAR Form D searches and web queries to run,
+GPT-4o autonomously decides which EDGAR Form D searches and web queries to run,
 tries name variants, and loops until it's confident it has found all discoverable funds.
 
-This is a real agent: Claude uses tool_use to call EDGAR and web search,
+This is a real agent: GPT-4o uses tool_use to call EDGAR and web search,
 sees the results, decides what to try next, and stops when done.
 
 Tools available to the agent:
@@ -23,7 +23,7 @@ from tools.formd_client import search_funds_for_gp
 from tools import web_search_client
 
 
-# ── Tool definitions (Anthropic format) ──────────────────────────────────────
+# ── Tool definitions ──────────────────────────────────────────────────────────
 
 TOOLS = [
     {

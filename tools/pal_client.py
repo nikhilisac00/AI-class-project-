@@ -67,7 +67,7 @@ def call_thinkdeep(problem: str, findings: str, model: str = "gemini-3-pro-previ
 
     Args:
         problem:  Description of the analysis problem
-        findings: Initial findings from the Claude risk agent
+        findings: Initial findings from the risk agent
         model:    PAL model to use
 
     Returns:

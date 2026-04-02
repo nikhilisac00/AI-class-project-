@@ -1,10 +1,10 @@
 """
 News Research Agent — Tool-Use Agent
 =====================================
-Claude autonomously decides what to search, reads results, decides whether
+GPT-4o autonomously decides what to search, reads results, decides whether
 to search more, and stops when it has sufficient coverage.
 
-This is a real agent: Claude uses web_search tool_use in a loop,
+This is a real agent: GPT-4o uses web_search tool_use in a loop,
 adapting its queries based on what it finds.
 
 Tools available:

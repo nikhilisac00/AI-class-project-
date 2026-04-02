@@ -1,58 +1,41 @@
 """
-LLM Client — Anthropic Claude (claude-sonnet-4-6).
+LLM Client — OpenAI GPT-4o.
 
 Provides two modes:
   - complete / complete_json : single-shot LLM call (synthesis, analysis)
-  - agent_loop               : tool-use agentic loop (Claude decides what to call)
+  - agent_loop               : tool-use agentic loop (GPT decides what to call)
 """
 
 import json
 import re
-import time
-import anthropic
-from anthropic import RateLimitError
+from openai import OpenAI
 
 
 class LLMClient:
     def __init__(self, api_key: str):
-        self._client = anthropic.Anthropic(api_key=api_key)
-        self.provider = "anthropic"
-        self.model = "claude-sonnet-4-6"
+        self._client = OpenAI(api_key=api_key)
+        self.provider = "openai"
+        self.model = "gpt-4o"
 
-    # ── Single-shot completions ───────────────────────────────────────────
+    # ── Single-shot completions ───────────────────────────────────────────────
 
     def complete(self, system: str, user: str,
                  max_tokens: int = 8000,
                  thinking_tokens: int = 0, **_) -> str:
         """
-        Single-shot text completion with automatic retry on 429 rate limit errors.
-        Pass thinking_tokens > 0 to enable extended thinking.
+        Single-shot text completion.
+        thinking_tokens is accepted for API compatibility but not used
+        (OpenAI models reason via system prompt instructions).
         """
-        kwargs: dict = dict(
+        response = self._client.chat.completions.create(
             model=self.model,
             max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": user}],
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
         )
-        if thinking_tokens > 0:
-            kwargs["max_tokens"] = max(max_tokens, thinking_tokens + 2048)
-            kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_tokens}
-
-        for attempt in range(4):
-            try:
-                message = self._client.messages.create(**kwargs)
-                break
-            except RateLimitError:
-                if attempt == 3:
-                    raise
-                wait = 2 ** (attempt + 2)  # 4, 8, 16 seconds
-                print(f"[LLM] Rate limit hit — retrying in {wait}s (attempt {attempt + 1}/3)...")
-                time.sleep(wait)
-
-        return "".join(
-            block.text for block in message.content
-            if hasattr(block, "text")
-        ).strip()
+        return (response.choices[0].message.content or "").strip()
 
     def complete_json(self, system: str, user: str,
                       max_tokens: int = 8000,
@@ -78,27 +61,37 @@ class LLMClient:
             )
 
     def chat(self, messages: list[dict], max_tokens: int = 2000) -> str:
-        """Fast conversational completion using claude-haiku-4-5."""
-        system = next((m["content"] for m in messages if m["role"] == "system"), "")
-        convo = [m for m in messages if m["role"] != "system"]
-        for attempt in range(4):
-            try:
-                message = self._client.messages.create(
-                    model="claude-haiku-4-5-20251001",
-                    max_tokens=max_tokens,
-                    system=system,
-                    messages=convo,
-                )
-                break
-            except RateLimitError:
-                if attempt == 3:
-                    raise
-                wait = 2 ** (attempt + 2)
-                print(f"[LLM] Rate limit hit — retrying in {wait}s...")
-                time.sleep(wait)
-        return (message.content[0].text or "").strip()
+        """Fast conversational completion using gpt-4o-mini."""
+        openai_messages = []
+        for m in messages:
+            openai_messages.append({"role": m["role"], "content": m["content"]})
 
-    # ── Agentic tool-use loop ─────────────────────────────────────────────
+        response = self._client.chat.completions.create(
+            model="gpt-4o-mini",
+            max_tokens=max_tokens,
+            messages=openai_messages,
+        )
+        return (response.choices[0].message.content or "").strip()
+
+    # ── Agentic tool-use loop ─────────────────────────────────────────────────
+
+    @staticmethod
+    def _convert_tools(tools: list[dict]) -> list[dict]:
+        """Convert Anthropic-format tool definitions to OpenAI function-calling format."""
+        openai_tools = []
+        for tool in tools:
+            if "type" in tool and tool["type"] == "function":
+                openai_tools.append(tool)
+            else:
+                openai_tools.append({
+                    "type": "function",
+                    "function": {
+                        "name": tool["name"],
+                        "description": tool.get("description", ""),
+                        "parameters": tool.get("input_schema", tool.get("parameters", {})),
+                    },
+                })
+        return openai_tools
 
     def agent_loop(
         self,
@@ -110,46 +103,52 @@ class LLMClient:
         max_iterations: int = 15,
     ) -> str:
         """
-        Run an agentic tool-use loop with automatic retry on 429 errors.
-        Claude decides which tools to call and when to stop.
+        Run an agentic tool-use loop. GPT decides which tools to call and when to stop.
+
+        Args:
+            system          : system prompt defining the agent's role and goal
+            initial_message : the user message that starts the loop
+            tools           : list of tool definitions (Anthropic or OpenAI format accepted)
+            tool_executor   : dict mapping tool_name -> callable(inputs: dict) -> str
+            max_tokens      : max tokens per LLM call
+            max_iterations  : safety cap on tool-use rounds
+
+        Returns:
+            The agent's final text response (after all tool calls are complete).
         """
-        messages = [{"role": "user", "content": initial_message}]
+        openai_tools = self._convert_tools(tools)
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": initial_message},
+        ]
 
         for iteration in range(max_iterations):
-            for attempt in range(4):
+            response = self._client.chat.completions.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                messages=messages,
+                tools=openai_tools,
+            )
+
+            choice = response.choices[0]
+            assistant_msg = choice.message
+
+            # Append assistant turn
+            messages.append(assistant_msg)
+
+            # Done — no more tool calls
+            if choice.finish_reason == "stop" or not assistant_msg.tool_calls:
+                return (assistant_msg.content or "").strip()
+
+            # Process tool calls
+            for tool_call in assistant_msg.tool_calls:
+                tool_name = tool_call.function.name
                 try:
-                    response = self._client.messages.create(
-                        model=self.model,
-                        max_tokens=max_tokens,
-                        system=system,
-                        tools=tools,
-                        messages=messages,
-                    )
-                    break
-                except RateLimitError:
-                    if attempt == 3:
-                        raise
-                    wait = 2 ** (attempt + 2)
-                    print(f"[LLM] Rate limit hit — retrying in {wait}s...")
-                    time.sleep(wait)
+                    tool_inputs = json.loads(tool_call.function.arguments)
+                except json.JSONDecodeError:
+                    tool_inputs = {}
 
-            messages.append({"role": "assistant", "content": response.content})
-
-            if response.stop_reason == "end_turn":
-                for block in response.content:
-                    if hasattr(block, "text"):
-                        return block.text.strip()
-                return ""
-
-            tool_results = []
-            for block in response.content:
-                if block.type != "tool_use":
-                    continue
-                tool_name   = block.name
-                tool_inputs = block.input
-                tool_id     = block.id
-
-                print(f"  [agent] → {tool_name}({json.dumps(tool_inputs)[:120]})")
+                print(f"  [agent] -> {tool_name}({json.dumps(tool_inputs)[:120]})")
 
                 if tool_name in tool_executor:
                     try:
@@ -164,29 +163,24 @@ class LLMClient:
                 else:
                     result_str = f"Unknown tool: {tool_name}"
 
-                tool_results.append({
-                    "type":        "tool_result",
-                    "tool_use_id": tool_id,
-                    "content":     result_str,
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result_str,
                 })
 
-            messages.append({"role": "user", "content": tool_results})
-
         # Exceeded max iterations — ask for final answer
-        response = self._client.messages.create(
+        messages.append({
+            "role": "user",
+            "content": "You've reached the maximum number of tool calls. "
+                       "Please provide your final answer now.",
+        })
+        response = self._client.chat.completions.create(
             model=self.model,
             max_tokens=max_tokens,
-            system=system,
-            messages=messages + [{
-                "role": "user",
-                "content": "You've reached the maximum number of tool calls. "
-                           "Please provide your final answer now.",
-            }],
+            messages=messages,
         )
-        for block in response.content:
-            if hasattr(block, "text"):
-                return block.text.strip()
-        return ""
+        return (response.choices[0].message.content or "").strip()
 
     def agent_loop_json(self, system: str, initial_message: str,
                         tools: list[dict], tool_executor: dict,
