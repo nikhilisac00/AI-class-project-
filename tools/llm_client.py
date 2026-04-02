@@ -20,18 +20,38 @@ class LLMClient:
     # ── Single-shot completions ───────────────────────────────────────────────
 
     def complete(self, system: str, user: str,
-                 max_tokens: int = 8000, **_) -> str:
-        message = self._client.messages.create(
+                 max_tokens: int = 8000,
+                 thinking_tokens: int = 0, **_) -> str:
+        """
+        Single-shot text completion.
+        Pass thinking_tokens > 0 to enable extended thinking (Claude reasons
+        step-by-step before answering — significantly improves analysis quality).
+        """
+        kwargs: dict = dict(
             model=self.model,
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": user}],
         )
-        return (message.content[0].text or "").strip()
+        if thinking_tokens > 0:
+            # Extended thinking requires max_tokens > budget_tokens
+            kwargs["max_tokens"] = max(max_tokens, thinking_tokens + 2048)
+            kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_tokens}
+
+        message = self._client.messages.create(**kwargs)
+
+        # Collect text blocks (skip ThinkingBlock)
+        return "".join(
+            block.text for block in message.content
+            if hasattr(block, "text")
+        ).strip()
 
     def complete_json(self, system: str, user: str,
-                      max_tokens: int = 8000, **_) -> dict:
-        text = self.complete(system, user, max_tokens)
+                      max_tokens: int = 8000,
+                      thinking_tokens: int = 0, **_) -> dict:
+        """complete() but parses the response as JSON."""
+        text = self.complete(system, user, max_tokens,
+                             thinking_tokens=thinking_tokens)
         if text.startswith("```"):
             lines = text.split("\n")
             text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])

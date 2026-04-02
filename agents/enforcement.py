@@ -1,72 +1,209 @@
 """
-SEC Enforcement Agent
-=====================
-Synthesizes enforcement history into a structured LP-grade report.
+SEC Enforcement Agent — Tool-Use Agent
+========================================
+Claude autonomously investigates regulatory history using web search and EDGAR.
+It decides what to search based on what it finds — if it sees a disclosure flag,
+it searches for specifics; if it finds a firm name variant, it searches that too.
 
-Sources (via enforcement_client):
-  1. IAPD iacontent disclosure arrays (when available from public API)
-  2. Web search (Tavily / DuckDuckGo) — primary when IAPD arrays absent,
-     always run when has_disclosure_flag=True
-  3. EDGAR EFTS — enforcement-adjacent filings (UPLOAD, CORRESP)
-  4. EDGAR submissions — ADV-W withdrawal / unusual form type flags
+Tools:
+  search_enforcement_web(query)   — targeted SEC/regulatory web search
+  search_edgar_filings(firm_name) — EDGAR EFTS enforcement-adjacent forms
+  get_iapd_disclosures(crd)       — IAPD structured disclosure array
 
-Note on IAPD API: the public endpoint (api.adviserinfo.sec.gov/search/firm/{crd})
-returns a lightweight iacontent that omits disclosure arrays. Web search fills this gap.
-
-Output:
-  enforcement_data  : raw fetch result from enforcement_client
-  summary           : LLM narrative (LP-grade, 3-5 sentences)
-  severity          : CLEAN / LOW / MEDIUM / HIGH / CRITICAL
-  key_findings      : list of bullet strings
-  red_flags         : list of most serious concerns
-  sources           : data sources used
-  errors            : list of errors
+Output: severity, summary, key_findings, red_flags, sources
 """
 
 import json
 from tools.llm_client import LLMClient
 from tools.enforcement_client import fetch_enforcement_data
+from tools import web_search_client
 
 
-_SYSTEM = """You are an LP compliance analyst reviewing SEC enforcement history for an investment adviser.
+# ── Tool definitions ──────────────────────────────────────────────────────────
 
-Your job: summarize the enforcement record clearly for an investment committee.
+TOOLS = [
+    {
+        "name": "search_enforcement_web",
+        "description": (
+            "Search the web for SEC/FINRA/DOJ enforcement actions, regulatory proceedings, "
+            "fines, bars, suspensions, or litigation involving this investment adviser. "
+            "Good queries: '[firm] SEC enforcement', '[firm] FINRA fine', '[firm] SEC order', "
+            "'[person name] bar industry', '[firm] fraud litigation'"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Enforcement-focused search query"}
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "search_edgar_enforcement",
+        "description": (
+            "Search SEC EDGAR full-text for enforcement-adjacent filings: UPLOAD orders, "
+            "CORRESP letters, ADV-W withdrawals, and other unusual form types for this firm."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "firm_name": {"type": "string", "description": "Firm name to search on EDGAR"},
+            },
+            "required": ["firm_name"],
+        },
+    },
+    {
+        "name": "get_iapd_disclosures",
+        "description": (
+            "Get structured IAPD disclosure records from the already-fetched adviser detail. "
+            "Returns criminal, regulatory, civil, and arbitration disclosures if available."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "crd": {"type": "string", "description": "CRD number (for reference)"}
+            },
+            "required": ["crd"],
+        },
+    },
+]
 
-Rules:
-1. Base every finding strictly on the provided data — no assumptions or hallucinations.
-2. If there are zero structured actions but web results exist, use the web results.
-3. Distinguish resolved (historical) vs open/pending actions.
-4. Assess materiality: a $50K fine 15 years ago differs from a recent bar or fraud order.
-5. Flag patterns of repeat violations — a significant red flag for LPs.
-6. Criminal disclosures and industry bars are near-disqualifying for institutional LPs.
-7. If the IAPD flag says disclosures exist but no structured data was found, note that
-   manual review at adviserinfo.sec.gov is required."""
 
+SYSTEM_PROMPT = """You are an LP compliance analyst investigating the regulatory history of an
+investment adviser. Your job is to build the most complete picture of their enforcement record
+using all available public sources.
+
+HOW TO INVESTIGATE:
+1. Always start with get_iapd_disclosures — it reads the already-fetched IAPD data
+2. Always run at least 2 web searches: one for the firm, one for key principals if known
+3. If IAPD says disclosures exist but you find nothing structured, search harder
+4. If you find an enforcement action, search specifically for it to get details
+5. Search EDGAR for unusual form types
+
+SEVERITY FRAMEWORK:
+- CRITICAL: criminal conviction, fraud finding, permanent industry bar
+- HIGH: open/pending enforcement, recent bar or suspension (< 5 years), large fine (> $1M)
+- MEDIUM: resolved fine < $1M, cease-and-desist order (resolved), civil litigation settled
+- LOW: old minor action (> 10 years, resolved), single small fine
+- CLEAN: nothing found after thorough search
+
+Stop after 4-6 total tool calls unless you found something that requires follow-up.
+
+FINAL OUTPUT — output ONLY valid JSON:
+{
+  "severity": "CLEAN | LOW | MEDIUM | HIGH | CRITICAL",
+  "summary": "3-5 sentence LP-grade narrative of what was found and what it means.",
+  "key_findings": ["up to 5 specific bullet points"],
+  "red_flags": ["most serious items — empty list if clean"],
+  "sources_used": ["list of sources consulted"],
+  "actions": [
+    {
+      "action_type": "Regulatory | Criminal | Civil | Arbitration",
+      "initiated_by": "SEC | FINRA | DOJ | State | CFTC | Unknown",
+      "date": "YYYY-MM-DD or year",
+      "description": "what was alleged",
+      "sanctions": ["list"],
+      "resolution": "Settled | Dismissed | Pending | Final Order",
+      "severity": "HIGH | MEDIUM | LOW",
+      "source": "IAPD | Web | EDGAR"
+    }
+  ]
+}
+"""
+
+
+# ── Tool executors ────────────────────────────────────────────────────────────
+
+def _exec_search_enforcement_web(inputs: dict, tavily_key: str = None) -> list[dict]:
+    query = inputs.get("query", "").strip()
+    if not query:
+        return []
+    try:
+        results = web_search_client.search(query, api_key=tavily_key, max_results=5)
+        return [
+            {
+                "title":   r.get("title", ""),
+                "url":     r.get("url", ""),
+                "date":    r.get("published_date"),
+                "snippet": (r.get("content") or "")[:500],
+            }
+            for r in results
+        ]
+    except Exception as e:
+        return [{"error": str(e)}]
+
+
+def _exec_search_edgar_enforcement(inputs: dict) -> list[dict]:
+    import requests, time
+    firm_name = inputs.get("firm_name", "").strip()
+    if not firm_name:
+        return []
+    EFTS_URL = "https://efts.sec.gov/LATEST/search-index"
+    HEADERS  = {"User-Agent": "AI-Alternatives-Research research@example.com"}
+    ENFORCE_FORMS = {"UPLOAD", "CORRESP", "ADV-W", "40-OIP", "40-APP"}
+    try:
+        r = requests.get(
+            EFTS_URL,
+            params={"q": f'"{firm_name}"', "forms": ",".join(ENFORCE_FORMS)},
+            headers=HEADERS, timeout=15,
+        )
+        r.raise_for_status()
+        hits = r.json().get("hits", {}).get("hits", [])
+        return [
+            {
+                "form":       h["_source"].get("form"),
+                "file_date":  h["_source"].get("file_date"),
+                "entity":     (h["_source"].get("display_names") or [""])[0],
+                "accession":  h["_source"].get("adsh"),
+            }
+            for h in hits[:8]
+        ]
+    except Exception as e:
+        return [{"error": str(e)}]
+
+
+def _exec_get_iapd_disclosures(iacontent: dict, has_disclosure_flag: bool) -> dict:
+    ic = iacontent or {}
+    disclosures = []
+    for key in [
+        "iaCriminalDisclosures", "iaRegulatoryDisclosures",
+        "iaCivilDisclosures", "iaArbitrationDisclosures",
+        "iaEmploymentDisclosures",
+    ]:
+        for d in ic.get(key, []) or []:
+            if isinstance(d, dict):
+                disclosures.append({
+                    "type":        key.replace("ia", "").replace("Disclosures", ""),
+                    "date":        d.get("disclosureDate") or d.get("eventDate"),
+                    "description": d.get("allegations") or d.get("description"),
+                    "sanctions":   d.get("sanctions") or d.get("penaltiesAndSanctions"),
+                    "resolution":  d.get("disposition") or d.get("resolution"),
+                })
+    return {
+        "has_disclosure_flag":          has_disclosure_flag,
+        "structured_disclosures_found": len(disclosures),
+        "disclosures":                  disclosures,
+        "note": (
+            f"{len(disclosures)} structured disclosure(s) found in IAPD." if disclosures
+            else (
+                "IAPD flag set but no structured data — manual review at adviserinfo.sec.gov required."
+                if has_disclosure_flag else "No disclosures in IAPD data."
+            )
+        ),
+    }
+
+
+# ── Main entry point ──────────────────────────────────────────────────────────
 
 def run(
-    firm_name:           str,
-    crd:                 str = None,
-    cik:                 str = None,
-    iacontent:           dict = None,
+    firm_name: str,
+    crd: str = None,
+    cik: str = None,
+    iacontent: dict = None,
     has_disclosure_flag: bool = False,
-    tavily_key:          str = None,
-    client:              LLMClient = None,
+    tavily_key: str = None,
+    client: LLMClient = None,
 ) -> dict:
-    """
-    Run SEC enforcement deep-dive for an investment adviser.
-
-    Args:
-        firm_name           : adviser name
-        crd                 : IAPD CRD number
-        cik                 : EDGAR CIK (for submissions scan)
-        iacontent           : raw IAPD iacontent dict
-        has_disclosure_flag : True if IAPD search returned firm_ia_disclosure_fl=Y
-        tavily_key          : optional Tavily API key for web search
-        client              : LLMClient for narrative synthesis (optional)
-
-    Returns structured enforcement report dict.
-    """
-    print(f"[Enforcement] Checking regulatory record for '{firm_name}'...")
 
     report = {
         "enforcement_data": {},
@@ -78,117 +215,75 @@ def run(
         "errors":           [],
     }
 
-    # ── Fetch raw enforcement data ─────────────────────────────────────────
-    try:
-        data = fetch_enforcement_data(
-            firm_name=firm_name,
-            crd=crd,
-            cik=cik,
-            iacontent=iacontent,
-            has_disclosure_flag=has_disclosure_flag,
-            tavily_key=tavily_key,
-        )
-        report["enforcement_data"] = data
-        report["sources"]          = data.get("sources_used", [])
-        report["errors"].extend(data.get("errors", []))
-    except Exception as e:
-        report["errors"].append(f"Enforcement data fetch failed: {e}")
+    if client is None:
+        # Fallback: non-agent fetch
+        print(f"[Enforcement] No LLM client — basic check for '{firm_name}'")
+        try:
+            data = fetch_enforcement_data(
+                firm_name=firm_name, crd=crd, cik=cik,
+                iacontent=iacontent, has_disclosure_flag=has_disclosure_flag,
+                tavily_key=tavily_key,
+            )
+            report["enforcement_data"] = data
+            report["sources"]          = data.get("sources_used", [])
+            report["severity"] = "CLEAN" if data.get("total_actions", 0) == 0 else "LOW"
+        except Exception as e:
+            report["errors"].append(f"Enforcement fetch failed: {e}")
         return report
 
-    actions     = data.get("actions", [])
-    web_results = data.get("web_results", [])
-    high        = data.get("high_count", 0)
-    med         = data.get("medium_count", 0)
-    total       = data.get("total_actions", 0)
-    open_n      = len(data.get("open_actions", []))
+    # ── Build tool executor ───────────────────────────────────────────────────
+    tool_executor = {
+        "search_enforcement_web": lambda inp: _exec_search_enforcement_web(
+            inp, tavily_key=tavily_key
+        ),
+        "search_edgar_enforcement": _exec_search_edgar_enforcement,
+        "get_iapd_disclosures": lambda inp: _exec_get_iapd_disclosures(
+            iacontent, has_disclosure_flag
+        ),
+    }
 
-    # ── Rule-based severity (from IAPD structured actions) ────────────────
-    has_web_hits = len(web_results) > 0
-
-    if total == 0 and not has_disclosure_flag and not has_web_hits:
-        report["severity"] = "CLEAN"
-    elif high >= 2 or open_n >= 1:
-        report["severity"] = "HIGH"
-    elif high == 1:
-        report["severity"] = "MEDIUM"
-    elif med >= 2:
-        report["severity"] = "MEDIUM"
-    elif total >= 1 or (has_disclosure_flag and has_web_hits):
-        report["severity"] = "LOW"
-    else:
-        report["severity"] = "CLEAN"
-
-    # Upgrade to CRITICAL for criminal / industry bar
-    for a in actions:
-        combined = " ".join(
-            [a.get("action_type", ""), a.get("description", "")]
-            + (a.get("sanctions") or [])
-        ).lower()
-        if a.get("action_type") == "Criminal" or any(
-            kw in combined
-            for kw in ("criminal", "felony", "fraud", "permanent bar",
-                       "industry bar", "barred from", "expulsion")
-        ):
-            report["severity"] = "CRITICAL"
-            break
-
-    # ── LLM narrative synthesis ────────────────────────────────────────────
-    has_data = total > 0 or has_web_hits or has_disclosure_flag
-
-    if client and has_data:
-        try:
-            web_snippets = [
-                {"title": r["title"], "url": r["url"], "snippet": r["snippet"][:300]}
-                for r in web_results[:6]
-            ]
-            payload = {
-                "iapd_disclosure_flag": has_disclosure_flag,
-                "total_iapd_actions":   total,
-                "high_count":           high,
-                "medium_count":         med,
-                "open_actions":         open_n,
-                "penalty_total":        data.get("penalty_total_fmt"),
-                "iapd_actions":         actions,
-                "web_search_results":   web_snippets,
-                "edgar_hits":           data.get("edgar_hits", [])[:3],
-                "edgar_flags":          data.get("edgar_flags", []),
-            }
-            user_msg = f"""Firm: {firm_name}   CRD: {crd or "unknown"}
-
-Enforcement record:
-{json.dumps(payload, indent=2, default=str)}
-
-Write:
-1. summary: concise LP-grade narrative (3-5 sentences). Use web search results
-   when IAPD structured actions are absent.
-2. key_findings: up to 5 bullet points summarising the record
-3. red_flags: list the most serious items (empty list if clean)
-
-Return ONLY JSON with keys: summary, key_findings, red_flags."""
-
-            raw = client.complete(system=_SYSTEM, user=user_msg, max_tokens=1000)
-            raw = raw.strip()
-            if raw.startswith("```"):
-                lines = raw.split("\n")
-                raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-            parsed = json.loads(raw)
-            report["summary"]      = parsed.get("summary")
-            report["key_findings"] = parsed.get("key_findings", [])
-            report["red_flags"]    = parsed.get("red_flags", [])
-        except Exception as e:
-            report["errors"].append(f"LLM synthesis failed: {e}")
-
-    elif not has_data:
-        report["summary"] = (
-            f"No enforcement actions, disciplinary events, or regulatory proceedings "
-            f"were found for {firm_name} across IAPD disclosures and web search. "
-            "The firm appears to present a clean regulatory history based on available public data."
+    context_lines = [
+        f"Firm: {firm_name}",
+        f"CRD: {crd or 'unknown'}",
+        f"CIK: {cik or 'unknown'}",
+        f"IAPD has_disclosures flag: {has_disclosure_flag}",
+    ]
+    if has_disclosure_flag:
+        context_lines.append(
+            "IMPORTANT: IAPD says this firm has disclosures on record — find them."
         )
-        report["key_findings"] = ["No enforcement actions found — clean regulatory record"]
 
-    print(
-        f"[Enforcement] Severity: {report['severity']} · "
-        f"{total} IAPD action(s), {len(web_results)} web hit(s) · "
-        f"sources: {report['sources']}"
+    initial_message = (
+        "\n".join(context_lines)
+        + "\n\nInvestigate this firm's regulatory and enforcement history thoroughly. "
+        "Output your final JSON when done."
     )
+
+    print(f"[Enforcement Agent] Starting agent loop for '{firm_name}'...")
+    try:
+        result = client.agent_loop_json(
+            system=SYSTEM_PROMPT,
+            initial_message=initial_message,
+            tools=TOOLS,
+            tool_executor=tool_executor,
+            max_tokens=4096,
+            max_iterations=12,
+        )
+    except Exception as e:
+        report["errors"].append(f"Agent loop failed: {e}")
+        return report
+
+    if "parse_error" in result:
+        report["errors"].append(f"Agent output parse error: {result['parse_error'][:200]}")
+        return report
+
+    report["severity"]         = result.get("severity", "CLEAN")
+    report["summary"]          = result.get("summary")
+    report["key_findings"]     = result.get("key_findings", [])
+    report["red_flags"]        = result.get("red_flags", [])
+    report["sources"]          = result.get("sources_used", [])
+    report["enforcement_data"] = {"actions": result.get("actions", [])}
+
+    print(f"[Enforcement Agent] Done — severity: {report['severity']}, "
+          f"{len(result.get('actions', []))} action(s)")
     return report
