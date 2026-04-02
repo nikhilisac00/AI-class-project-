@@ -277,13 +277,29 @@ def run(
         report["errors"].append(f"Agent output parse error: {result['parse_error'][:200]}")
         return report
 
-    report["severity"]         = result.get("severity", "CLEAN")
-    report["summary"]          = result.get("summary")
-    report["key_findings"]     = result.get("key_findings", [])
-    report["red_flags"]        = result.get("red_flags", [])
-    report["sources"]          = result.get("sources_used", [])
-    report["enforcement_data"] = {"actions": result.get("actions", [])}
+    actions = result.get("actions", [])
+    high_actions = [a for a in actions if a.get("severity") == "HIGH"]
+    open_actions = [
+        a for a in actions
+        if (a.get("resolution") or "").lower() in ("pending", "open", "")
+    ]
+
+    report["severity"]     = result.get("severity", "CLEAN")
+    report["summary"]      = result.get("summary")
+    report["key_findings"] = result.get("key_findings", [])
+    report["red_flags"]    = result.get("red_flags", [])
+    report["sources"]      = result.get("sources_used", [])
+    report["enforcement_data"] = {
+        "actions":          actions,
+        "total_actions":    len(actions),
+        "high_count":       len(high_actions),
+        "open_actions":     open_actions,
+        "penalty_total_fmt": "—",   # penalties described in actions[].sanctions
+        "web_results":      [],     # consumed internally by agent
+        "edgar_hits":       [],     # consumed internally by agent
+        "edgar_flags":      [],     # consumed internally by agent
+    }
 
     print(f"[Enforcement Agent] Done — severity: {report['severity']}, "
-          f"{len(result.get('actions', []))} action(s)")
+          f"{len(actions)} action(s)")
     return report

@@ -640,6 +640,9 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
         badges_html += _badge("State Registered", "#5b3a8e") + " "
     if adv.get("has_disclosures"):
         badges_html += _badge("Disclosures on Record", "#8b3a1a") + " "
+    firm_type = ov.get("firm_type")
+    if firm_type and firm_type != "Unknown":
+        badges_html += _badge(firm_type, "#2c6e49") + " "
 
     meta_items = []
     if crd_str:
@@ -714,6 +717,14 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
       <div class="metric-label">Risk Tier</div>
       <div class="metric-value" style="color:{tier_c_card}">{tier}</div>
     </div>""", unsafe_allow_html=True)
+
+    # ── Analyst Notes (from fund_analysis extended thinking) ─────────────
+    analyst_notes = (analysis or {}).get("analyst_notes")
+    firm_type_rationale = ov.get("firm_type_rationale")
+    if analyst_notes:
+        st.info(f"**Analyst Read:** {analyst_notes}")
+    elif firm_type_rationale:
+        st.info(f"**Firm Type:** {firm_type_rationale}")
 
     # ── Source / brochure captions ────────────────────────────────────────
     if tf.get("accession") and tf.get("cik"):
@@ -1463,6 +1474,14 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     finding  = f.get("finding", "")
                     evidence = f.get("evidence", "")
                     action   = f.get("lp_action", "")
+                    context  = f.get("context", "")
+                    context_row = (
+                        f'<div style="background:#f0f7f0;border-radius:6px;padding:10px 12px;margin-top:10px">'
+                        f'<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;'
+                        f'letter-spacing:0.07em;color:#1a7a4a;margin-bottom:4px">Context</div>'
+                        f'<div style="font-size:0.80rem;color:#4a5568;line-height:1.5">{context}</div>'
+                        f'</div>'
+                    ) if context else ""
                     st.markdown(f"""
                     <div style="border:1px solid #e8ecf0;border-left:4px solid {sev_c};
                                 border-radius:8px;padding:16px 18px;margin-bottom:10px;
@@ -1488,6 +1507,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                           <div style="font-size:0.80rem;color:#4a5568;line-height:1.5">{action}</div>
                         </div>
                       </div>
+                      {context_row}
                     </div>
                     """, unsafe_allow_html=True)
             else:
