@@ -285,7 +285,8 @@ for _k, _v in [
     ("search_query",    ""),
     ("pipeline_done",   False),
     ("pipeline_result", {}),
-    ("chat_messages",   []),   # list of {"role": ..., "content": ...}
+    ("chat_messages",   []),
+    ("_auto_search",    False),
 ]:
     if _k not in st.session_state:
         st.session_state[_k] = _v
@@ -387,7 +388,27 @@ with col_q:
 with col_find:
     find_btn = st.button("Find Firm", type="secondary", use_container_width=True)
 
+# ── Example firm chips (shown only on empty state) ───────────────────────────
+if not st.session_state.candidates and not st.session_state.confirmed_firm:
+    _examples = ["AQR Capital Management", "Two Sigma", "Ares Management", "Bridgewater Associates"]
+    st.markdown('<div style="margin:4px 0 2px 0;font-size:0.68rem;color:#8fa3bb;text-transform:uppercase;letter-spacing:0.06em">Try an example</div>', unsafe_allow_html=True)
+    _chip_cols = st.columns(len(_examples))
+    for _ci, _ex in enumerate(_examples):
+        with _chip_cols[_ci]:
+            if st.button(_ex, key=f"chip_{_ci}", use_container_width=True):
+                st.session_state.search_query   = _ex
+                st.session_state._auto_search   = True
+                st.session_state.candidates     = []
+                st.session_state.confirmed_firm = None
+                st.session_state.pipeline_done  = False
+                st.session_state.pipeline_result = {}
+                st.rerun()
+
 # Trigger search
+if find_btn or st.session_state._auto_search:
+    if st.session_state._auto_search:
+        query_input = st.session_state.search_query
+        st.session_state._auto_search = False
 if find_btn:
     if not query_input.strip():
         st.error("Enter a firm name or CRD to search.")
@@ -514,8 +535,8 @@ if run_button:
         step = [0]
         def _pct(n): return int(n / total_steps * 100)
 
-        status_box.info("Step 1 — Ingesting: IAPD · EDGAR 13F · FRED · Form D...")
-        progress_bar.progress(5, text="Ingesting...")
+        status_box.info("⏳ Step 1 — Fetching IAPD registration · EDGAR 13F filings · FRED macro rates · Form D fund records...")
+        progress_bar.progress(5, text="Fetching data sources...")
         raw_data = ingestion_agent.run(
             firm_input,
             fred_api_key=fred_key or None,
@@ -524,13 +545,18 @@ if run_button:
             tavily_key=tavily_key or None,
         )
         step[0] += 1
-        progress_bar.progress(_pct(step[0]), text="Ingestion complete")
+        progress_bar.progress(_pct(step[0]), text="Data ingestion complete")
 
-        fd_count = len((raw_data.get("fund_discovery") or {}).get("funds", []))
+        fd_count   = len((raw_data.get("fund_discovery") or {}).get("funds", []))
+        aum_note   = (raw_data.get("adv_xml_data") or {}).get("thirteenf", {}).get("portfolio_value_fmt") or "no 13F"
+        errs_count = len(raw_data.get("errors", []))
+        _ingest_summary = f"{fd_count} funds found · 13F: {aum_note}"
+        if errs_count:
+            _ingest_summary += f" · {errs_count} notes"
         if raw_data.get("errors"):
             st.warning("Ingestion notes: " + " | ".join(raw_data["errors"]))
 
-        status_box.info(f"Step 2 — Fund analysis (Claude reasoning) · {fd_count} funds found...")
+        status_box.info(f"⏳ Step 2 — Analyzing firm structure · {_ingest_summary} · Running GPT-4o reasoning...")
         analysis = analysis_agent.run(raw_data, client)
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Analysis complete")
@@ -560,7 +586,7 @@ if run_button:
             if news_report.get("errors"):
                 st.warning("News notes: " + " | ".join(news_report["errors"]))
 
-        status_box.info("Step — Risk flagging (Claude reasoning)...")
+        status_box.info("⏳ Step 4 — Scanning for LP risk flags · regulatory disclosures · key-person concentration · data gaps...")
         risk_report = risk_agent.run(analysis, raw_data, client, news_report=news_report)
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Risk flagging complete")
@@ -577,19 +603,19 @@ if run_button:
             step[0] += 1
             progress_bar.progress(_pct(step[0]), text="PAL complete")
 
-        status_box.info("Step — Generating DD memo (Claude reasoning)...")
+        status_box.info("⏳ Step 5 — Drafting IC-ready due diligence memo (11 sections)...")
         memo = memo_agent.run(analysis, risk_report, raw_data, client,
                               news_report=news_report)
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Memo complete")
 
-        status_box.info("Step — Generating IC Scorecard (Claude reasoning)...")
+        status_box.info("⏳ Step 6 — Scoring investment dimensions · building IC recommendation...")
         scorecard = scorecard_agent.run(analysis, risk_report, raw_data, client,
                                         news_report=news_report)
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Scorecard complete")
 
-        status_box.info("Step — Finding comparable managers...")
+        status_box.info("⏳ Step 7 — Searching IAPD for comparable managers by strategy and size...")
         comparables = comparables_agent.run(
             firm_name=firm_name_resolved,
             adv_summary=raw_data.get("adv_summary", {}),
@@ -598,7 +624,7 @@ if run_button:
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Comparables complete")
 
-        status_box.info("Step — Research Director review (Claude reasoning)...")
+        status_box.info("⏳ Step 8 — Research Director cross-checking findings for inconsistencies...")
         director_review = director_agent.run(
             analysis, risk_report, raw_data, scorecard, client,
             news_report=news_report,
@@ -975,20 +1001,78 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             "Aggregated by CUSIP across all investment discretion types"
         )
 
-    # ── Results Tabs ──────────────────────────────────────────────────────
+    # ── TL;DR Summary Banner ─────────────────────────────────────────────
     st.markdown("---")
+    _tldr_rec     = (scorecard or {}).get("recommendation", "")
+    _tldr_summary = (scorecard or {}).get("recommendation_summary", "")
+    _tldr_verdict = (director_review or {}).get("verdict", "")
+    _tldr_dir_rec = (director_review or {}).get("revised_recommendation", "")
+    _tldr_tier    = (risk_report or {}).get("overall_risk_tier", "UNKNOWN")
+    _tldr_comment = (risk_report or {}).get("overall_commentary", "")
+    _tldr_news    = (news_report or {}).get("overall_news_risk", "") if news_report else ""
+    _tldr_news_sum= (news_report or {}).get("news_summary", "") if news_report else ""
+
+    _tldr_rec_color   = {"PROCEED": "#1a7a4a", "REQUEST MORE INFO": "#b06010", "PASS": "#b03030"}.get(_tldr_rec, "#4a5568")
+    _tldr_tier_color  = {"HIGH": "#b03030", "MEDIUM": "#b06010", "LOW": "#1a7a4a"}.get(_tldr_tier, "#4a5568")
+    _tldr_verdict_color = {"CONFIRMED": "#1a7a4a", "UPGRADED": "#1a3d6e", "DOWNGRADED": "#b03030", "INCONCLUSIVE": "#b06010"}.get(_tldr_verdict, "#4a5568")
+
+    _tldr_parts = []
+    if _tldr_rec:
+        _tldr_parts.append(f'<span style="font-weight:700;color:{_tldr_rec_color}">{_tldr_rec}</span>')
+    if _tldr_tier:
+        _tldr_parts.append(f'Risk: <span style="font-weight:700;color:{_tldr_tier_color}">{_tldr_tier}</span>')
+    if _tldr_verdict and _tldr_dir_rec:
+        _tldr_parts.append(f'Director: <span style="font-weight:700;color:{_tldr_verdict_color}">{_tldr_verdict} → {_tldr_dir_rec}</span>')
+    if _tldr_news:
+        _nc = {"HIGH":"#b03030","MEDIUM":"#b06010","LOW":"#1a7a4a"}.get(_tldr_news,"#4a5568")
+        _tldr_parts.append(f'News Risk: <span style="font-weight:700;color:{_nc}">{_tldr_news}</span>')
+
+    _tldr_detail = _tldr_summary or _tldr_comment or ""
+
+    st.markdown(f"""
+    <div style="background:#ffffff;border:1px solid #e2e6ea;border-left:4px solid #1a3d6e;
+                border-radius:6px;padding:14px 18px;margin-bottom:8px">
+      <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;
+                  letter-spacing:0.08em;color:#8fa3bb;margin-bottom:6px">TL;DR — Analysis Summary</div>
+      <div style="font-size:0.88rem;display:flex;flex-wrap:wrap;gap:16px;margin-bottom:{"8px" if _tldr_detail else "0"}">{" &nbsp;·&nbsp; ".join(_tldr_parts)}</div>
+      {"<div style='font-size:0.80rem;color:#4a5568;line-height:1.5;border-top:1px solid #f0f2f5;padding-top:8px;margin-top:4px'>" + _tldr_detail[:280] + ("…" if len(_tldr_detail) > 280 else "") + "</div>" if _tldr_detail else ""}
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Results Tabs ──────────────────────────────────────────────────────
     enf_report  = (raw_data or {}).get("enforcement", {})
     enf_sev     = enf_report.get("severity", "CLEAN")
     _enf_icons  = {"CLEAN": "✅", "LOW": "🟡", "MEDIUM": "🟠", "HIGH": "🔴", "CRITICAL": "🚨"}
     enf_icon    = _enf_icons.get(enf_sev, "⚪")
 
+    # ── Tab badge helpers ─────────────────────────────────────────────────
+    _risk_flags   = (risk_report or {}).get("flags", [])
+    _high_flags   = sum(1 for f in _risk_flags if f.get("severity") == "HIGH")
+    _med_flags    = sum(1 for f in _risk_flags if f.get("severity") == "MEDIUM")
+    _news_risk    = (news_report or {}).get("overall_news_risk", "")
+    _news_flags   = len((news_report or {}).get("news_flags", []))
+    _rec          = (scorecard or {}).get("recommendation", "")
+    _rec_icons    = {"PROCEED": "✅", "REQUEST MORE INFO": "🔄", "PASS": "❌"}
+    _risk_badge   = f" 🔴{_high_flags}" if _high_flags else (f" 🟡{_med_flags}" if _med_flags else " 🟢")
+    _news_badge   = f" 🔴{_news_flags}" if _news_risk == "HIGH" and _news_flags else (f" 🟡{_news_flags}" if _news_flags else "")
+    _rec_badge    = f" {_rec_icons.get(_rec,'')}" if _rec else ""
+    _enf_badge    = f" {enf_icon}" if enf_sev != "CLEAN" else " ✅"
+
     (
-        tab_scorecard, tab_director, tab_comparables, tab_enf, tab_risk,
-        tab_funds, tab_news, tab_memo, tab_pal, tab_raw, tab_chat,
+        tab_memo, tab_scorecard, tab_risk, tab_director,
+        tab_enf, tab_comparables, tab_funds, tab_news,
+        tab_pal, tab_raw, tab_chat,
     ) = st.tabs([
-        "IC Scorecard", "Director Review", "Comparables",
-        f"Enforcement {enf_icon}", "Risk Dashboard",
-        "Funds", "News Research", "DD Memo", "PAL Consensus", "Raw Data",
+        "DD Memo",
+        f"IC Scorecard{_rec_badge}",
+        f"Risk Dashboard{_risk_badge}",
+        "Director Review",
+        f"Enforcement{_enf_badge}",
+        "Comparables",
+        "Funds",
+        f"News{_news_badge}",
+        "PAL Consensus",
+        "Raw Data",
         "💬 AI Assistant",
     ])
 
