@@ -24,137 +24,78 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-/* ═══════════════════════════════════════════════════════════════
-   BLOOMBERG-STYLE TERMINAL THEME
-   Base: 0.82rem body · 0.70rem meta · #f7f8fa bg · #0f1923 sidebar
-═══════════════════════════════════════════════════════════════ */
-
-/* ── Chrome ──────────────────────────────────────────────────── */
+/* ── Hide Streamlit chrome ────────────────────────────────────── */
 #MainMenu, footer, header { visibility: hidden; }
 .stDeployButton { display: none; }
 
-/* ── Root & body ─────────────────────────────────────────────── */
+/* ── Typography ───────────────────────────────────────────────── */
 html, body, [class*="css"] {
-    font-family: "Inter", "Segoe UI", ui-sans-serif, sans-serif;
-    font-size: 0.82rem;
-    color: #0f1923;
+    font-family: "Inter", "Segoe UI", ui-sans-serif, sans-serif !important;
 }
+
+/* ── Main area ────────────────────────────────────────────────── */
 .block-container {
-    padding-top: 1.2rem !important;
-    padding-bottom: 1.2rem !important;
-    background: #f7f8fa;
+    padding-top: 1.25rem !important;
+    padding-bottom: 2rem !important;
+    max-width: 1200px;
 }
 
-/* ── Tighten Streamlit layout gaps ───────────────────────────── */
-[data-testid="stVerticalBlock"]   { gap: 0.65rem !important; }
-[data-testid="stHorizontalBlock"] { gap: 0.6rem !important; }
-section[data-testid="stMain"] > div { padding-top: 0 !important; }
-
-/* ── Sidebar ─────────────────────────────────────────────────── */
+/* ── Sidebar ──────────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
-    background: #0f1923;
-    min-width: 220px !important;
-    max-width: 240px !important;
+    background: #0f1923 !important;
 }
-[data-testid="stSidebar"] * { color: #c8d6e5 !important; }
-[data-testid="stSidebar"] .stTextInput input {
-    background: #162333 !important;
-    border-color: #1e3a5a !important;
-    font-size: 0.78rem !important;
-    padding: 4px 8px !important;
-    height: 34px !important;
+[data-testid="stSidebar"] * {
+    color: #c8d6e5 !important;
 }
-[data-testid="stSidebar"] .stTextInput label,
-[data-testid="stSidebar"] .stSlider label,
-[data-testid="stSidebar"] .stToggle label,
-[data-testid="stSidebar"] .stSelectbox label {
-    color: #5d7a96 !important;
-    font-size: 0.65rem !important;
+[data-testid="stSidebar"] hr {
+    border-color: #1e3050 !important;
+}
+[data-testid="stSidebar"] label {
+    font-size: 0.72rem !important;
     text-transform: uppercase;
-    letter-spacing: 0.07em;
-    margin-bottom: 2px !important;
+    letter-spacing: 0.06em;
+    color: #5d7a96 !important;
 }
-[data-testid="stSidebar"] hr { border-color: #1a2f42 !important; margin: 6px 0 !important; }
-[data-testid="stSidebar"] .stCaption,
-[data-testid="stSidebar"] small { font-size: 0.65rem !important; color: #4a6278 !important; }
-[data-testid="stSidebar"] [data-testid="stSlider"] { padding: 2px 0 !important; }
-[data-testid="stSidebar"] [data-testid="stToggle"] { gap: 6px !important; }
 
-/* ── Title bar (slim, ≤48px) ─────────────────────────────────── */
+/* ── Title bar ────────────────────────────────────────────────── */
 .title-bar {
     background: #0f1923;
-    border-radius: 4px;
-    height: 52px;
-    padding: 0 20px;
+    border-radius: 6px;
+    padding: 12px 20px;
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 8px;
+    gap: 12px;
+    margin-bottom: 16px;
 }
 .title-bar .tb-icon {
     background: #c9a84c;
-    border-radius: 3px;
-    width: 22px; height: 22px;
+    border-radius: 4px;
+    width: 26px; height: 26px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.8rem; flex-shrink: 0;
+    font-size: 0.9rem; flex-shrink: 0;
 }
 .title-bar .tb-title {
-    font-size: 0.92rem; font-weight: 700; color: #ffffff; white-space: nowrap;
-}
-.title-bar .tb-meta {
-    font-size: 0.68rem; color: #5d7a96; margin-left: 4px; white-space: nowrap;
-}
-
-/* ── Firm result header ───────────────────────────────────────── */
-.firm-header {
-    background: #0f1923;
-    border-radius: 4px;
-    padding: 14px 20px;
-    margin-bottom: 12px;
-    border-left: 3px solid #c9a84c;
-}
-.firm-header h2 {
-    margin: 0 0 3px 0;
-    font-size: 1.05rem;
+    font-size: 1rem;
     font-weight: 700;
     color: #ffffff;
 }
-.firm-header .firm-meta {
-    font-size: 0.70rem;
+.title-bar .tb-meta {
+    font-size: 0.72rem;
     color: #5d7a96;
-    margin-top: 2px;
+    margin-left: 2px;
 }
 
-/* ── Section step labels ─────────────────────────────────────── */
-.step-label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 6px;
-}
-.step-label .step-num {
-    background: #1a3d6e;
-    color: #fff;
-    border-radius: 50%;
-    width: 20px; height: 20px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0.68rem; font-weight: 700; flex-shrink: 0;
-}
-.step-label .step-title {
-    font-size: 0.82rem; font-weight: 700; color: #0f1923;
-}
-
-/* ── Metric cards ────────────────────────────────────────────── */
+/* ── Metric cards ─────────────────────────────────────────────── */
 .metric-card {
     background: #ffffff;
     border: 1px solid #e2e6ea;
-    border-left: 2px solid #1a3d6e;
-    border-radius: 4px;
+    border-top: 3px solid #1a3d6e;
+    border-radius: 6px;
     padding: 12px 14px;
-    text-align: left;
+    text-align: center;
 }
 .metric-card .metric-label {
-    font-size: 0.60rem;
+    font-size: 0.65rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.07em;
@@ -162,187 +103,139 @@ section[data-testid="stMain"] > div { padding-top: 0 !important; }
     margin-bottom: 4px;
 }
 .metric-card .metric-value {
-    font-size: 1.25rem;
+    font-size: 1.3rem;
     font-weight: 700;
     color: #0f1923;
     line-height: 1.2;
 }
 .metric-card .metric-sub {
-    font-size: 0.62rem;
+    font-size: 0.65rem;
     color: #8fa3bb;
-    margin-top: 1px;
+    margin-top: 2px;
 }
-
-/* ── Risk tier metric card override ──────────────────────────── */
 .metric-card.risk-card {
-    border-left: 2px solid #c0392b;
+    border-top: 3px solid #c0392b;
 }
 
-/* ── Risk tier banner ────────────────────────────────────────── */
-.risk-tier-banner {
-    border-radius: 3px;
-    padding: 10px 16px;
-    font-size: 0.88rem;
+/* ── Firm result header ───────────────────────────────────────── */
+.firm-header {
+    background: #0f1923;
+    border-radius: 6px;
+    padding: 16px 22px;
+    margin-bottom: 16px;
+}
+.firm-header h2 {
+    margin: 0 0 6px 0;
+    font-size: 1.3rem;
     font-weight: 700;
-    letter-spacing: 0.03em;
-    margin-bottom: 6px;
+    color: #ffffff;
+}
+.firm-header .firm-meta {
+    font-size: 0.75rem;
+    color: #7a95ae;
+    margin-top: 4px;
+}
+
+/* ── Step labels ──────────────────────────────────────────────── */
+.step-label {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.step-label .step-num {
+    background: #1a3d6e;
+    color: #fff;
+    border-radius: 50%;
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.72rem; font-weight: 700; flex-shrink: 0;
+}
+.step-label .step-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #0f1923;
 }
 
-/* ── Tabs — underline pill style ──────────────────────────────── */
-[data-testid="stTabs"] [data-baseweb="tab-list"] {
-    gap: 0 !important;
-    border-bottom: 1px solid #e2e6ea !important;
-    background: transparent !important;
-    padding: 0 !important;
+/* ── Risk tier banner ─────────────────────────────────────────── */
+.risk-tier-banner {
+    border-radius: 6px;
+    padding: 10px 16px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
-[data-testid="stTabs"] [data-baseweb="tab"] {
-    font-size: 0.72rem !important;
-    font-weight: 600 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
-    padding: 8px 16px !important;
-    background: transparent !important;
-    border: none !important;
-    border-bottom: 2px solid transparent !important;
-    border-radius: 0 !important;
-    color: #6b7a8d !important;
-    margin-bottom: -1px !important;
-}
-[data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] {
-    border-bottom: 2px solid #1a3d6e !important;
-    color: #0f1923 !important;
-    background: transparent !important;
-}
-[data-testid="stTabs"] [data-baseweb="tab-highlight"] { display: none !important; }
-[data-testid="stTabs"] [data-baseweb="tab-border"]    { display: none !important; }
 
-/* ── Section subheader label ─────────────────────────────────── */
+/* ── Section label ────────────────────────────────────────────── */
 .section-label {
-    font-size: 0.62rem;
+    font-size: 0.65rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.09em;
-    color: #5d7a96;
-    margin-bottom: 3px;
+    letter-spacing: 0.08em;
+    color: #8fa3bb;
+    margin-bottom: 4px;
 }
 
-/* ── Buttons ─────────────────────────────────────────────────── */
-.stButton > button {
-    height: 38px !important;
-    padding: 0 20px !important;
-    font-size: 0.78rem !important;
-    font-weight: 600 !important;
-    border-radius: 4px !important;
-    letter-spacing: 0.02em !important;
-}
-.stButton > button[kind="primary"] {
-    background: #1a3d6e !important;
-    border: none !important;
-    color: #fff !important;
-}
-.stButton > button[kind="primary"]:hover { background: #1e4d8c !important; }
-.stButton > button[kind="secondary"] {
-    background: transparent !important;
-    border: 1px solid #c8d2dc !important;
-    color: #0f1923 !important;
+/* ── Sidebar config title ─────────────────────────────────────── */
+.sb-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #c8d6e5;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 12px 0 8px 0;
+    border-bottom: 1px solid #1e3050;
+    margin-bottom: 10px;
 }
 
-/* ── Text inputs ─────────────────────────────────────────────── */
-.stTextInput input {
-    height: 38px !important;
-    font-size: 0.82rem !important;
-    padding: 6px 12px !important;
-    border-radius: 4px !important;
-}
-
-/* ── Expanders ───────────────────────────────────────────────── */
-[data-testid="stExpander"] {
-    border: 1px solid #e2e6ea !important;
-    border-radius: 4px !important;
-    background: #ffffff !important;
-}
-[data-testid="stExpander"] summary {
-    font-size: 0.78rem !important;
-    font-weight: 600 !important;
-    padding: 9px 12px !important;
-    min-height: 0 !important;
-    color: #0f1923 !important;
-}
-[data-testid="stExpander"] summary:hover { background: #f2f4f6 !important; }
-[data-testid="stExpander"] > div > div { padding: 6px 10px !important; }
-
-/* ── Dataframes: compact rows ────────────────────────────────── */
-[data-testid="stDataFrame"] table { font-size: 0.75rem !important; }
-[data-testid="stDataFrame"] th {
-    font-size: 0.65rem !important;
-    font-weight: 700 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
-    padding: 4px 8px !important;
-    background: #f2f4f6 !important;
-    color: #5d7a96 !important;
-}
-[data-testid="stDataFrame"] td { padding: 3px 8px !important; }
-
-/* ── Native st.metric ────────────────────────────────────────── */
-[data-testid="stMetric"] {
-    background: #ffffff;
-    border: 1px solid #e2e6ea;
-    border-left: 2px solid #1a3d6e;
-    border-radius: 4px;
-    padding: 10px 12px !important;
-}
-[data-testid="stMetricLabel"] { font-size: 0.60rem !important; color: #8fa3bb !important; }
-[data-testid="stMetricValue"] { font-size: 1.05rem !important; font-weight: 700 !important; }
-
-/* ── Alerts ──────────────────────────────────────────────────── */
-[data-testid="stAlert"] {
-    padding: 10px 14px !important;
-    font-size: 0.82rem !important;
-    border-radius: 4px !important;
-}
-
-/* ── Captions ────────────────────────────────────────────────── */
-.stCaption, small, caption { font-size: 0.70rem !important; color: #8fa3bb !important; }
-
-/* ── Dividers ────────────────────────────────────────────────── */
-hr { border-color: #e2e6ea !important; margin: 8px 0 !important; }
-
-/* ── Progress bar ────────────────────────────────────────────── */
-[data-testid="stProgress"] > div { height: 4px !important; border-radius: 2px !important; }
-
-/* ── Candidate selection cards ───────────────────────────────── */
-[data-testid="stVerticalBlockBorderWrapper"] {
-    border-radius: 4px !important;
-    border-color: #e2e6ea !important;
-    padding: 8px 12px !important;
-}
-
-/* ── Badges ──────────────────────────────────────────────────── */
+/* ── Badges ───────────────────────────────────────────────────── */
 .badge {
     display: inline-block;
-    padding: 1px 7px;
-    border-radius: 3px;
-    font-size: 0.62rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
     line-height: 1.6;
 }
 
-/* ── Sidebar config title ────────────────────────────────────── */
-.sb-title {
-    font-size: 0.72rem;
-    font-weight: 700;
-    color: #c8d6e5;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    padding: 10px 0 6px 0;
-    border-bottom: 1px solid #1a2f42;
-    margin-bottom: 8px;
+/* ── Primary button ───────────────────────────────────────────── */
+.stButton > button[kind="primary"] {
+    background: #1a3d6e !important;
+    border: none !important;
+    font-weight: 600 !important;
+    border-radius: 6px !important;
+    padding: 0.4rem 1.5rem !important;
+}
+.stButton > button[kind="primary"]:hover {
+    background: #1e4d8c !important;
+}
+
+/* ── Tabs ─────────────────────────────────────────────────────── */
+[data-testid="stTabs"] button[role="tab"] {
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    padding: 6px 14px !important;
+}
+
+/* ── Expanders ────────────────────────────────────────────────── */
+[data-testid="stExpander"] summary {
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+}
+
+/* ── Dividers ─────────────────────────────────────────────────── */
+hr { border-color: #e2e6ea !important; }
+
+/* ── Captions ─────────────────────────────────────────────────── */
+.stCaption, [data-testid="stCaptionContainer"] {
+    font-size: 0.72rem !important;
+    color: #8fa3bb !important;
 }
 </style>
 """, unsafe_allow_html=True)
