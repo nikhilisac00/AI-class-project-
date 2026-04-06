@@ -215,14 +215,15 @@ html, body, [class*="css"] {
     color: #ffffff !important;
 }
 .stButton > button[kind="primary"] {
-    background: #161616 !important;
-    border: 1px solid #333333 !important;
+    background: #1a1a1a !important;
+    border: 1px solid #404040 !important;
     color: #ffffff !important;
     padding: 0.4rem 1.5rem !important;
+    letter-spacing: 0.02em !important;
 }
 .stButton > button[kind="primary"]:hover {
-    background: #202020 !important;
-    border-color: #444444 !important;
+    background: #252525 !important;
+    border-color: #555555 !important;
 }
 
 /* ── Tabs ─────────────────────────────────────────────────────── */
@@ -265,8 +266,41 @@ html, body, [class*="css"] {
 
 /* ── Alerts ────────────────────────────────────────────────────── */
 [data-testid="stAlert"] {
-    background: #0a0a0a !important;
+    background: #0d0d0d !important;
     border: 1px solid #2a2a2a !important;
+    border-radius: 6px !important;
+}
+/* tone down the vivid success/warning/error colors */
+[data-testid="stAlert"][data-baseweb="notification"] {
+    background: #0d0d0d !important;
+}
+div[data-testid="stAlert"] > div {
+    color: #cccccc !important;
+}
+/* success = left green border only */
+div[class*="stSuccess"] > div,
+div[data-testid="stAlert"][kind="success"] {
+    background: #0a0a0a !important;
+    border-color: #1a4a2a !important;
+    border-left: 3px solid #2a7a4a !important;
+}
+/* warning = amber border */
+div[class*="stWarning"] > div,
+div[data-testid="stAlert"][kind="warning"] {
+    background: #0a0a0a !important;
+    border-left: 3px solid #7a5a10 !important;
+}
+/* error = red border */
+div[class*="stError"] > div,
+div[data-testid="stAlert"][kind="error"] {
+    background: #0a0a0a !important;
+    border-left: 3px solid #7a1a1a !important;
+}
+/* info = blue border */
+div[class*="stInfo"] > div,
+div[data-testid="stAlert"][kind="info"] {
+    background: #0a0a0a !important;
+    border-left: 3px solid #1a3a6a !important;
 }
 
 /* ── Native metrics ────────────────────────────────────────────── */
@@ -489,12 +523,12 @@ with st.sidebar:
     )
 
     openai_key = st.text_input(
-        "OpenAI API Key",
-        value=_secret("OPENAI_API_KEY"),
+        "Anthropic API Key",
+        value=_secret("ANTHROPIC_API_KEY"),
         type="password",
-        help="Required. Powers all analysis with GPT-4o. Get one at platform.openai.com",
+        help="Required. Get one at console.anthropic.com",
     )
-    st.caption("Model: gpt-4o")
+    st.caption("Model: claude-sonnet-4-6")
 
     st.divider()
     st.markdown('<div class="section-label">Research Options</div>', unsafe_allow_html=True)
@@ -555,7 +589,7 @@ st.markdown(f"""
     <div class="hero-icon">📋</div>
     <div>
       <div class="hero-title">LP Due Diligence Intelligence</div>
-      <div class="hero-sub">SEC EDGAR 13F &nbsp;·&nbsp; IAPD / Form ADV &nbsp;·&nbsp; Form D &nbsp;·&nbsp; FRED Macro &nbsp;·&nbsp; GPT-4o &nbsp;·&nbsp; 8 AI Agents</div>
+      <div class="hero-sub">SEC EDGAR 13F &nbsp;·&nbsp; IAPD / Form ADV &nbsp;·&nbsp; Form D &nbsp;·&nbsp; FRED Macro &nbsp;·&nbsp; Claude &nbsp;·&nbsp; 8 AI Agents</div>
     </div>
   </div>
   <div class="step-flow">
@@ -718,16 +752,11 @@ elif st.session_state.candidates and st.session_state.confirmed_firm:
         st.session_state.pipeline_result = {}
         st.rerun()
 
-# ── Optional website override ────────────────────────────────────────────────
+# Auto-use detected website silently
 if st.session_state.confirmed_firm:
     detected = st.session_state.confirmed_firm.get("website") or ""
-    website_input = st.text_input(
-        "Firm website (optional — improves fund discovery)",
-        value=st.session_state.user_website or detected,
-        placeholder="https://www.example.com",
-        help="Leave blank to use auto-detected website, or paste the correct URL.",
-    )
-    st.session_state.user_website = website_input.strip()
+    if not st.session_state.user_website:
+        st.session_state.user_website = detected
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -749,7 +778,7 @@ if st.session_state.confirmed_firm:
         disabled=not openai_key,
     )
     if not openai_key:
-        st.caption("Add your OpenAI API key in the sidebar to run.")
+        st.caption("Add your Anthropic API key in the sidebar to run.")
 else:
     run_button = False
 
@@ -795,7 +824,7 @@ if run_button:
         if raw_data.get("errors"):
             st.warning("Ingestion notes: " + " | ".join(raw_data["errors"]))
 
-        status_box.info(f"⏳ Step 2 — Analyzing firm structure · {_ingest_summary} · Running GPT-4o reasoning...")
+        status_box.info(f"⏳ Step 2 — Analyzing firm structure · {_ingest_summary} · Running Claude reasoning...")
         analysis = analysis_agent.run(raw_data, client)
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Analysis complete")
@@ -2244,7 +2273,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             with st.expander("Ingestion Errors / Notes"):
                 st.json(raw_data.get("errors", []))
         if analysis:
-            with st.expander("Structured Analysis (GPT-4o output)"):
+            with st.expander("Structured Analysis (Claude output)"):
                 st.json(analysis)
 
     # ─ AI Assistant ──────────────────────────────────────────────────────
@@ -2253,7 +2282,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
         <div style="margin-bottom:16px">
           <div style="font-size:1.05rem;font-weight:700;color:#e0e0e0">AI Research Assistant</div>
           <div style="font-size:0.80rem;color:#8fa3bb;margin-top:2px">
-            Powered by GPT-4o · Knows everything about the analyzed firm
+            Powered by Claude · Knows everything about the analyzed firm
           </div>
         </div>
         """, unsafe_allow_html=True)
@@ -2305,7 +2334,7 @@ Be direct, concise, and professional. No firm has been analyzed yet in this sess
         # Chat input
         if prompt := st.chat_input(placeholder, key="chat_input"):
             if not openai_key:
-                st.error("Add your OpenAI API key in the sidebar to use the AI Assistant.")
+                st.error("Add your Anthropic API key in the sidebar to use the AI Assistant.")
             else:
                 # Add user message
                 st.session_state.chat_messages.append({"role": "user", "content": prompt})
