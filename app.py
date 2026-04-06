@@ -35,7 +35,9 @@ st.markdown("""
 .block-container {
     padding-top: 1.25rem !important;
     padding-bottom: 2rem !important;
-    max-width: 1200px;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
+    max-width: 100% !important;
 }
 
 /* ── Global typography ────────────────────────────────────────── */
