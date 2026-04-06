@@ -19,242 +19,385 @@ st.set_page_config(
     page_title="AI Alternatives Research Associate",
     page_icon="📋",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 st.markdown("""
 <style>
-/* ── Hide Streamlit chrome ───────────────────────────────────── */
+/* ── Hide Streamlit chrome ────────────────────────────────────── */
 #MainMenu, footer, header { visibility: hidden; }
 .stDeployButton { display: none; }
 
-/* ── App-level dark background ───────────────────────────────── */
-.stApp, [data-testid="stAppViewContainer"] { background: #0a0a0a !important; }
-[data-testid="stHeader"] { background: #0a0a0a !important; }
-.main .block-container { background: #0a0a0a !important; }
-
-/* ── Global typography ───────────────────────────────────────── */
-html, body, [class*="css"] {
-    font-family: "Inter", "Segoe UI", sans-serif;
-    color: #e8e8e8;
+/* ── App-level black background ──────────────────────────────── */
+.stApp, [data-testid="stAppViewContainer"] { background: #000000 !important; }
+[data-testid="stHeader"] { background: #000000 !important; }
+.main .block-container { background: #000000 !important; }
+.block-container {
+    padding-top: 1.25rem !important;
+    padding-bottom: 2rem !important;
+    max-width: 1200px;
 }
 
-/* ── Sidebar ─────────────────────────────────────────────────── */
+/* ── Global typography ────────────────────────────────────────── */
+html, body, [class*="css"] {
+    font-family: "Inter", "Segoe UI", ui-sans-serif, sans-serif !important;
+    color: #e0e0e0;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
     background: #050505 !important;
     border-right: 1px solid #1a1a1a !important;
 }
 [data-testid="stSidebar"] * {
-    color: #cccccc !important;
-}
-[data-testid="stSidebar"] .stTextInput label,
-[data-testid="stSidebar"] .stSlider label,
-[data-testid="stSidebar"] .stToggle label {
-    color: #666666 !important;
-    font-size: 0.78rem !important;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    color: #aaaaaa !important;
 }
 [data-testid="stSidebar"] hr {
     border-color: #1a1a1a !important;
 }
+[data-testid="stSidebar"] label {
+    font-size: 0.72rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #555555 !important;
+}
 [data-testid="stSidebar"] input {
     background: #111111 !important;
     border-color: #2a2a2a !important;
+    color: #e0e0e0 !important;
 }
 
-/* ── Inputs ──────────────────────────────────────────────────── */
-.stTextInput input, .stTextArea textarea {
-    background: #111111 !important;
-    border-color: #2a2a2a !important;
-    color: #e8e8e8 !important;
+/* ── Inputs ────────────────────────────────────────────────────── */
+[data-testid="stTextInput"] input {
+    font-size: 1rem !important;
     border-radius: 6px !important;
+    border: 1px solid #2a2a2a !important;
+    padding: 10px 16px !important;
+    background: #111111 !important;
+    color: #e0e0e0 !important;
 }
-.stTextInput input:focus, .stTextArea textarea:focus {
+[data-testid="stTextInput"] input:focus {
     border-color: #444444 !important;
-    box-shadow: 0 0 0 1px #333333 !important;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.06) !important;
 }
 
-/* ── Metric cards ────────────────────────────────────────────── */
+/* ── Metric cards ─────────────────────────────────────────────── */
 .metric-card {
-    background: #111111;
-    border: 1px solid #222222;
-    border-top: 3px solid #2a4a7a;
-    border-radius: 8px;
-    padding: 16px 18px;
+    background: #0f0f0f;
+    border: 1px solid #1e1e1e;
+    border-top: 2px solid #2a2a2a;
+    border-radius: 6px;
+    padding: 12px 14px;
     text-align: center;
 }
 .metric-card .metric-label {
-    font-size: 0.70rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #666666;
-    margin-bottom: 6px;
-}
-.metric-card .metric-value {
-    font-size: 1.45rem;
-    font-weight: 700;
-    color: #e8e8e8;
-    line-height: 1.2;
-}
-
-/* ── Risk tier badge ─────────────────────────────────────────── */
-.risk-tier-banner {
-    border-radius: 8px;
-    padding: 14px 20px;
-    font-size: 1.05rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    margin-bottom: 14px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-/* ── Tab styling ─────────────────────────────────────────────── */
-[data-testid="stTabs"] [data-baseweb="tab-list"] {
-    background: #0a0a0a !important;
-    border-bottom: 1px solid #1a1a1a !important;
-    gap: 0 !important;
-}
-[data-testid="stTabs"] [data-baseweb="tab"] {
-    font-size: 0.82rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 8px 18px;
-    background: transparent !important;
-    color: #555555 !important;
-}
-[data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] {
-    color: #ffffff !important;
-    border-bottom-color: #ffffff !important;
-}
-
-/* ── Section subheaders ──────────────────────────────────────── */
-.section-label {
-    font-size: 0.68rem;
+    font-size: 0.65rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #666666;
+    letter-spacing: 0.07em;
+    color: #555555;
     margin-bottom: 4px;
 }
+.metric-card .metric-value {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #e0e0e0;
+    line-height: 1.2;
+}
+.metric-card .metric-sub {
+    font-size: 0.65rem;
+    color: #555555;
+    margin-top: 2px;
+}
+.metric-card.risk-card {
+    border-top: 2px solid #c0392b;
+}
 
-/* ── Firm header card ────────────────────────────────────────── */
+/* ── Firm result header ───────────────────────────────────────── */
 .firm-header {
     background: #0a0a0a;
     border: 1px solid #1a1a1a;
-    border-radius: 10px;
-    padding: 22px 28px;
-    margin-bottom: 20px;
-    color: #ffffff;
+    border-radius: 6px;
+    padding: 16px 22px;
+    margin-bottom: 16px;
 }
 .firm-header h2 {
     margin: 0 0 6px 0;
-    font-size: 1.55rem;
+    font-size: 1.3rem;
     font-weight: 700;
     color: #ffffff;
 }
 .firm-header .firm-meta {
-    font-size: 0.82rem;
-    color: #666666;
-    margin-top: 8px;
+    font-size: 0.75rem;
+    color: #555555;
+    margin-top: 4px;
 }
 
-/* ── Buttons ─────────────────────────────────────────────────── */
+/* ── Step labels ──────────────────────────────────────────────── */
+.step-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.step-label .step-num {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    color: #888888;
+    border-radius: 50%;
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.72rem; font-weight: 700; flex-shrink: 0;
+}
+.step-label .step-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #cccccc;
+}
+
+/* ── Risk tier banner ─────────────────────────────────────────── */
+.risk-tier-banner {
+    border-radius: 6px;
+    padding: 10px 16px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ── Section label ────────────────────────────────────────────── */
+.section-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #555555;
+    margin-bottom: 4px;
+}
+
+/* ── Sidebar config title ─────────────────────────────────────── */
+.sb-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #888888;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 12px 0 8px 0;
+    border-bottom: 1px solid #1a1a1a;
+    margin-bottom: 10px;
+}
+
+/* ── Badges ───────────────────────────────────────────────────── */
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    line-height: 1.6;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────── */
 .stButton > button {
-    background: #141414 !important;
+    background: #111111 !important;
     border: 1px solid #2a2a2a !important;
     color: #cccccc !important;
-    font-weight: 600 !important;
     border-radius: 6px !important;
-    transition: all 0.15s ease !important;
+    font-weight: 600 !important;
+    transition: all 0.15s !important;
 }
 .stButton > button:hover {
-    background: #1e1e1e !important;
+    background: #1a1a1a !important;
     border-color: #3a3a3a !important;
     color: #ffffff !important;
 }
 .stButton > button[kind="primary"] {
-    background: #1a1a1a !important;
+    background: #161616 !important;
     border: 1px solid #333333 !important;
     color: #ffffff !important;
+    padding: 0.4rem 1.5rem !important;
 }
 .stButton > button[kind="primary"]:hover {
-    background: #252525 !important;
+    background: #202020 !important;
     border-color: #444444 !important;
 }
 
-/* ── Expander ────────────────────────────────────────────────── */
+/* ── Tabs ─────────────────────────────────────────────────────── */
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+    background: #000000 !important;
+    border-bottom: 1px solid #1a1a1a !important;
+}
+[data-testid="stTabs"] button[role="tab"] {
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    padding: 6px 14px !important;
+    background: transparent !important;
+    color: #444444 !important;
+}
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+    color: #e0e0e0 !important;
+    border-bottom-color: #e0e0e0 !important;
+}
+
+/* ── Expanders ────────────────────────────────────────────────── */
 [data-testid="stExpander"] {
-    background: #111111 !important;
-    border: 1px solid #1e1e1e !important;
-    border-radius: 8px !important;
+    background: #0a0a0a !important;
+    border: 1px solid #1a1a1a !important;
+    border-radius: 6px !important;
 }
 [data-testid="stExpander"] summary {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #cccccc !important;
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+    color: #aaaaaa !important;
 }
 
-/* ── Container with border ───────────────────────────────────── */
+/* ── Containers with border ───────────────────────────────────── */
 [data-testid="stVerticalBlockBorderWrapper"] {
-    background: #111111 !important;
-    border: 1px solid #1e1e1e !important;
+    background: #0a0a0a !important;
+    border: 1px solid #1a1a1a !important;
     border-radius: 8px !important;
 }
 
-/* ── Alerts ──────────────────────────────────────────────────── */
+/* ── Alerts ────────────────────────────────────────────────────── */
 [data-testid="stAlert"] {
-    background: #111111 !important;
+    background: #0a0a0a !important;
     border: 1px solid #2a2a2a !important;
 }
 
-/* ── Native metric ───────────────────────────────────────────── */
-[data-testid="stMetricLabel"] p { color: #666666 !important; }
-[data-testid="stMetricValue"]   { color: #e8e8e8 !important; }
+/* ── Native metrics ────────────────────────────────────────────── */
+[data-testid="stMetricLabel"] p { color: #555555 !important; }
+[data-testid="stMetricValue"]   { color: #e0e0e0 !important; }
 
-/* ── Progress bar ────────────────────────────────────────────── */
-[data-testid="stStatusWidget"],
-[data-testid="stProgressBar"] > div {
-    background: #1a1a1a !important;
+/* ── Dividers ─────────────────────────────────────────────────── */
+hr { border-color: #1a1a1a !important; }
+
+/* ── Captions ─────────────────────────────────────────────────── */
+.stCaption, [data-testid="stCaptionContainer"] {
+    font-size: 0.72rem !important;
+    color: #555555 !important;
 }
 
-/* ── Markdown ────────────────────────────────────────────────── */
+/* ── Markdown ──────────────────────────────────────────────────── */
 [data-testid="stMarkdownContainer"] p,
-[data-testid="stMarkdownContainer"] li { color: #cccccc; }
+[data-testid="stMarkdownContainer"] li { color: #aaaaaa; }
 [data-testid="stMarkdownContainer"] h1,
 [data-testid="stMarkdownContainer"] h2,
 [data-testid="stMarkdownContainer"] h3,
-[data-testid="stMarkdownContainer"] h4 { color: #e8e8e8; }
+[data-testid="stMarkdownContainer"] h4 { color: #e0e0e0; }
 [data-testid="stMarkdownContainer"] a  { color: #4a9eff; }
 
-/* ── Caption ─────────────────────────────────────────────────── */
-[data-testid="stCaptionContainer"] p { color: #555555 !important; }
-
-/* ── Divider ─────────────────────────────────────────────────── */
-hr { border-color: #1a1a1a !important; }
-
-/* ── Quick example chips ─────────────────────────────────────── */
-.example-chip {
-    display: inline-block;
-    background: #111111;
-    border: 1px solid #2a2a2a;
-    border-radius: 20px;
-    padding: 4px 14px;
-    font-size: 0.78rem;
-    color: #888888;
-    cursor: pointer;
-    margin-right: 8px;
-    transition: all 0.15s ease;
+/* ── Hero card ────────────────────────────────────────────────────────────── */
+.hero-card {
+    background: #000000;
+    border-radius: 10px;
+    padding: 22px 28px 18px 28px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid #1a1a1a;
 }
-.example-chip:hover {
+.hero-row {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+}
+.hero-icon {
     background: #1a1a1a;
-    border-color: #444444;
-    color: #cccccc;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem; flex-shrink: 0;
 }
+.hero-title { font-size: 1.25rem; font-weight: 800; color: #ffffff; letter-spacing: -0.02em; }
+.hero-sub   { font-size: 0.70rem; color: #444444; margin-top: 3px; letter-spacing: 0.02em; }
+
+/* ── Horizontal step flow ────────────────────────────────────────────────── */
+.step-flow {
+    display: flex; align-items: center;
+    background: #080808;
+    border: 1px solid #1a1a1a;
+    border-radius: 8px; padding: 10px 16px;
+}
+.sf-step { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.sf-circle {
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.70rem; font-weight: 800; flex-shrink: 0;
+}
+.sf-text { min-width: 0; }
+.sf-name { font-size: 0.76rem; font-weight: 700; white-space: nowrap; }
+.sf-hint { font-size: 0.64rem; opacity: 0.45; white-space: nowrap; }
+.sf-arrow { color: #2a2a2a; font-size: 1rem; padding: 0 8px; flex-shrink: 0; }
+.sf-step.s1 .sf-circle { background:#0d1f35; color:#4a8fd4; }
+.sf-step.s1 .sf-name   { color:#4a8fd4; }
+.sf-step.s1 .sf-hint   { color:#2a4a65; }
+.sf-step.s2 .sf-circle { background:#0d2a1d; color:#3aaa7a; }
+.sf-step.s2 .sf-name   { color:#3aaa7a; }
+.sf-step.s2 .sf-hint   { color:#1a4a2a; }
+.sf-step.s3 .sf-circle { background:#2a1800; color:#c89020; }
+.sf-step.s3 .sf-name   { color:#c89020; }
+.sf-step.s3 .sf-hint   { color:#4a3000; }
+.sf-step.s4 .sf-circle { background:#220d2d; color:#9a5ad4; }
+.sf-step.s4 .sf-name   { color:#9a5ad4; }
+.sf-step.s4 .sf-hint   { color:#3a1a4a; }
+
+/* ── Search section card ─────────────────────────────────────────────────── */
+.search-section {
+    background: #000000;
+    border: 1px solid #1a1a1a;
+    border-radius: 10px;
+    padding: 18px 22px 14px 22px;
+    margin-bottom: 16px;
+}
+.search-section-title {
+    font-size: 0.67rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.09em;
+    color: #444444; margin-bottom: 10px;
+}
+
+/* ── Example chips ───────────────────────────────────────────────────────── */
+.chip-section-label {
+    font-size: 0.64rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: #333333; margin: 10px 0 6px 0;
+}
+div[data-testid="column"] .stButton > button {
+    background: #0a0a0a !important;
+    border: 1px solid #222222 !important;
+    border-radius: 20px !important;
+    color: #666666 !important;
+    font-size: 0.70rem !important;
+    font-weight: 600 !important;
+    padding: 4px 0 !important;
+    transition: all 0.15s !important;
+}
+div[data-testid="column"] .stButton > button:hover {
+    background: #141414 !important;
+    border-color: #333333 !important;
+    color: #cccccc !important;
+}
+
+/* ── Criteria strip ──────────────────────────────────────────────────────── */
+.criteria-strip {
+    background: #080808; border: 1px solid #1a1a1a;
+    border-radius: 8px; padding: 12px 16px; margin-top: 10px;
+}
+.criteria-strip-title {
+    font-size: 0.65rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.09em;
+    color: #444444; margin-bottom: 8px;
+}
+.criteria-row {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px 16px;
+}
+.crit-item {
+    display: flex; align-items: baseline; gap: 6px;
+    font-size: 0.74rem; color: #555555; line-height: 1.5;
+}
+.crit-dot { color: #333333; font-size: 0.68rem; flex-shrink: 0; }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -269,16 +412,17 @@ import agents.memo_generation as memo_agent       # noqa: E402
 import agents.ic_scorecard      as scorecard_agent    # noqa: E402
 import agents.research_director as director_agent    # noqa: E402
 import agents.comparables       as comparables_agent # noqa: E402
+import agents.fact_checker      as fact_checker_agent # noqa: E402
 from tools.llm_client import make_client             # noqa: E402
 from tools.pal_client  import is_available as pal_available, call_consensus  # noqa: E402
+from tools.memo_export import to_docx, to_pdf        # noqa: E402
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 def _badge(label: str, color: str) -> str:
     return (
-        f'<span style="background:{color};color:#fff;padding:2px 10px;'
-        f'border-radius:4px;font-size:0.78rem;font-weight:600">{label}</span>'
+        f'<span class="badge" style="background:{color};color:#fff">{label}</span>'
     )
 
 def _sev_color(sev: str) -> str:
@@ -304,7 +448,7 @@ for _k, _v in [
     ("search_query",    ""),
     ("pipeline_done",   False),
     ("pipeline_result", {}),
-    ("chat_messages",   []),   # list of {"role": ..., "content": ...}
+    ("chat_messages",   []),
     ("_auto_search",    False),
 ]:
     if _k not in st.session_state:
@@ -314,36 +458,40 @@ for _k, _v in [
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown("""
-    <div style="padding:18px 4px 10px 4px">
-      <div style="font-size:1.05rem;font-weight:700;color:#ffffff;letter-spacing:0.02em">
-        ⚙️ Configuration
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown('<div class="sb-title">⚙ Configuration</div>', unsafe_allow_html=True)
+
+    def _secret(key: str) -> str:
+        """Read from env vars first, then Streamlit secrets (for Cloud deployments)."""
+        val = os.getenv(key, "")
+        if not val:
+            try:
+                val = st.secrets.get(key, "")
+            except Exception:
+                pass
+        return val or ""
 
     st.markdown('<div class="section-label">API Keys</div>', unsafe_allow_html=True)
-    api_key = st.text_input(
-        "Anthropic API Key",
-        value=os.getenv("ANTHROPIC_API_KEY", ""),
-        type="password",
-        help="Required. Get one at console.anthropic.com",
-    )
-    st.caption("Model: claude-sonnet-4-6")
-
     fred_key = st.text_input(
         "FRED API Key (optional)",
-        value=os.getenv("FRED_API_KEY", ""),
+        value=_secret("FRED_API_KEY"),
         type="password",
         help="Free at fred.stlouisfed.org — adds macro rates/spreads.",
     )
 
     tavily_key = st.text_input(
         "Tavily API Key (optional)",
-        value=os.getenv("TAVILY_API_KEY", ""),
+        value=_secret("TAVILY_API_KEY"),
         type="password",
         help="Free tier at tavily.com (1,000/mo). Falls back to DuckDuckGo.",
     )
+
+    openai_key = st.text_input(
+        "OpenAI API Key",
+        value=_secret("OPENAI_API_KEY"),
+        type="password",
+        help="Required. Powers all analysis with GPT-4o. Get one at platform.openai.com",
+    )
+    st.caption("Model: gpt-4o")
 
     st.divider()
     st.markdown('<div class="section-label">Research Options</div>', unsafe_allow_html=True)
@@ -379,132 +527,150 @@ with st.sidebar:
     st.caption("No hallucination — every fact cites a real API field")
 
 
-# ── Header ───────────────────────────────────────────────────────────────────
+# ── Hero card (always visible) ───────────────────────────────────────────────
 
-st.markdown("""
-<div style="padding:28px 0 18px 0;border-bottom:1px solid #1a1a1a;margin-bottom:24px">
-  <div style="display:flex;align-items:center;gap:14px">
-    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;
-                width:38px;height:38px;display:flex;align-items:center;
-                justify-content:center;font-size:1.1rem;flex-shrink:0">📋</div>
+_step_active = (
+    4 if st.session_state.pipeline_done else
+    3 if st.session_state.get("_pipeline_running") else
+    2 if st.session_state.confirmed_firm else
+    1
+)
+
+def _sf(n, label, hint, cls):
+    active_ring = ' outline:2px solid currentColor;outline-offset:2px;' if n == _step_active else ''
+    return f'''<div class="sf-step {cls}">
+      <div class="sf-circle" style="{active_ring}">{n}</div>
+      <div class="sf-text">
+        <div class="sf-name">{label}</div>
+        <div class="sf-hint">{hint}</div>
+      </div>
+    </div>'''
+
+st.markdown(f"""
+<div class="hero-card">
+  <div class="hero-row">
+    <div class="hero-icon">📋</div>
     <div>
-      <div style="font-size:1.4rem;font-weight:700;color:#ffffff;
-                  letter-spacing:-0.01em;line-height:1.2">
-        LP Due Diligence Intelligence
-      </div>
-      <div style="font-size:0.78rem;color:#555555;margin-top:4px;letter-spacing:0.03em">
-        SEC EDGAR &nbsp;·&nbsp; IAPD &nbsp;·&nbsp; FRED &nbsp;·&nbsp; Claude &nbsp;·&nbsp; No hallucination
-      </div>
+      <div class="hero-title">LP Due Diligence Intelligence</div>
+      <div class="hero-sub">SEC EDGAR 13F &nbsp;·&nbsp; IAPD / Form ADV &nbsp;·&nbsp; Form D &nbsp;·&nbsp; FRED Macro &nbsp;·&nbsp; GPT-4o &nbsp;·&nbsp; 8 AI Agents</div>
     </div>
+  </div>
+  <div class="step-flow">
+    {_sf(1, "Search", "Firm name or CRD", "s1")}
+    <div class="sf-arrow">›</div>
+    {_sf(2, "Confirm", "Select from IAPD", "s2")}
+    <div class="sf-arrow">›</div>
+    {_sf(3, "Analyze", "8 agents run", "s3")}
+    <div class="sf-arrow">›</div>
+    {_sf(4, "Review", "IC memo + risk", "s4")}
   </div>
 </div>
 """, unsafe_allow_html=True)
-
-with st.expander("How it works", expanded=False):
-    st.markdown(
-        """
-**Pipeline:**
-1. **Firm Resolver** — fuzzy search IAPD, confirm the right entity before spending tokens
-2. **Data Ingestion** — IAPD ADV detail · EDGAR 13F XML · FRED macro · Form D fund discovery
-3. **Fund Discovery** — Form D filings · IAPD relying advisors · web search → fund table
-4. **Claude** (claude-sonnet-4-6) — structured analysis → LP risk flags → IC memo
-5. *(optional)* **PAL MCP** — Gemini-3-Pro consensus on risk flags
-
-**No hallucination:** `null` for any missing field. All data gaps surfaced explicitly.
-        """
-    )
-
-st.divider()
-
 
 # ────────────────────────────────────────────────────────────────────────────
 # STEP 1 — Firm Search & Confirmation
 # ────────────────────────────────────────────────────────────────────────────
 
-st.markdown("""
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-  <div style="background:#1e1e1e;border:1px solid #2a2a2a;color:#aaaaaa;border-radius:50%;
-              width:26px;height:26px;display:flex;align-items:center;justify-content:center;
-              font-size:0.80rem;font-weight:700;flex-shrink:0">1</div>
-  <div style="font-size:0.95rem;font-weight:700;color:#cccccc;letter-spacing:0.02em">
-    Search Firm
+_EXAMPLE_FIRMS = [
+    ("Ares Management",          "Alt credit · PE · $400B+"),
+    ("Apollo Global Management", "PE · credit · $600B+"),
+    ("Two Sigma Investments",    "Quant · $60B+"),
+]
+
+if not st.session_state.confirmed_firm:
+    st.markdown('<div class="search-section">', unsafe_allow_html=True)
+    st.markdown('<div class="search-section-title">Search Investment Manager</div>', unsafe_allow_html=True)
+
+    col_q, col_find = st.columns([5, 1])
+    with col_q:
+        query_input = st.text_input(
+            "Firm",
+            value=st.session_state.search_query,
+            placeholder='Firm name or CRD number — e.g. "AQR Capital Management" or "149729"',
+            label_visibility="collapsed",
+            key="firm_search_input",
+        )
+    with col_find:
+        find_btn = st.button("Search", type="primary", use_container_width=True)
+
+    # Example chips
+    st.markdown('<div class="chip-section-label">Quick examples — click to search</div>', unsafe_allow_html=True)
+    chip_cols = st.columns(len(_EXAMPLE_FIRMS))
+    for _ci, (_firm_name, _firm_sub) in enumerate(_EXAMPLE_FIRMS):
+        with chip_cols[_ci]:
+            if st.button(_firm_name, key=f"chip_{_ci}", use_container_width=True, help=_firm_sub):
+                st.session_state.search_query = _firm_name
+                st.session_state._auto_search  = True
+                st.rerun()
+
+    # Criteria below chips
+    st.markdown("""
+<div class="criteria-strip">
+  <div class="criteria-strip-title">Which firms qualify?</div>
+  <div class="criteria-row">
+    <div class="crit-item"><span class="crit-dot">◆</span><span>SEC-registered adviser (CRD number)</span></div>
+    <div class="crit-item"><span class="crit-dot">◆</span><span>Files Form ADV with IAPD</span></div>
+    <div class="crit-item"><span class="crit-dot">◆</span><span>Hedge funds, PE, quant, family offices</span></div>
+    <div class="crit-item"><span class="crit-dot">◆</span><span>Files 13F quarterly (&gt;$100M US equities)</span></div>
+    <div class="crit-item"><span class="crit-dot">◆</span><span>US-based or US-registered operations</span></div>
+    <div class="crit-item"><span class="crit-dot">◆</span><span>State-registered also supported (less data)</span></div>
   </div>
 </div>
 """, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)  # close search-section
+else:
+    # Firm already confirmed — show minimal search bar for changing
+    col_q, col_find = st.columns([5, 1])
+    with col_q:
+        query_input = st.text_input(
+            "Firm",
+            value=st.session_state.search_query,
+            placeholder='Firm name or CRD number',
+            label_visibility="collapsed",
+            key="firm_search_input",
+        )
+    with col_find:
+        find_btn = st.button("Search", type="primary", use_container_width=True)
 
-col_q, col_find = st.columns([4, 1])
-with col_q:
-    query_input = st.text_input(
-        "Firm name or CRD number",
-        placeholder='e.g. "Ares Management" or CRD number "149729"',
-        key="firm_search_input",
-    )
-with col_find:
-    st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
-    find_btn = st.button("Search", type="secondary", use_container_width=True)
-
-# Quick examples
-st.markdown("""
-<div style="margin-top:8px;margin-bottom:4px;font-size:0.70rem;
-            color:#444444;letter-spacing:0.06em;text-transform:uppercase">
-  Quick examples
-</div>
-""", unsafe_allow_html=True)
-_ex_col1, _ex_col2, _ex_col3, _ex_spacer = st.columns([1.2, 1.2, 1.1, 4])
-def _set_example(name: str) -> None:
-    st.session_state.firm_search_input = name
-    st.session_state.search_query      = name
-    st.session_state.candidates        = []
-    st.session_state.confirmed_firm    = None
-    st.session_state.pipeline_done     = False
-    st.session_state.pipeline_result   = {}
-    st.session_state._auto_search      = True
-
-with _ex_col1:
-    if st.button("Ares Management", key="ex_ares", use_container_width=True):
-        _set_example("Ares Management")
-        st.rerun()
-with _ex_col2:
-    if st.button("Apollo Global", key="ex_apollo", use_container_width=True):
-        _set_example("Apollo Global Management")
-        st.rerun()
-with _ex_col3:
-    if st.button("Two Sigma", key="ex_twosigma", use_container_width=True):
-        _set_example("Two Sigma")
-        st.rerun()
-
-# Trigger search (from button click or quick example auto-search)
-_do_search  = find_btn or st.session_state._auto_search
-_search_term = st.session_state.search_query if st.session_state._auto_search else query_input.strip()
-if st.session_state._auto_search:
-    st.session_state._auto_search = False
+# Trigger search (manual button OR chip auto-search)
+_do_search = find_btn or st.session_state.get("_auto_search", False)
 if _do_search:
-    if not _search_term:
+    st.session_state._auto_search = False
+    _q = query_input.strip() or st.session_state.search_query
+    if not _q:
         st.error("Enter a firm name or CRD to search.")
     else:
-        with st.spinner("Searching IAPD..."):
+        with st.spinner(f"Searching IAPD for '{_q}'..."):
             candidates = resolver_agent.resolve(
-                _search_term,
+                _q,
                 tavily_key=tavily_key or None,
                 max_candidates=5,
             )
         st.session_state.candidates    = candidates
-        st.session_state.search_query  = _search_term
+        st.session_state.search_query  = _q
         st.session_state.confirmed_firm = None   # reset if re-searching
         st.session_state.pipeline_done  = False
         st.session_state.pipeline_result = {}
+
+# Auto-confirm if resolver is confident
+if (st.session_state.candidates and not st.session_state.confirmed_firm
+        and st.session_state.candidates[0].get("auto_confirm")):
+    st.session_state.confirmed_firm  = st.session_state.candidates[0]
+    st.session_state.pipeline_done   = False
+    st.session_state.pipeline_result = {}
+    st.rerun()
 
 # Show candidates
 if st.session_state.candidates and not st.session_state.confirmed_firm:
     st.markdown("**Select the correct firm:**")
     for i, c in enumerate(st.session_state.candidates):
-        score = c.get("match_score", 0.0)
-        sc    = _score_color(score)
-        name  = c.get("firm_name", "Unknown")
-        crd   = c.get("crd", "")
-        city  = c.get("city", "")
-        state = c.get("state", "")
-        status = c.get("registration_status", "")
+        score   = c.get("match_score", 0.0)
+        sc      = _score_color(score)
+        name    = c.get("firm_name", "Unknown")
+        crd     = c.get("crd", "")
+        city    = c.get("city", "")
+        state   = c.get("state", "")
+        status  = c.get("registration_status", "")
         website = c.get("website") or ""
 
         with st.container(border=True):
@@ -517,21 +683,22 @@ if st.session_state.candidates and not st.session_state.confirmed_firm:
                     f'Match {score:.0%}</span>',
                     unsafe_allow_html=True,
                 )
+                # Website is the primary identifier — show it prominently
+                if website:
+                    st.markdown(f'🌐 [{website}]({website})')
                 meta = []
                 if crd:
                     meta.append(f"CRD: **{crd}**")
                 if city and state:
-                    meta.append(f"**{city}, {state}**")
+                    meta.append(f"{city}, {state}")
                 if status:
                     meta.append(status)
                 if meta:
                     st.caption("  ·  ".join(meta))
-                if website:
-                    st.caption(f"[{website}]({website})")
             with btn_col:
                 if st.button("Use this firm", key=f"use_{i}", use_container_width=True):
-                    st.session_state.confirmed_firm = c
-                    st.session_state.pipeline_done  = False
+                    st.session_state.confirmed_firm  = c
+                    st.session_state.pipeline_done   = False
                     st.session_state.pipeline_result = {}
                     st.rerun()
 
@@ -559,8 +726,6 @@ if st.session_state.confirmed_firm:
     )
     st.session_state.user_website = website_input.strip()
 
-st.divider()
-
 
 # ────────────────────────────────────────────────────────────────────────────
 # STEP 2 — Run Analysis (only shown after firm confirmation)
@@ -568,11 +733,9 @@ st.divider()
 
 if st.session_state.confirmed_firm:
     st.markdown("""
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-      <div style="background:#1e1e1e;border:1px solid #2a2a2a;color:#aaaaaa;border-radius:50%;width:28px;height:28px;
-                  display:flex;align-items:center;justify-content:center;
-                  font-size:0.85rem;font-weight:700;flex-shrink:0">2</div>
-      <div style="font-size:1.1rem;font-weight:700;color:#e8e8e8">Run Analysis</div>
+    <div class="step-label">
+      <div class="step-num">2</div>
+      <div class="step-title">Run Analysis</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -580,10 +743,10 @@ if st.session_state.confirmed_firm:
         f"Run Due Diligence on {st.session_state.confirmed_firm.get('firm_name', '')}",
         type="primary",
         use_container_width=True,
-        disabled=not api_key,
+        disabled=not openai_key,
     )
-    if not api_key:
-        st.caption("Add your Anthropic API key in the sidebar to run.")
+    if not openai_key:
+        st.caption("Add your OpenAI API key in the sidebar to run.")
 else:
     run_button = False
 
@@ -596,7 +759,7 @@ if run_button:
     cf          = st.session_state.confirmed_firm
     firm_input  = cf.get("crd") or cf.get("firm_name", "")
     user_website = st.session_state.user_website or None
-    client      = make_client(api_key)
+    client      = make_client(openai_key)
 
     progress_bar = st.progress(0, text="Starting...")
     status_box   = st.empty()
@@ -608,8 +771,8 @@ if run_button:
         step = [0]
         def _pct(n): return int(n / total_steps * 100)
 
-        status_box.info("Step 1 — Ingesting: IAPD · EDGAR 13F · FRED · Form D...")
-        progress_bar.progress(5, text="Ingesting...")
+        status_box.info("⏳ Step 1 — Fetching IAPD registration · EDGAR 13F filings · FRED macro rates · Form D fund records...")
+        progress_bar.progress(5, text="Fetching data sources...")
         raw_data = ingestion_agent.run(
             firm_input,
             fred_api_key=fred_key or None,
@@ -618,13 +781,18 @@ if run_button:
             tavily_key=tavily_key or None,
         )
         step[0] += 1
-        progress_bar.progress(_pct(step[0]), text="Ingestion complete")
+        progress_bar.progress(_pct(step[0]), text="Data ingestion complete")
 
-        fd_count = len((raw_data.get("fund_discovery") or {}).get("funds", []))
+        fd_count   = len((raw_data.get("fund_discovery") or {}).get("funds", []))
+        aum_note   = (raw_data.get("adv_xml_data") or {}).get("thirteenf", {}).get("portfolio_value_fmt") or "no 13F"
+        errs_count = len(raw_data.get("errors", []))
+        _ingest_summary = f"{fd_count} funds found · 13F: {aum_note}"
+        if errs_count:
+            _ingest_summary += f" · {errs_count} notes"
         if raw_data.get("errors"):
             st.warning("Ingestion notes: " + " | ".join(raw_data["errors"]))
 
-        status_box.info(f"Step 2 — Fund analysis (Claude reasoning) · {fd_count} funds found...")
+        status_box.info(f"⏳ Step 2 — Analyzing firm structure · {_ingest_summary} · Running GPT-4o reasoning...")
         analysis = analysis_agent.run(raw_data, client)
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Analysis complete")
@@ -654,7 +822,7 @@ if run_button:
             if news_report.get("errors"):
                 st.warning("News notes: " + " | ".join(news_report["errors"]))
 
-        status_box.info("Step — Risk flagging (Claude reasoning)...")
+        status_box.info("⏳ Step 4 — Scanning for LP risk flags · regulatory disclosures · key-person concentration · data gaps...")
         risk_report = risk_agent.run(analysis, raw_data, client, news_report=news_report)
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Risk flagging complete")
@@ -671,19 +839,31 @@ if run_button:
             step[0] += 1
             progress_bar.progress(_pct(step[0]), text="PAL complete")
 
-        status_box.info("Step — Generating DD memo (Claude reasoning)...")
+        status_box.info("⏳ Step 5 — Drafting IC-ready due diligence memo (11 sections)...")
         memo = memo_agent.run(analysis, risk_report, raw_data, client,
                               news_report=news_report)
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Memo complete")
 
-        status_box.info("Step — Generating IC Scorecard (Claude reasoning)...")
+        status_box.info("⏳ Step 5b — Fact Checker verifying memo claims against source data...")
+        fact_check = fact_checker_agent.run(
+            memo=memo,
+            raw_data=raw_data,
+            analysis=analysis,
+            risk_report=risk_report,
+            client=client,
+            news_report=news_report,
+        )
+        step[0] += 1
+        progress_bar.progress(_pct(step[0]), text="Fact check complete")
+
+        status_box.info("⏳ Step 6 — Scoring investment dimensions · building IC recommendation...")
         scorecard = scorecard_agent.run(analysis, risk_report, raw_data, client,
                                         news_report=news_report)
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Scorecard complete")
 
-        status_box.info("Step — Finding comparable managers...")
+        status_box.info("⏳ Step 7 — Searching IAPD for comparable managers by strategy and size...")
         comparables = comparables_agent.run(
             firm_name=firm_name_resolved,
             adv_summary=raw_data.get("adv_summary", {}),
@@ -692,7 +872,7 @@ if run_button:
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Comparables complete")
 
-        status_box.info("Step — Research Director review (Claude reasoning)...")
+        status_box.info("⏳ Step 8 — Research Director cross-checking findings for inconsistencies...")
         director_review = director_agent.run(
             analysis, risk_report, raw_data, scorecard, client,
             news_report=news_report,
@@ -705,6 +885,7 @@ if run_button:
             memo=memo, scorecard=scorecard, comparables=comparables,
             director_review=director_review, pal_review=pal_review,
             news_report=news_report, firm_name=firm_name_resolved,
+            fact_check=fact_check,
         )
         st.session_state.pipeline_done = True
 
@@ -730,6 +911,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
     pal_review      = pr["pal_review"]
     news_report = pr["news_report"]
     firm_name   = pr["firm_name"]
+    fact_check  = pr.get("fact_check", {})
 
     # Save outputs
     ts        = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -782,6 +964,9 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
         badges_html += _badge("State Registered", "#5b3a8e") + " "
     if adv.get("has_disclosures"):
         badges_html += _badge("Disclosures on Record", "#8b3a1a") + " "
+    firm_type = ov.get("firm_type")
+    if firm_type and firm_type != "Unknown":
+        badges_html += _badge(firm_type, "#2c6e49") + " "
 
     meta_items = []
     if crd_str:
@@ -803,13 +988,12 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
         )
 
     st.markdown(f"""
-    <div style="background:#0a0a0a;border:1px solid #1a1a1a;
-                border-radius:10px;padding:22px 28px;margin-bottom:20px">
-      <div style="font-size:1.5rem;font-weight:700;color:#ffffff;margin-bottom:8px">
-        {firm_name}
+    <div class="firm-header">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <h2>{firm_name}</h2>
+        <div>{badges_html}</div>
       </div>
-      <div style="margin-bottom:10px">{badges_html}</div>
-      <div style="font-size:0.82rem;color:#8fa3bb">{meta_html}</div>
+      <div class="firm-meta">{meta_html}</div>
       {notice_html}
     </div>
     """, unsafe_allow_html=True)
@@ -818,10 +1002,11 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
     tier_color_map = {"HIGH": "#b03030", "MEDIUM": "#b06010", "LOW": "#1a7a4a"}
     tier_c_card = tier_color_map.get(tier, "#4a5568")
 
-    def _metric_card(label: str, value: str, sublabel: str = "") -> str:
-        sub = f'<div style="font-size:0.70rem;color:#8fa3bb;margin-top:3px">{sublabel}</div>' if sublabel else ""
+    def _metric_card(label: str, value: str, sublabel: str = "", risk: bool = False) -> str:
+        sub = f'<div class="metric-sub">{sublabel}</div>' if sublabel else ""
+        cls = "metric-card risk-card" if risk else "metric-card"
         return f"""
-        <div class="metric-card">
+        <div class="{cls}">
           <div class="metric-label">{label}</div>
           <div class="metric-value">{value}</div>
           {sub}
@@ -851,11 +1036,19 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
         "Employees",
         str(ov.get("num_employees")) if ov.get("num_employees") else "—",
     ), unsafe_allow_html=True)
-    c6.markdown(f"""
-    <div class="metric-card" style="border-top:3px solid {tier_c_card}">
-      <div class="metric-label">Risk Tier</div>
-      <div class="metric-value" style="color:{tier_c_card}">{tier}</div>
-    </div>""", unsafe_allow_html=True)
+    c6.markdown(_metric_card(
+        "Risk Tier",
+        f'<span style="color:{tier_c_card}">{tier}</span>',
+        risk=True,
+    ), unsafe_allow_html=True)
+
+    # ── Analyst Notes (from fund_analysis extended thinking) ─────────────
+    analyst_notes = (analysis or {}).get("analyst_notes")
+    firm_type_rationale = ov.get("firm_type_rationale")
+    if analyst_notes:
+        st.info(f"**Analyst Read:** {analyst_notes}")
+    elif firm_type_rationale:
+        st.info(f"**Firm Type:** {firm_type_rationale}")
 
     # ── Source / brochure captions ────────────────────────────────────────
     if tf.get("accession") and tf.get("cik"):
@@ -923,8 +1116,8 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                 x=periods, y=vals_b,
                 name="Portfolio ($B)",
                 fill="tozeroy",
-                fillcolor="rgba(100,180,255,0.08)",
-                line=dict(color="#4a9eff", width=2),
+                fillcolor="rgba(74,143,255,0.08)",
+                line=dict(color="#2980b9", width=2),
                 marker=dict(size=5),
             ),
             secondary_y=False,
@@ -943,15 +1136,15 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             title_text="13F Portfolio Trend — Public US Equity Holdings",
             height=300,
             margin=dict(l=10, r=10, t=45, b=10),
-            legend=dict(orientation="h", y=-0.2, font=dict(color="#888888")),
+            legend=dict(orientation="h", y=-0.2, font=dict(color="#777777")),
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#888888"),
-            title_font=dict(color="#cccccc"),
+            font=dict(color="#777777"),
+            title_font=dict(color="#aaaaaa"),
         )
-        fig.update_yaxes(title_text="Portfolio Value ($B)", secondary_y=False, gridcolor="#2a2a2a", color="#888888")
-        fig.update_yaxes(title_text="Holdings Count",       secondary_y=True,  showgrid=False, color="#888888")
-        fig.update_xaxes(color="#888888")
+        fig.update_yaxes(title_text="Portfolio Value ($B)", secondary_y=False, gridcolor="#1e1e1e", color="#777777")
+        fig.update_yaxes(title_text="Holdings Count",       secondary_y=True,  showgrid=False, color="#777777")
+        fig.update_xaxes(color="#777777")
 
         st.markdown("---")
         st.plotly_chart(fig, use_container_width=True)
@@ -1002,7 +1195,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     x=bar_vals,
                     y=bar_names,
                     orientation="h",
-                    marker_color="#4a9eff",
+                    marker_color="#4a8fff",
                     text=[f"${v:.0f}M" for v in bar_vals],
                     textposition="outside",
                 ))
@@ -1013,11 +1206,11 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     margin=dict(l=10, r=60, t=45, b=10),
                     plot_bgcolor="rgba(0,0,0,0)",
                     paper_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color="#888888"),
-                    title_font=dict(color="#cccccc"),
+                    font=dict(color="#777777"),
+                    title_font=dict(color="#aaaaaa"),
                 )
-                bar_fig.update_xaxes(gridcolor="#2a2a2a", color="#888888")
-                bar_fig.update_yaxes(color="#888888")
+                bar_fig.update_xaxes(gridcolor="#1e1e1e", color="#777777")
+                bar_fig.update_yaxes(color="#777777")
                 st.plotly_chart(bar_fig, use_container_width=True)
 
         with col_pie:
@@ -1037,8 +1230,8 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     margin=dict(l=10, r=10, t=45, b=10),
                     showlegend=False,
                     paper_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color="#aaaaaa"),
-                    title_font=dict(color="#cccccc"),
+                    font=dict(color="#999999"),
+                    title_font=dict(color="#aaaaaa"),
                 )
                 st.plotly_chart(pie_fig, use_container_width=True)
 
@@ -1066,20 +1259,82 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             "Aggregated by CUSIP across all investment discretion types"
         )
 
-    # ── Results Tabs ──────────────────────────────────────────────────────
+    # ── TL;DR Summary Banner ─────────────────────────────────────────────
     st.markdown("---")
+    _tldr_rec     = (scorecard or {}).get("recommendation", "")
+    _tldr_summary = (scorecard or {}).get("recommendation_summary", "")
+    _tldr_verdict = (director_review or {}).get("verdict", "")
+    _tldr_dir_rec = (director_review or {}).get("revised_recommendation", "")
+    _tldr_tier    = (risk_report or {}).get("overall_risk_tier", "UNKNOWN")
+    _tldr_comment = (risk_report or {}).get("overall_commentary", "")
+    _tldr_news    = (news_report or {}).get("overall_news_risk", "") if news_report else ""
+    _tldr_news_sum= (news_report or {}).get("news_summary", "") if news_report else ""
+
+    _tldr_rec_color   = {"PROCEED": "#1a7a4a", "REQUEST MORE INFO": "#b06010", "PASS": "#b03030"}.get(_tldr_rec, "#4a5568")
+    _tldr_tier_color  = {"HIGH": "#b03030", "MEDIUM": "#b06010", "LOW": "#1a7a4a"}.get(_tldr_tier, "#4a5568")
+    _tldr_verdict_color = {"CONFIRMED": "#1a7a4a", "UPGRADED": "#1a3d6e", "DOWNGRADED": "#b03030", "INCONCLUSIVE": "#b06010"}.get(_tldr_verdict, "#4a5568")
+
+    _tldr_parts = []
+    if _tldr_rec:
+        _tldr_parts.append(f'<span style="font-weight:700;color:{_tldr_rec_color}">{_tldr_rec}</span>')
+    if _tldr_tier:
+        _tldr_parts.append(f'Risk: <span style="font-weight:700;color:{_tldr_tier_color}">{_tldr_tier}</span>')
+    if _tldr_verdict and _tldr_dir_rec:
+        _tldr_parts.append(f'Director: <span style="font-weight:700;color:{_tldr_verdict_color}">{_tldr_verdict} → {_tldr_dir_rec}</span>')
+    if _tldr_news:
+        _nc = {"HIGH":"#b03030","MEDIUM":"#b06010","LOW":"#1a7a4a"}.get(_tldr_news,"#4a5568")
+        _tldr_parts.append(f'News Risk: <span style="font-weight:700;color:{_nc}">{_tldr_news}</span>')
+
+    _tldr_detail = _tldr_summary or _tldr_comment or ""
+
+    st.markdown(f"""
+    <div style="background:#0f0f0f;border:1px solid #e2e6ea;border-left:4px solid #1a3d6e;
+                border-radius:6px;padding:14px 18px;margin-bottom:8px">
+      <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;
+                  letter-spacing:0.08em;color:#8fa3bb;margin-bottom:6px">TL;DR — Analysis Summary</div>
+      <div style="font-size:0.88rem;display:flex;flex-wrap:wrap;gap:16px;margin-bottom:{"8px" if _tldr_detail else "0"}">{" &nbsp;·&nbsp; ".join(_tldr_parts)}</div>
+      {"<div style='font-size:0.80rem;color:#999999;line-height:1.5;border-top:1px solid #f0f2f5;padding-top:8px;margin-top:4px'>" + _tldr_detail[:280] + ("…" if len(_tldr_detail) > 280 else "") + "</div>" if _tldr_detail else ""}
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Results Tabs ──────────────────────────────────────────────────────
     enf_report  = (raw_data or {}).get("enforcement", {})
     enf_sev     = enf_report.get("severity", "CLEAN")
     _enf_icons  = {"CLEAN": "✅", "LOW": "🟡", "MEDIUM": "🟠", "HIGH": "🔴", "CRITICAL": "🚨"}
     enf_icon    = _enf_icons.get(enf_sev, "⚪")
 
+    # ── Tab badge helpers ─────────────────────────────────────────────────
+    _risk_flags   = (risk_report or {}).get("flags", [])
+    _high_flags   = sum(1 for f in _risk_flags if f.get("severity") == "HIGH")
+    _med_flags    = sum(1 for f in _risk_flags if f.get("severity") == "MEDIUM")
+    _news_risk    = (news_report or {}).get("overall_news_risk", "")
+    _news_flags   = len((news_report or {}).get("news_flags", []))
+    _rec          = (scorecard or {}).get("recommendation", "")
+    _rec_icons    = {"PROCEED": "✅", "REQUEST MORE INFO": "🔄", "PASS": "❌"}
+    _risk_badge   = f" 🔴{_high_flags}" if _high_flags else (f" 🟡{_med_flags}" if _med_flags else " 🟢")
+    _news_badge   = f" 🔴{_news_flags}" if _news_risk == "HIGH" and _news_flags else (f" 🟡{_news_flags}" if _news_flags else "")
+    _rec_badge    = f" {_rec_icons.get(_rec,'')}" if _rec else ""
+    _enf_badge    = f" {enf_icon}" if enf_sev != "CLEAN" else " ✅"
+
+    _fc_verdict   = (fact_check or {}).get("verdict", "")
+    _fc_badge     = " ✅" if _fc_verdict == "PASS" else (" ⚠️" if _fc_verdict == "PASS_WITH_FLAGS" else (" 🔴" if _fc_verdict == "FAIL" else ""))
+
     (
-        tab_scorecard, tab_director, tab_comparables, tab_enf, tab_risk,
-        tab_funds, tab_news, tab_memo, tab_pal, tab_raw, tab_chat,
+        tab_memo, tab_scorecard, tab_risk, tab_director,
+        tab_enf, tab_comparables, tab_funds, tab_news,
+        tab_fact_check, tab_pal, tab_raw, tab_chat,
     ) = st.tabs([
-        "IC Scorecard", "Director Review", "Comparables",
-        f"Enforcement {enf_icon}", "Risk Dashboard",
-        "Funds", "News Research", "DD Memo", "PAL Consensus", "Raw Data",
+        "DD Memo",
+        f"IC Scorecard{_rec_badge}",
+        f"Risk Dashboard{_risk_badge}",
+        "Director Review",
+        f"Enforcement{_enf_badge}",
+        "Comparables",
+        "Funds",
+        f"News{_news_badge}",
+        f"Fact Checker{_fc_badge}",
+        "PAL Consensus",
+        "Raw Data",
         "💬 AI Assistant",
     ])
 
@@ -1094,8 +1349,8 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
 
             # ── Recommendation banner ─────────────────────────────────────
             st.markdown(f"""
-            <div style="background:#0a0a0a;border:1px solid #1a1a1a;
-                        border-radius:10px;padding:24px 28px;margin-bottom:20px">
+            <div style="background:#050505;border:1px solid #1a1a1a;
+                        border-radius:4px;padding:12px 16px;margin-bottom:8px;border-left:3px solid {rec_color}">
               <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
                 <div style="font-size:2.2rem">{rec_icon}</div>
                 <div>
@@ -1150,24 +1405,24 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     <div style="margin-bottom:12px">
                       <div style="display:flex;justify-content:space-between;
                                   margin-bottom:4px;align-items:baseline">
-                        <span style="font-size:0.82rem;font-weight:600;color:#e8e8e8">{label}</span>
+                        <span style="font-size:0.82rem;font-weight:600;color:#e0e0e0">{label}</span>
                         <span style="font-size:1rem;font-weight:700;color:{bar_color}">{s}/10</span>
                       </div>
-                      <div style="background:#222222;border-radius:4px;height:8px;overflow:hidden">
+                      <div style="background:#1e1e1e;border-radius:4px;height:8px;overflow:hidden">
                         <div style="background:{bar_color};width:{bar_pct}%;height:100%;
                                     border-radius:4px;transition:width 0.3s"></div>
                       </div>
-                      <div style="font-size:0.75rem;color:#888888;margin-top:3px">{rat}</div>
+                      <div style="font-size:0.75rem;color:#777777;margin-top:3px">{rat}</div>
                     </div>
                     """, unsafe_allow_html=True)
 
                 if overall is not None:
                     ov_color = "#1a7a4a" if float(overall) >= 7 else "#b06010" if float(overall) >= 5 else "#b03030"
                     st.markdown(f"""
-                    <div style="background:#141414;border:1px solid #252525;border-radius:8px;
+                    <div style="background:#0a0a0a;border:1px solid #1e1e1e;border-radius:8px;
                                 padding:14px 18px;margin-top:8px;display:flex;
                                 justify-content:space-between;align-items:center">
-                      <span style="font-size:0.85rem;font-weight:700;color:#e8e8e8;
+                      <span style="font-size:0.85rem;font-weight:700;color:#e0e0e0;
                                    text-transform:uppercase;letter-spacing:0.05em">
                         Overall Score
                       </span>
@@ -1187,7 +1442,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     st.markdown(
                         f'<div style="display:flex;gap:8px;margin-bottom:8px">'
                         f'<span style="color:#1a7a4a;font-size:1rem;flex-shrink:0">✓</span>'
-                        f'<span style="font-size:0.85rem;color:#e8e8e8">{r}</span>'
+                        f'<span style="font-size:0.85rem;color:#e0e0e0">{r}</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
@@ -1197,7 +1452,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     st.markdown(
                         f'<div style="display:flex;gap:8px;margin-bottom:8px">'
                         f'<span style="color:#b03030;font-size:1rem;flex-shrink:0">⚠</span>'
-                        f'<span style="font-size:0.85rem;color:#e8e8e8">{r}</span>'
+                        f'<span style="font-size:0.85rem;color:#e0e0e0">{r}</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
@@ -1219,12 +1474,12 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                         )
                         for d in group:
                             st.markdown(
-                                f'<div style="background:#141414;border:1px solid #252525;'
+                                f'<div style="background:#0a0a0a;border:1px solid #1e1e1e;'
                                 f'border-left:3px solid {color};border-radius:6px;'
                                 f'padding:10px 14px;margin-bottom:6px">'
-                                f'<div style="font-size:0.85rem;font-weight:600;color:#e8e8e8">'
+                                f'<div style="font-size:0.85rem;font-weight:600;color:#e0e0e0">'
                                 f'{d.get("item","")}</div>'
-                                f'<div style="font-size:0.75rem;color:#888888;margin-top:3px">'
+                                f'<div style="font-size:0.75rem;color:#777777;margin-top:3px">'
                                 f'{d.get("why","")}</div>'
                                 f'</div>',
                                 unsafe_allow_html=True,
@@ -1307,7 +1562,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             st.subheader("Red Flags")
             for flag in red_flags:
                 st.markdown(
-                    f'<div style="background:#1a0d0d;border-left:4px solid #c0392b;'
+                    f'<div style="background:#150808;border-left:4px solid #c0392b;'
                     f'padding:8px 12px;border-radius:4px;margin-bottom:6px">'
                     f'🚩 {flag}</div>',
                     unsafe_allow_html=True,
@@ -1446,10 +1701,10 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             }.get(verdict, "⚪")
 
             st.markdown(f"""
-            <div style="background:#0a0a0a;border:1px solid #1a1a1a;
-                        border-radius:10px;padding:22px 28px;margin-bottom:20px">
-              <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;
-                          letter-spacing:0.1em;color:#8fa3bb;margin-bottom:8px">
+            <div style="background:#050505;border:1px solid #1a1a1a;
+                        border-radius:4px;padding:12px 16px;margin-bottom:8px;border-left:3px solid {rec_color}">
+              <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;
+                          letter-spacing:0.1em;color:#8fa3bb;margin-bottom:6px">
                 Research Director Verdict
               </div>
               <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
@@ -1473,18 +1728,18 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     st.markdown("#### Inconsistencies Found")
                     for item in inconsistencies:
                         st.markdown(f"""
-                        <div style="border:1px solid #252525;border-left:4px solid #b03030;
-                                    border-radius:8px;padding:14px 16px;margin-bottom:8px;background:#111111">
-                          <div style="font-size:0.85rem;font-weight:600;color:#e8e8e8;margin-bottom:6px">
+                        <div style="border:1px solid #1e1e1e;border-left:4px solid #c0392b;
+                                    border-radius:8px;padding:14px 16px;margin-bottom:8px;background:#fff">
+                          <div style="font-size:0.85rem;font-weight:600;color:#e0e0e0;margin-bottom:6px">
                             {item.get("finding","")}
                           </div>
-                          <div style="font-size:0.75rem;color:#888888;margin-bottom:4px">
+                          <div style="font-size:0.75rem;color:#777777;margin-bottom:4px">
                             <strong>A:</strong> {item.get("field_a","")}
                           </div>
-                          <div style="font-size:0.75rem;color:#888888;margin-bottom:6px">
+                          <div style="font-size:0.75rem;color:#777777;margin-bottom:6px">
                             <strong>B:</strong> {item.get("field_b","")}
                           </div>
-                          <div style="background:#1a0d0d;border-radius:4px;padding:8px 10px;
+                          <div style="background:#150808;border-radius:4px;padding:8px 10px;
                                       font-size:0.75rem;color:#b03030">
                             {item.get("implication","")}
                           </div>
@@ -1501,18 +1756,18 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                         sev = item.get("severity", "MEDIUM")
                         sev_c = _sev_color(sev)
                         st.markdown(f"""
-                        <div style="border:1px solid #252525;border-left:4px solid {sev_c};
-                                    border-radius:8px;padding:14px 16px;margin-bottom:8px;background:#111111">
+                        <div style="border:1px solid #1e1e1e;border-left:4px solid {sev_c};
+                                    border-radius:8px;padding:14px 16px;margin-bottom:8px;background:#fff">
                           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
                             <span style="background:{sev_c};color:#fff;padding:2px 8px;
                                          border-radius:10px;font-size:0.70rem;font-weight:700">
                               {sev}
                             </span>
                           </div>
-                          <div style="font-size:0.85rem;font-weight:600;color:#e8e8e8;margin-bottom:4px">
+                          <div style="font-size:0.85rem;font-weight:600;color:#e0e0e0;margin-bottom:4px">
                             {item.get("signal","")}
                           </div>
-                          <div style="font-size:0.75rem;color:#888888">{item.get("why_it_matters","")}</div>
+                          <div style="font-size:0.75rem;color:#777777">{item.get("why_it_matters","")}</div>
                         </div>
                         """, unsafe_allow_html=True)
 
@@ -1522,11 +1777,11 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                 for i, q in enumerate(questions, 1):
                     st.markdown(f"""
                     <div style="display:flex;gap:10px;margin-bottom:8px;align-items:flex-start">
-                      <span style="background:#1e1e1e;border:1px solid #2a2a2a;color:#aaaaaa;border-radius:50%;
+                      <span style="background:#1a3d6e;color:#fff;border-radius:50%;
                                    width:22px;height:22px;display:flex;align-items:center;
                                    justify-content:center;font-size:0.72rem;font-weight:700;
                                    flex-shrink:0;margin-top:1px">{i}</span>
-                      <span style="font-size:0.85rem;color:#e8e8e8">{q}</span>
+                      <span style="font-size:0.85rem;color:#e0e0e0">{q}</span>
                     </div>
                     """, unsafe_allow_html=True)
         else:
@@ -1543,12 +1798,12 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
 
             if sr:
                 st.markdown(f"""
-                <div style="background:#141414;border:1px solid #252525;border-radius:8px;
+                <div style="background:#0a0a0a;border:1px solid #1e1e1e;border-radius:8px;
                             padding:14px 18px;margin-bottom:16px;display:flex;
                             align-items:center;gap:12px">
-                  <div style="font-size:1.6rem;font-weight:800;color:#4a9eff">#{sr}</div>
+                  <div style="font-size:1.6rem;font-weight:800;color:#1a3d6e">#{sr}</div>
                   <div>
-                    <div style="font-size:0.85rem;font-weight:600;color:#e8e8e8">
+                    <div style="font-size:0.85rem;font-weight:600;color:#e0e0e0">
                       Size rank among {comparables.get("total_in_comparison",0)} managers
                     </div>
                     <div style="font-size:0.75rem;color:#8fa3bb">by 13F public equity portfolio</div>
@@ -1573,7 +1828,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             df = pd.DataFrame(rows)
             st.dataframe(
                 df.style.apply(
-                    lambda x: ["background-color:#0d1a2a;color:#e8e8e8;font-weight:600" if x[""] == "▶ YOU"
+                    lambda x: ["background-color:#0a1520;font-weight:600" if x[""] == "▶ YOU"
                                else "" for _ in x],
                     axis=1,
                 ),
@@ -1591,7 +1846,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             tier_icon = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(tier, "⚪")
             st.markdown(
                 f'<div class="risk-tier-banner" style="background:{tier_c}20;'
-                f'border-left:4px solid {tier_c};color:#e8e8e8">'
+                f'border-left:4px solid {tier_c};color:#e0e0e0">'
                 f'<span style="font-size:1.3rem">{tier_icon}</span>'
                 f'<span>Overall Risk Tier: <strong style="color:{tier_c}">{tier}</strong></span>'
                 f'</div>',
@@ -1613,31 +1868,40 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     finding  = f.get("finding", "")
                     evidence = f.get("evidence", "")
                     action   = f.get("lp_action", "")
+                    context  = f.get("context", "")
+                    context_row = (
+                        f'<div style="background:#f0f7f0;border-radius:6px;padding:10px 12px;margin-top:10px">'
+                        f'<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;'
+                        f'letter-spacing:0.07em;color:#1a7a4a;margin-bottom:4px">Context</div>'
+                        f'<div style="font-size:0.80rem;color:#999999;line-height:1.5">{context}</div>'
+                        f'</div>'
+                    ) if context else ""
                     st.markdown(f"""
-                    <div style="border:1px solid #252525;border-left:4px solid {sev_c};
+                    <div style="border:1px solid #1e1e1e;border-left:4px solid {sev_c};
                                 border-radius:8px;padding:16px 18px;margin-bottom:10px;
-                                background:#111111;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+                                background:#0f0f0f;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
                       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                         <span style="background:{sev_c};color:#fff;padding:3px 10px;
                                      border-radius:12px;font-size:0.72rem;font-weight:700;
                                      letter-spacing:0.05em;text-transform:uppercase">{sev}</span>
-                        <span style="background:#1e1e1e;color:#aaaaaa;padding:3px 10px;
+                        <span style="background:#141414;color:#999999;padding:3px 10px;
                                      border-radius:12px;font-size:0.72rem;font-weight:600">{cat}</span>
                       </div>
-                      <div style="font-size:0.92rem;font-weight:600;color:#e8e8e8;
+                      <div style="font-size:0.92rem;font-weight:600;color:#e0e0e0;
                                   margin-bottom:10px;line-height:1.5">{finding}</div>
                       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                        <div style="background:#141414;border-radius:6px;padding:10px 12px">
+                        <div style="background:#0a0a0a;border-radius:6px;padding:10px 12px">
                           <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;
                                       letter-spacing:0.07em;color:#8fa3bb;margin-bottom:4px">Evidence</div>
-                          <div style="font-size:0.80rem;color:#aaaaaa;line-height:1.5">{evidence}</div>
+                          <div style="font-size:0.80rem;color:#999999;line-height:1.5">{evidence}</div>
                         </div>
-                        <div style="background:#1a1400;border-radius:6px;padding:10px 12px">
+                        <div style="background:#141000;border-radius:6px;padding:10px 12px">
                           <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;
                                       letter-spacing:0.07em;color:#b06010;margin-bottom:4px">LP Action</div>
-                          <div style="font-size:0.80rem;color:#aaaaaa;line-height:1.5">{action}</div>
+                          <div style="font-size:0.80rem;color:#999999;line-height:1.5">{action}</div>
                         </div>
                       </div>
+                      {context_row}
                     </div>
                     """, unsafe_allow_html=True)
             else:
@@ -1653,7 +1917,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                         st.markdown(f"""
                         <div style="display:flex;gap:8px;margin-bottom:6px;align-items:flex-start">
                           <span style="color:#b03030;font-size:0.85rem;flex-shrink:0;margin-top:2px">⚠</span>
-                          <span style="font-size:0.83rem;color:#aaaaaa">{g}</span>
+                          <span style="font-size:0.83rem;color:#999999">{g}</span>
                         </div>""", unsafe_allow_html=True)
             with col_clean:
                 clean = risk_report.get("clean_items", [])
@@ -1663,7 +1927,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                         st.markdown(f"""
                         <div style="display:flex;gap:8px;margin-bottom:6px;align-items:flex-start">
                           <span style="color:#1a7a4a;font-size:0.85rem;flex-shrink:0;margin-top:2px">✓</span>
-                          <span style="font-size:0.83rem;color:#aaaaaa">{c}</span>
+                          <span style="font-size:0.83rem;color:#999999">{c}</span>
                         </div>""", unsafe_allow_html=True)
         else:
             st.warning("Risk report not available.")
@@ -1768,7 +2032,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             nr_icon = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(overall_nr, "⚪")
             st.markdown(
                 f'<div class="risk-tier-banner" style="background:{nr_color}20;'
-                f'border-left:4px solid {nr_color};color:#e8e8e8">'
+                f'border-left:4px solid {nr_color};color:#e0e0e0">'
                 f'<span style="font-size:1.3rem">{nr_icon}</span>'
                 f'<span>News Risk: <strong style="color:{nr_color}">{overall_nr}</strong></span>'
                 f'</div>',
@@ -1797,7 +2061,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     date    = f.get("date", "")
                     action  = f.get("lp_action", "")
                     source_html = (
-                        f'<a href="{source}" target="_blank" style="color:#4a9eff;font-size:0.78rem">'
+                        f'<a href="{source}" target="_blank" style="color:#1a3d6e;font-size:0.78rem">'
                         f'{source[:60]}{"…" if len(source) > 60 else ""}</a>'
                     ) if source else "—"
                     meta_html = " &nbsp;·&nbsp; ".join(filter(None, [
@@ -1805,20 +2069,20 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                         source_html if source else "",
                     ]))
                     st.markdown(f"""
-                    <div style="border:1px solid #252525;border-left:4px solid {sev_c};
+                    <div style="border:1px solid #1e1e1e;border-left:4px solid {sev_c};
                                 border-radius:8px;padding:16px 18px;margin-bottom:10px;
-                                background:#111111;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+                                background:#0f0f0f;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
                       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                         <span style="background:{sev_c};color:#fff;padding:3px 10px;
                                      border-radius:12px;font-size:0.72rem;font-weight:700;
                                      letter-spacing:0.05em;text-transform:uppercase">{sev}</span>
-                        <span style="background:#1e1e1e;color:#aaaaaa;padding:3px 10px;
+                        <span style="background:#141414;color:#999999;padding:3px 10px;
                                      border-radius:12px;font-size:0.72rem;font-weight:600">{cat}</span>
                         <span style="margin-left:auto">{meta_html}</span>
                       </div>
-                      <div style="font-size:0.92rem;font-weight:600;color:#e8e8e8;
+                      <div style="font-size:0.92rem;font-weight:600;color:#e0e0e0;
                                   margin-bottom:8px;line-height:1.5">{finding}</div>
-                      {f'<div style="background:#1a1400;border-radius:6px;padding:10px 12px;margin-top:8px"><div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#b06010;margin-bottom:4px">LP Action</div><div style="font-size:0.80rem;color:#aaaaaa;line-height:1.5">{action}</div></div>' if action else ''}
+                      {f'<div style="background:#141000;border-radius:6px;padding:10px 12px;margin-top:8px"><div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#b06010;margin-bottom:4px">LP Action</div><div style="font-size:0.80rem;color:#999999;line-height:1.5">{action}</div></div>' if action else ''}
                     </div>
                     """, unsafe_allow_html=True)
             else:
@@ -1857,23 +2121,45 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
     # ─ DD Memo ───────────────────────────────────────────────────────────
     with tab_memo:
         if memo:
-            dl1, dl2 = st.columns(2)
+            dl1, dl2, dl3 = st.columns(3)
             with dl1:
-                st.download_button(
-                    "Download Memo (.md)",
-                    data=memo,
-                    file_name=f"{safe_name}_DD_MEMO.md",
-                    mime="text/markdown",
-                    use_container_width=True,
-                )
+                try:
+                    docx_bytes = to_docx(memo, "", firm_name)
+                    st.download_button(
+                        "⬇ Download Word (.docx)",
+                        data=docx_bytes,
+                        file_name=f"{safe_name}_DD_MEMO.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        use_container_width=True,
+                    )
+                except Exception as e:
+                    st.download_button(
+                        "⬇ Download Memo (.md)",
+                        data=memo,
+                        file_name=f"{safe_name}_DD_MEMO.md",
+                        mime="text/markdown",
+                        use_container_width=True,
+                    )
             with dl2:
+                try:
+                    pdf_bytes = to_pdf(memo, "", firm_name)
+                    st.download_button(
+                        "⬇ Download PDF",
+                        data=pdf_bytes,
+                        file_name=f"{safe_name}_DD_MEMO.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
+                except Exception:
+                    st.empty()
+            with dl3:
                 if raw_data and analysis and risk_report:
                     bundle = json.dumps(
                         {"raw_data": raw_data, "analysis": analysis, "risk_report": risk_report},
                         indent=2, default=str,
                     )
                     st.download_button(
-                        "Download JSON Bundle",
+                        "⬇ Download JSON Bundle",
                         data=bundle,
                         file_name=f"{safe_name}_bundle.json",
                         mime="application/json",
@@ -1883,6 +2169,55 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             st.markdown(memo)
         else:
             st.warning("Memo not generated.")
+
+    # ─ Fact Checker ──────────────────────────────────────────────────────
+    with tab_fact_check:
+        if fact_check and fact_check.get("verdict") != "SKIP":
+            verdict    = fact_check.get("verdict", "—")
+            confidence = fact_check.get("confidence", "—")
+            hal_risk   = fact_check.get("hallucination_risk", "—")
+            summary    = fact_check.get("summary", "")
+            verified   = fact_check.get("verified_claims", [])
+            flagged    = fact_check.get("flagged_claims", [])
+            high_flags = [f for f in flagged if f.get("severity") == "HIGH"]
+
+            verdict_color = {"PASS": "#28a745", "PASS_WITH_FLAGS": "#fd7e14", "FAIL": "#dc3545"}.get(verdict, "#6c757d")
+            st.markdown(
+                f'<div style="padding:12px;border-radius:6px;background:{verdict_color}20;'
+                f'border-left:4px solid {verdict_color};margin-bottom:12px">'
+                f'<b style="color:{verdict_color};font-size:1.1rem">{verdict}</b> &nbsp;·&nbsp; '
+                f'Confidence: {confidence} &nbsp;·&nbsp; Hallucination Risk: {hal_risk}<br>'
+                f'<span style="font-size:0.9rem">{summary}</span></div>',
+                unsafe_allow_html=True,
+            )
+
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Verified Claims", len(verified))
+            m2.metric("Flagged Claims", len(flagged))
+            m3.metric("HIGH Severity", len(high_flags))
+
+            if flagged:
+                st.subheader("Flagged Claims")
+                for f in flagged:
+                    sev = f.get("severity", "LOW")
+                    color = {"HIGH": "#dc3545", "MEDIUM": "#fd7e14", "LOW": "#6c757d"}.get(sev, "#6c757d")
+                    st.markdown(
+                        f'<div style="padding:8px;border-left:3px solid {color};margin-bottom:6px">'
+                        f'<b style="color:{color}">{sev}</b> &nbsp;'
+                        f'<i>"{f.get("claim","")}"</i><br>'
+                        f'<span style="font-size:0.85rem">⚠ {f.get("issue","")}</span></div>',
+                        unsafe_allow_html=True,
+                    )
+
+            if verified:
+                with st.expander(f"Verified Claims ({len(verified)})", expanded=False):
+                    for v in verified:
+                        st.markdown(
+                            f'✅ **"{v.get("claim","")}"** — '
+                            f'Source: `{v.get("source","")}` = `{v.get("value","")}`'
+                        )
+        else:
+            st.info("Fact check not available for this analysis.")
 
     # ─ PAL Consensus ─────────────────────────────────────────────────────
     with tab_pal:
@@ -1916,14 +2251,14 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             with st.expander("Ingestion Errors / Notes"):
                 st.json(raw_data.get("errors", []))
         if analysis:
-            with st.expander("Structured Analysis (Claude output)"):
+            with st.expander("Structured Analysis (GPT-4o output)"):
                 st.json(analysis)
 
     # ─ AI Assistant ──────────────────────────────────────────────────────
     with tab_chat:
         st.markdown("""
         <div style="margin-bottom:16px">
-          <div style="font-size:1.05rem;font-weight:700;color:#e8e8e8">AI Research Assistant</div>
+          <div style="font-size:1.05rem;font-weight:700;color:#e0e0e0">AI Research Assistant</div>
           <div style="font-size:0.80rem;color:#8fa3bb;margin-top:2px">
             Powered by GPT-4o · Knows everything about the analyzed firm
           </div>
@@ -1976,7 +2311,7 @@ Be direct, concise, and professional. No firm has been analyzed yet in this sess
 
         # Chat input
         if prompt := st.chat_input(placeholder, key="chat_input"):
-            if not api_key:
+            if not openai_key:
                 st.error("Add your OpenAI API key in the sidebar to use the AI Assistant.")
             else:
                 # Add user message
@@ -1992,7 +2327,7 @@ Be direct, concise, and professional. No firm has been analyzed yet in this sess
                 with st.chat_message("assistant"):
                     with st.spinner(""):
                         try:
-                            client_chat = make_client(api_key)
+                            client_chat = make_client(openai_key)
                             response = client_chat.chat(messages)
                         except Exception as e:
                             response = f"Sorry, I encountered an error: {e}"
