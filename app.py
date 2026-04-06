@@ -412,10 +412,13 @@ import agents.memo_generation as memo_agent       # noqa: E402
 import agents.ic_scorecard      as scorecard_agent    # noqa: E402
 import agents.research_director as director_agent    # noqa: E402
 import agents.comparables       as comparables_agent # noqa: E402
-import agents.fact_checker      as fact_checker_agent # noqa: E402
 from tools.llm_client import make_client             # noqa: E402
 from tools.pal_client  import is_available as pal_available, call_consensus  # noqa: E402
-from tools.memo_export import to_docx, to_pdf        # noqa: E402
+try:
+    from tools.memo_export import to_docx, to_pdf    # noqa: E402
+except ImportError:
+    def to_docx(*a, **kw): raise NotImplementedError
+    def to_pdf(*a, **kw):  raise NotImplementedError
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -845,17 +848,7 @@ if run_button:
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Memo complete")
 
-        status_box.info("⏳ Step 5b — Fact Checker verifying memo claims against source data...")
-        fact_check = fact_checker_agent.run(
-            memo=memo,
-            raw_data=raw_data,
-            analysis=analysis,
-            risk_report=risk_report,
-            client=client,
-            news_report=news_report,
-        )
-        step[0] += 1
-        progress_bar.progress(_pct(step[0]), text="Fact check complete")
+        fact_check = None
 
         status_box.info("⏳ Step 6 — Scoring investment dimensions · building IC recommendation...")
         scorecard = scorecard_agent.run(analysis, risk_report, raw_data, client,
