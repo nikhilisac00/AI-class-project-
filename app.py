@@ -19,7 +19,7 @@ st.set_page_config(
     page_title="AI Alternatives Research Associate",
     page_icon="📋",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 st.markdown("""
@@ -773,14 +773,22 @@ if st.session_state.confirmed_firm:
     </div>
     """, unsafe_allow_html=True)
 
+    if not openai_key:
+        st.markdown("""
+        <div style="background:#1a0a00;border:1px solid #5a3000;border-left:3px solid #c87020;
+                    border-radius:6px;padding:12px 16px;margin-bottom:10px">
+          <span style="color:#d08030;font-weight:700;font-size:0.88rem">
+            ← Enter your Anthropic API key in the sidebar to run the analysis.
+          </span>
+        </div>
+        """, unsafe_allow_html=True)
+
     run_button = st.button(
         f"Run Due Diligence on {st.session_state.confirmed_firm.get('firm_name', '')}",
         type="primary",
         use_container_width=True,
         disabled=not openai_key,
     )
-    if not openai_key:
-        st.caption("Add your Anthropic API key in the sidebar to run.")
 else:
     run_button = False
 
