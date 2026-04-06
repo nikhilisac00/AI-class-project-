@@ -28,51 +28,74 @@ st.markdown("""
 #MainMenu, footer, header { visibility: hidden; }
 .stDeployButton { display: none; }
 
+/* ── App-level dark background ───────────────────────────────── */
+.stApp, [data-testid="stAppViewContainer"] { background: #0a0a0a !important; }
+[data-testid="stHeader"] { background: #0a0a0a !important; }
+.main .block-container { background: #0a0a0a !important; }
+
 /* ── Global typography ───────────────────────────────────────── */
 html, body, [class*="css"] {
     font-family: "Inter", "Segoe UI", sans-serif;
+    color: #e8e8e8;
 }
 
 /* ── Sidebar ─────────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
-    background: #0f1923;
+    background: #050505 !important;
+    border-right: 1px solid #1a1a1a !important;
 }
 [data-testid="stSidebar"] * {
-    color: #d4dce8 !important;
+    color: #cccccc !important;
 }
 [data-testid="stSidebar"] .stTextInput label,
 [data-testid="stSidebar"] .stSlider label,
 [data-testid="stSidebar"] .stToggle label {
-    color: #8fa3bb !important;
+    color: #666666 !important;
     font-size: 0.78rem !important;
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
 [data-testid="stSidebar"] hr {
-    border-color: #1e2f42 !important;
+    border-color: #1a1a1a !important;
+}
+[data-testid="stSidebar"] input {
+    background: #111111 !important;
+    border-color: #2a2a2a !important;
+}
+
+/* ── Inputs ──────────────────────────────────────────────────── */
+.stTextInput input, .stTextArea textarea {
+    background: #111111 !important;
+    border-color: #2a2a2a !important;
+    color: #e8e8e8 !important;
+    border-radius: 6px !important;
+}
+.stTextInput input:focus, .stTextArea textarea:focus {
+    border-color: #444444 !important;
+    box-shadow: 0 0 0 1px #333333 !important;
 }
 
 /* ── Metric cards ────────────────────────────────────────────── */
 .metric-card {
-    background: #ffffff;
-    border: 1px solid #e8ecf0;
+    background: #111111;
+    border: 1px solid #222222;
+    border-top: 3px solid #2a4a7a;
     border-radius: 8px;
     padding: 16px 18px;
     text-align: center;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 .metric-card .metric-label {
     font-size: 0.70rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #8fa3bb;
+    color: #666666;
     margin-bottom: 6px;
 }
 .metric-card .metric-value {
     font-size: 1.45rem;
     font-weight: 700;
-    color: #0f1923;
+    color: #e8e8e8;
     line-height: 1.2;
 }
 
@@ -90,12 +113,23 @@ html, body, [class*="css"] {
 }
 
 /* ── Tab styling ─────────────────────────────────────────────── */
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+    background: #0a0a0a !important;
+    border-bottom: 1px solid #1a1a1a !important;
+    gap: 0 !important;
+}
 [data-testid="stTabs"] [data-baseweb="tab"] {
     font-size: 0.82rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     padding: 8px 18px;
+    background: transparent !important;
+    color: #555555 !important;
+}
+[data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] {
+    color: #ffffff !important;
+    border-bottom-color: #ffffff !important;
 }
 
 /* ── Section subheaders ──────────────────────────────────────── */
@@ -104,13 +138,14 @@ html, body, [class*="css"] {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #8fa3bb;
+    color: #666666;
     margin-bottom: 4px;
 }
 
 /* ── Firm header card ────────────────────────────────────────── */
 .firm-header {
-    background: linear-gradient(135deg, #0f1923 0%, #1a2f45 100%);
+    background: #0a0a0a;
+    border: 1px solid #1a1a1a;
     border-radius: 10px;
     padding: 22px 28px;
     margin-bottom: 20px;
@@ -124,31 +159,102 @@ html, body, [class*="css"] {
 }
 .firm-header .firm-meta {
     font-size: 0.82rem;
-    color: #8fa3bb;
+    color: #666666;
     margin-top: 8px;
 }
 
-/* ── Primary button ──────────────────────────────────────────── */
+/* ── Buttons ─────────────────────────────────────────────────── */
+.stButton > button {
+    background: #141414 !important;
+    border: 1px solid #2a2a2a !important;
+    color: #cccccc !important;
+    font-weight: 600 !important;
+    border-radius: 6px !important;
+    transition: all 0.15s ease !important;
+}
+.stButton > button:hover {
+    background: #1e1e1e !important;
+    border-color: #3a3a3a !important;
+    color: #ffffff !important;
+}
 .stButton > button[kind="primary"] {
-    background: #1a3d6e;
-    border: none;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-    padding: 10px 24px;
-    border-radius: 6px;
+    background: #1a1a1a !important;
+    border: 1px solid #333333 !important;
+    color: #ffffff !important;
 }
 .stButton > button[kind="primary"]:hover {
-    background: #1e4d8c;
+    background: #252525 !important;
+    border-color: #444444 !important;
 }
 
 /* ── Expander ────────────────────────────────────────────────── */
+[data-testid="stExpander"] {
+    background: #111111 !important;
+    border: 1px solid #1e1e1e !important;
+    border-radius: 8px !important;
+}
 [data-testid="stExpander"] summary {
     font-size: 0.85rem;
     font-weight: 600;
+    color: #cccccc !important;
 }
 
+/* ── Container with border ───────────────────────────────────── */
+[data-testid="stVerticalBlockBorderWrapper"] {
+    background: #111111 !important;
+    border: 1px solid #1e1e1e !important;
+    border-radius: 8px !important;
+}
+
+/* ── Alerts ──────────────────────────────────────────────────── */
+[data-testid="stAlert"] {
+    background: #111111 !important;
+    border: 1px solid #2a2a2a !important;
+}
+
+/* ── Native metric ───────────────────────────────────────────── */
+[data-testid="stMetricLabel"] p { color: #666666 !important; }
+[data-testid="stMetricValue"]   { color: #e8e8e8 !important; }
+
+/* ── Progress bar ────────────────────────────────────────────── */
+[data-testid="stStatusWidget"],
+[data-testid="stProgressBar"] > div {
+    background: #1a1a1a !important;
+}
+
+/* ── Markdown ────────────────────────────────────────────────── */
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li { color: #cccccc; }
+[data-testid="stMarkdownContainer"] h1,
+[data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h3,
+[data-testid="stMarkdownContainer"] h4 { color: #e8e8e8; }
+[data-testid="stMarkdownContainer"] a  { color: #4a9eff; }
+
+/* ── Caption ─────────────────────────────────────────────────── */
+[data-testid="stCaptionContainer"] p { color: #555555 !important; }
+
 /* ── Divider ─────────────────────────────────────────────────── */
-hr { border-color: #e8ecf0 !important; }
+hr { border-color: #1a1a1a !important; }
+
+/* ── Quick example chips ─────────────────────────────────────── */
+.example-chip {
+    display: inline-block;
+    background: #111111;
+    border: 1px solid #2a2a2a;
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 0.78rem;
+    color: #888888;
+    cursor: pointer;
+    margin-right: 8px;
+    transition: all 0.15s ease;
+}
+.example-chip:hover {
+    background: #1a1a1a;
+    border-color: #444444;
+    color: #cccccc;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -199,6 +305,7 @@ for _k, _v in [
     ("pipeline_done",   False),
     ("pipeline_result", {}),
     ("chat_messages",   []),   # list of {"role": ..., "content": ...}
+    ("_auto_search",    False),
 ]:
     if _k not in st.session_state:
         st.session_state[_k] = _v
@@ -275,18 +382,18 @@ with st.sidebar:
 # ── Header ───────────────────────────────────────────────────────────────────
 
 st.markdown("""
-<div style="background:linear-gradient(135deg,#0f1923 0%,#1a2f45 100%);
-            border-radius:10px;padding:28px 32px;margin-bottom:24px">
-  <div style="display:flex;align-items:center;gap:14px;margin-bottom:8px">
-    <div style="background:#c9a84c;border-radius:6px;width:36px;height:36px;
-                display:flex;align-items:center;justify-content:center;
-                font-size:1.2rem;flex-shrink:0">📋</div>
+<div style="padding:28px 0 18px 0;border-bottom:1px solid #1a1a1a;margin-bottom:24px">
+  <div style="display:flex;align-items:center;gap:14px">
+    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;
+                width:38px;height:38px;display:flex;align-items:center;
+                justify-content:center;font-size:1.1rem;flex-shrink:0">📋</div>
     <div>
-      <div style="font-size:1.45rem;font-weight:700;color:#ffffff;line-height:1.2">
-        Alternatives Research Associate
+      <div style="font-size:1.4rem;font-weight:700;color:#ffffff;
+                  letter-spacing:-0.01em;line-height:1.2">
+        LP Due Diligence Intelligence
       </div>
-      <div style="font-size:0.82rem;color:#8fa3bb;margin-top:3px">
-        Autonomous LP due diligence &nbsp;·&nbsp; SEC EDGAR &nbsp;·&nbsp; IAPD &nbsp;·&nbsp; FRED &nbsp;·&nbsp; Claude
+      <div style="font-size:0.78rem;color:#555555;margin-top:4px;letter-spacing:0.03em">
+        SEC EDGAR &nbsp;·&nbsp; IAPD &nbsp;·&nbsp; FRED &nbsp;·&nbsp; Claude &nbsp;·&nbsp; No hallucination
       </div>
     </div>
   </div>
@@ -316,38 +423,73 @@ st.divider()
 
 st.markdown("""
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-  <div style="background:#1a3d6e;color:#fff;border-radius:50%;width:28px;height:28px;
-              display:flex;align-items:center;justify-content:center;
-              font-size:0.85rem;font-weight:700;flex-shrink:0">1</div>
-  <div style="font-size:1.1rem;font-weight:700;color:#0f1923">Find Firm</div>
+  <div style="background:#1e1e1e;border:1px solid #2a2a2a;color:#aaaaaa;border-radius:50%;
+              width:26px;height:26px;display:flex;align-items:center;justify-content:center;
+              font-size:0.80rem;font-weight:700;flex-shrink:0">1</div>
+  <div style="font-size:0.95rem;font-weight:700;color:#cccccc;letter-spacing:0.02em">
+    Search Firm
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
 col_q, col_find = st.columns([4, 1])
 with col_q:
     query_input = st.text_input(
-        "Firm",
-        value=st.session_state.search_query,
-        placeholder='Firm name or CRD — e.g. "Apollo Global Management" or "149729"',
-        label_visibility="collapsed",
+        "Firm name or CRD number",
+        placeholder='e.g. "Ares Management" or CRD number "149729"',
         key="firm_search_input",
     )
 with col_find:
-    find_btn = st.button("Find Firm", type="secondary", use_container_width=True)
+    st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+    find_btn = st.button("Search", type="secondary", use_container_width=True)
 
-# Trigger search
-if find_btn:
-    if not query_input.strip():
+# Quick examples
+st.markdown("""
+<div style="margin-top:8px;margin-bottom:4px;font-size:0.70rem;
+            color:#444444;letter-spacing:0.06em;text-transform:uppercase">
+  Quick examples
+</div>
+""", unsafe_allow_html=True)
+_ex_col1, _ex_col2, _ex_col3, _ex_spacer = st.columns([1.2, 1.2, 1.1, 4])
+def _set_example(name: str) -> None:
+    st.session_state.firm_search_input = name
+    st.session_state.search_query      = name
+    st.session_state.candidates        = []
+    st.session_state.confirmed_firm    = None
+    st.session_state.pipeline_done     = False
+    st.session_state.pipeline_result   = {}
+    st.session_state._auto_search      = True
+
+with _ex_col1:
+    if st.button("Ares Management", key="ex_ares", use_container_width=True):
+        _set_example("Ares Management")
+        st.rerun()
+with _ex_col2:
+    if st.button("Apollo Global", key="ex_apollo", use_container_width=True):
+        _set_example("Apollo Global Management")
+        st.rerun()
+with _ex_col3:
+    if st.button("Two Sigma", key="ex_twosigma", use_container_width=True):
+        _set_example("Two Sigma")
+        st.rerun()
+
+# Trigger search (from button click or quick example auto-search)
+_do_search  = find_btn or st.session_state._auto_search
+_search_term = st.session_state.search_query if st.session_state._auto_search else query_input.strip()
+if st.session_state._auto_search:
+    st.session_state._auto_search = False
+if _do_search:
+    if not _search_term:
         st.error("Enter a firm name or CRD to search.")
     else:
         with st.spinner("Searching IAPD..."):
             candidates = resolver_agent.resolve(
-                query_input.strip(),
+                _search_term,
                 tavily_key=tavily_key or None,
                 max_candidates=5,
             )
         st.session_state.candidates    = candidates
-        st.session_state.search_query  = query_input.strip()
+        st.session_state.search_query  = _search_term
         st.session_state.confirmed_firm = None   # reset if re-searching
         st.session_state.pipeline_done  = False
         st.session_state.pipeline_result = {}
@@ -427,10 +569,10 @@ st.divider()
 if st.session_state.confirmed_firm:
     st.markdown("""
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-      <div style="background:#1a3d6e;color:#fff;border-radius:50%;width:28px;height:28px;
+      <div style="background:#1e1e1e;border:1px solid #2a2a2a;color:#aaaaaa;border-radius:50%;width:28px;height:28px;
                   display:flex;align-items:center;justify-content:center;
                   font-size:0.85rem;font-weight:700;flex-shrink:0">2</div>
-      <div style="font-size:1.1rem;font-weight:700;color:#0f1923">Run Analysis</div>
+      <div style="font-size:1.1rem;font-weight:700;color:#e8e8e8">Run Analysis</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -661,7 +803,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
         )
 
     st.markdown(f"""
-    <div style="background:linear-gradient(135deg,#0f1923 0%,#1a2f45 100%);
+    <div style="background:#0a0a0a;border:1px solid #1a1a1a;
                 border-radius:10px;padding:22px 28px;margin-bottom:20px">
       <div style="font-size:1.5rem;font-weight:700;color:#ffffff;margin-bottom:8px">
         {firm_name}
@@ -781,8 +923,8 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                 x=periods, y=vals_b,
                 name="Portfolio ($B)",
                 fill="tozeroy",
-                fillcolor="rgba(41,128,185,0.15)",
-                line=dict(color="#2980b9", width=2),
+                fillcolor="rgba(100,180,255,0.08)",
+                line=dict(color="#4a9eff", width=2),
                 marker=dict(size=5),
             ),
             secondary_y=False,
@@ -801,12 +943,15 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             title_text="13F Portfolio Trend — Public US Equity Holdings",
             height=300,
             margin=dict(l=10, r=10, t=45, b=10),
-            legend=dict(orientation="h", y=-0.2),
+            legend=dict(orientation="h", y=-0.2, font=dict(color="#888888")),
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#888888"),
+            title_font=dict(color="#cccccc"),
         )
-        fig.update_yaxes(title_text="Portfolio Value ($B)", secondary_y=False, gridcolor="#eee")
-        fig.update_yaxes(title_text="Holdings Count",       secondary_y=True,  showgrid=False)
+        fig.update_yaxes(title_text="Portfolio Value ($B)", secondary_y=False, gridcolor="#2a2a2a", color="#888888")
+        fig.update_yaxes(title_text="Holdings Count",       secondary_y=True,  showgrid=False, color="#888888")
+        fig.update_xaxes(color="#888888")
 
         st.markdown("---")
         st.plotly_chart(fig, use_container_width=True)
@@ -857,7 +1002,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     x=bar_vals,
                     y=bar_names,
                     orientation="h",
-                    marker_color="#2980b9",
+                    marker_color="#4a9eff",
                     text=[f"${v:.0f}M" for v in bar_vals],
                     textposition="outside",
                 ))
@@ -868,8 +1013,11 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     margin=dict(l=10, r=60, t=45, b=10),
                     plot_bgcolor="rgba(0,0,0,0)",
                     paper_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color="#888888"),
+                    title_font=dict(color="#cccccc"),
                 )
-                bar_fig.update_xaxes(gridcolor="#eee")
+                bar_fig.update_xaxes(gridcolor="#2a2a2a", color="#888888")
+                bar_fig.update_yaxes(color="#888888")
                 st.plotly_chart(bar_fig, use_container_width=True)
 
         with col_pie:
@@ -889,6 +1037,8 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     margin=dict(l=10, r=10, t=45, b=10),
                     showlegend=False,
                     paper_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color="#aaaaaa"),
+                    title_font=dict(color="#cccccc"),
                 )
                 st.plotly_chart(pie_fig, use_container_width=True)
 
@@ -944,7 +1094,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
 
             # ── Recommendation banner ─────────────────────────────────────
             st.markdown(f"""
-            <div style="background:linear-gradient(135deg,#0f1923 0%,#1a2f45 100%);
+            <div style="background:#0a0a0a;border:1px solid #1a1a1a;
                         border-radius:10px;padding:24px 28px;margin-bottom:20px">
               <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
                 <div style="font-size:2.2rem">{rec_icon}</div>
@@ -1000,24 +1150,24 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     <div style="margin-bottom:12px">
                       <div style="display:flex;justify-content:space-between;
                                   margin-bottom:4px;align-items:baseline">
-                        <span style="font-size:0.82rem;font-weight:600;color:#0f1923">{label}</span>
+                        <span style="font-size:0.82rem;font-weight:600;color:#e8e8e8">{label}</span>
                         <span style="font-size:1rem;font-weight:700;color:{bar_color}">{s}/10</span>
                       </div>
-                      <div style="background:#e8ecf0;border-radius:4px;height:8px;overflow:hidden">
+                      <div style="background:#222222;border-radius:4px;height:8px;overflow:hidden">
                         <div style="background:{bar_color};width:{bar_pct}%;height:100%;
                                     border-radius:4px;transition:width 0.3s"></div>
                       </div>
-                      <div style="font-size:0.75rem;color:#6b7a8d;margin-top:3px">{rat}</div>
+                      <div style="font-size:0.75rem;color:#888888;margin-top:3px">{rat}</div>
                     </div>
                     """, unsafe_allow_html=True)
 
                 if overall is not None:
                     ov_color = "#1a7a4a" if float(overall) >= 7 else "#b06010" if float(overall) >= 5 else "#b03030"
                     st.markdown(f"""
-                    <div style="background:#f7f9fc;border:1px solid #e8ecf0;border-radius:8px;
+                    <div style="background:#141414;border:1px solid #252525;border-radius:8px;
                                 padding:14px 18px;margin-top:8px;display:flex;
                                 justify-content:space-between;align-items:center">
-                      <span style="font-size:0.85rem;font-weight:700;color:#0f1923;
+                      <span style="font-size:0.85rem;font-weight:700;color:#e8e8e8;
                                    text-transform:uppercase;letter-spacing:0.05em">
                         Overall Score
                       </span>
@@ -1037,7 +1187,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     st.markdown(
                         f'<div style="display:flex;gap:8px;margin-bottom:8px">'
                         f'<span style="color:#1a7a4a;font-size:1rem;flex-shrink:0">✓</span>'
-                        f'<span style="font-size:0.85rem;color:#0f1923">{r}</span>'
+                        f'<span style="font-size:0.85rem;color:#e8e8e8">{r}</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
@@ -1047,7 +1197,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     st.markdown(
                         f'<div style="display:flex;gap:8px;margin-bottom:8px">'
                         f'<span style="color:#b03030;font-size:1rem;flex-shrink:0">⚠</span>'
-                        f'<span style="font-size:0.85rem;color:#0f1923">{r}</span>'
+                        f'<span style="font-size:0.85rem;color:#e8e8e8">{r}</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
@@ -1069,12 +1219,12 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                         )
                         for d in group:
                             st.markdown(
-                                f'<div style="background:#f7f9fc;border:1px solid #e8ecf0;'
+                                f'<div style="background:#141414;border:1px solid #252525;'
                                 f'border-left:3px solid {color};border-radius:6px;'
                                 f'padding:10px 14px;margin-bottom:6px">'
-                                f'<div style="font-size:0.85rem;font-weight:600;color:#0f1923">'
+                                f'<div style="font-size:0.85rem;font-weight:600;color:#e8e8e8">'
                                 f'{d.get("item","")}</div>'
-                                f'<div style="font-size:0.75rem;color:#6b7a8d;margin-top:3px">'
+                                f'<div style="font-size:0.75rem;color:#888888;margin-top:3px">'
                                 f'{d.get("why","")}</div>'
                                 f'</div>',
                                 unsafe_allow_html=True,
@@ -1157,7 +1307,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             st.subheader("Red Flags")
             for flag in red_flags:
                 st.markdown(
-                    f'<div style="background:#fff0f0;border-left:4px solid #c0392b;'
+                    f'<div style="background:#1a0d0d;border-left:4px solid #c0392b;'
                     f'padding:8px 12px;border-radius:4px;margin-bottom:6px">'
                     f'🚩 {flag}</div>',
                     unsafe_allow_html=True,
@@ -1296,7 +1446,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             }.get(verdict, "⚪")
 
             st.markdown(f"""
-            <div style="background:linear-gradient(135deg,#0f1923 0%,#1a2f45 100%);
+            <div style="background:#0a0a0a;border:1px solid #1a1a1a;
                         border-radius:10px;padding:22px 28px;margin-bottom:20px">
               <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;
                           letter-spacing:0.1em;color:#8fa3bb;margin-bottom:8px">
@@ -1323,18 +1473,18 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     st.markdown("#### Inconsistencies Found")
                     for item in inconsistencies:
                         st.markdown(f"""
-                        <div style="border:1px solid #e8ecf0;border-left:4px solid #b03030;
-                                    border-radius:8px;padding:14px 16px;margin-bottom:8px;background:#fff">
-                          <div style="font-size:0.85rem;font-weight:600;color:#0f1923;margin-bottom:6px">
+                        <div style="border:1px solid #252525;border-left:4px solid #b03030;
+                                    border-radius:8px;padding:14px 16px;margin-bottom:8px;background:#111111">
+                          <div style="font-size:0.85rem;font-weight:600;color:#e8e8e8;margin-bottom:6px">
                             {item.get("finding","")}
                           </div>
-                          <div style="font-size:0.75rem;color:#6b7a8d;margin-bottom:4px">
+                          <div style="font-size:0.75rem;color:#888888;margin-bottom:4px">
                             <strong>A:</strong> {item.get("field_a","")}
                           </div>
-                          <div style="font-size:0.75rem;color:#6b7a8d;margin-bottom:6px">
+                          <div style="font-size:0.75rem;color:#888888;margin-bottom:6px">
                             <strong>B:</strong> {item.get("field_b","")}
                           </div>
-                          <div style="background:#fff5f5;border-radius:4px;padding:8px 10px;
+                          <div style="background:#1a0d0d;border-radius:4px;padding:8px 10px;
                                       font-size:0.75rem;color:#b03030">
                             {item.get("implication","")}
                           </div>
@@ -1351,18 +1501,18 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                         sev = item.get("severity", "MEDIUM")
                         sev_c = _sev_color(sev)
                         st.markdown(f"""
-                        <div style="border:1px solid #e8ecf0;border-left:4px solid {sev_c};
-                                    border-radius:8px;padding:14px 16px;margin-bottom:8px;background:#fff">
+                        <div style="border:1px solid #252525;border-left:4px solid {sev_c};
+                                    border-radius:8px;padding:14px 16px;margin-bottom:8px;background:#111111">
                           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
                             <span style="background:{sev_c};color:#fff;padding:2px 8px;
                                          border-radius:10px;font-size:0.70rem;font-weight:700">
                               {sev}
                             </span>
                           </div>
-                          <div style="font-size:0.85rem;font-weight:600;color:#0f1923;margin-bottom:4px">
+                          <div style="font-size:0.85rem;font-weight:600;color:#e8e8e8;margin-bottom:4px">
                             {item.get("signal","")}
                           </div>
-                          <div style="font-size:0.75rem;color:#6b7a8d">{item.get("why_it_matters","")}</div>
+                          <div style="font-size:0.75rem;color:#888888">{item.get("why_it_matters","")}</div>
                         </div>
                         """, unsafe_allow_html=True)
 
@@ -1372,11 +1522,11 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                 for i, q in enumerate(questions, 1):
                     st.markdown(f"""
                     <div style="display:flex;gap:10px;margin-bottom:8px;align-items:flex-start">
-                      <span style="background:#1a3d6e;color:#fff;border-radius:50%;
+                      <span style="background:#1e1e1e;border:1px solid #2a2a2a;color:#aaaaaa;border-radius:50%;
                                    width:22px;height:22px;display:flex;align-items:center;
                                    justify-content:center;font-size:0.72rem;font-weight:700;
                                    flex-shrink:0;margin-top:1px">{i}</span>
-                      <span style="font-size:0.85rem;color:#0f1923">{q}</span>
+                      <span style="font-size:0.85rem;color:#e8e8e8">{q}</span>
                     </div>
                     """, unsafe_allow_html=True)
         else:
@@ -1393,12 +1543,12 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
 
             if sr:
                 st.markdown(f"""
-                <div style="background:#f7f9fc;border:1px solid #e8ecf0;border-radius:8px;
+                <div style="background:#141414;border:1px solid #252525;border-radius:8px;
                             padding:14px 18px;margin-bottom:16px;display:flex;
                             align-items:center;gap:12px">
-                  <div style="font-size:1.6rem;font-weight:800;color:#1a3d6e">#{sr}</div>
+                  <div style="font-size:1.6rem;font-weight:800;color:#4a9eff">#{sr}</div>
                   <div>
-                    <div style="font-size:0.85rem;font-weight:600;color:#0f1923">
+                    <div style="font-size:0.85rem;font-weight:600;color:#e8e8e8">
                       Size rank among {comparables.get("total_in_comparison",0)} managers
                     </div>
                     <div style="font-size:0.75rem;color:#8fa3bb">by 13F public equity portfolio</div>
@@ -1423,7 +1573,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             df = pd.DataFrame(rows)
             st.dataframe(
                 df.style.apply(
-                    lambda x: ["background-color:#e8f4fd;font-weight:600" if x[""] == "▶ YOU"
+                    lambda x: ["background-color:#0d1a2a;color:#e8e8e8;font-weight:600" if x[""] == "▶ YOU"
                                else "" for _ in x],
                     axis=1,
                 ),
@@ -1441,7 +1591,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             tier_icon = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(tier, "⚪")
             st.markdown(
                 f'<div class="risk-tier-banner" style="background:{tier_c}20;'
-                f'border-left:4px solid {tier_c};color:#0f1923">'
+                f'border-left:4px solid {tier_c};color:#e8e8e8">'
                 f'<span style="font-size:1.3rem">{tier_icon}</span>'
                 f'<span>Overall Risk Tier: <strong style="color:{tier_c}">{tier}</strong></span>'
                 f'</div>',
@@ -1464,28 +1614,28 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     evidence = f.get("evidence", "")
                     action   = f.get("lp_action", "")
                     st.markdown(f"""
-                    <div style="border:1px solid #e8ecf0;border-left:4px solid {sev_c};
+                    <div style="border:1px solid #252525;border-left:4px solid {sev_c};
                                 border-radius:8px;padding:16px 18px;margin-bottom:10px;
-                                background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+                                background:#111111;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
                       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                         <span style="background:{sev_c};color:#fff;padding:3px 10px;
                                      border-radius:12px;font-size:0.72rem;font-weight:700;
                                      letter-spacing:0.05em;text-transform:uppercase">{sev}</span>
-                        <span style="background:#f0f4f8;color:#4a5568;padding:3px 10px;
+                        <span style="background:#1e1e1e;color:#aaaaaa;padding:3px 10px;
                                      border-radius:12px;font-size:0.72rem;font-weight:600">{cat}</span>
                       </div>
-                      <div style="font-size:0.92rem;font-weight:600;color:#0f1923;
+                      <div style="font-size:0.92rem;font-weight:600;color:#e8e8e8;
                                   margin-bottom:10px;line-height:1.5">{finding}</div>
                       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                        <div style="background:#f7f9fc;border-radius:6px;padding:10px 12px">
+                        <div style="background:#141414;border-radius:6px;padding:10px 12px">
                           <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;
                                       letter-spacing:0.07em;color:#8fa3bb;margin-bottom:4px">Evidence</div>
-                          <div style="font-size:0.80rem;color:#4a5568;line-height:1.5">{evidence}</div>
+                          <div style="font-size:0.80rem;color:#aaaaaa;line-height:1.5">{evidence}</div>
                         </div>
-                        <div style="background:#fff8f0;border-radius:6px;padding:10px 12px">
+                        <div style="background:#1a1400;border-radius:6px;padding:10px 12px">
                           <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;
                                       letter-spacing:0.07em;color:#b06010;margin-bottom:4px">LP Action</div>
-                          <div style="font-size:0.80rem;color:#4a5568;line-height:1.5">{action}</div>
+                          <div style="font-size:0.80rem;color:#aaaaaa;line-height:1.5">{action}</div>
                         </div>
                       </div>
                     </div>
@@ -1503,7 +1653,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                         st.markdown(f"""
                         <div style="display:flex;gap:8px;margin-bottom:6px;align-items:flex-start">
                           <span style="color:#b03030;font-size:0.85rem;flex-shrink:0;margin-top:2px">⚠</span>
-                          <span style="font-size:0.83rem;color:#4a5568">{g}</span>
+                          <span style="font-size:0.83rem;color:#aaaaaa">{g}</span>
                         </div>""", unsafe_allow_html=True)
             with col_clean:
                 clean = risk_report.get("clean_items", [])
@@ -1513,7 +1663,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                         st.markdown(f"""
                         <div style="display:flex;gap:8px;margin-bottom:6px;align-items:flex-start">
                           <span style="color:#1a7a4a;font-size:0.85rem;flex-shrink:0;margin-top:2px">✓</span>
-                          <span style="font-size:0.83rem;color:#4a5568">{c}</span>
+                          <span style="font-size:0.83rem;color:#aaaaaa">{c}</span>
                         </div>""", unsafe_allow_html=True)
         else:
             st.warning("Risk report not available.")
@@ -1618,7 +1768,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             nr_icon = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(overall_nr, "⚪")
             st.markdown(
                 f'<div class="risk-tier-banner" style="background:{nr_color}20;'
-                f'border-left:4px solid {nr_color};color:#0f1923">'
+                f'border-left:4px solid {nr_color};color:#e8e8e8">'
                 f'<span style="font-size:1.3rem">{nr_icon}</span>'
                 f'<span>News Risk: <strong style="color:{nr_color}">{overall_nr}</strong></span>'
                 f'</div>',
@@ -1647,7 +1797,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     date    = f.get("date", "")
                     action  = f.get("lp_action", "")
                     source_html = (
-                        f'<a href="{source}" target="_blank" style="color:#1a3d6e;font-size:0.78rem">'
+                        f'<a href="{source}" target="_blank" style="color:#4a9eff;font-size:0.78rem">'
                         f'{source[:60]}{"…" if len(source) > 60 else ""}</a>'
                     ) if source else "—"
                     meta_html = " &nbsp;·&nbsp; ".join(filter(None, [
@@ -1655,20 +1805,20 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                         source_html if source else "",
                     ]))
                     st.markdown(f"""
-                    <div style="border:1px solid #e8ecf0;border-left:4px solid {sev_c};
+                    <div style="border:1px solid #252525;border-left:4px solid {sev_c};
                                 border-radius:8px;padding:16px 18px;margin-bottom:10px;
-                                background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+                                background:#111111;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
                       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                         <span style="background:{sev_c};color:#fff;padding:3px 10px;
                                      border-radius:12px;font-size:0.72rem;font-weight:700;
                                      letter-spacing:0.05em;text-transform:uppercase">{sev}</span>
-                        <span style="background:#f0f4f8;color:#4a5568;padding:3px 10px;
+                        <span style="background:#1e1e1e;color:#aaaaaa;padding:3px 10px;
                                      border-radius:12px;font-size:0.72rem;font-weight:600">{cat}</span>
                         <span style="margin-left:auto">{meta_html}</span>
                       </div>
-                      <div style="font-size:0.92rem;font-weight:600;color:#0f1923;
+                      <div style="font-size:0.92rem;font-weight:600;color:#e8e8e8;
                                   margin-bottom:8px;line-height:1.5">{finding}</div>
-                      {f'<div style="background:#fff8f0;border-radius:6px;padding:10px 12px;margin-top:8px"><div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#b06010;margin-bottom:4px">LP Action</div><div style="font-size:0.80rem;color:#4a5568;line-height:1.5">{action}</div></div>' if action else ''}
+                      {f'<div style="background:#1a1400;border-radius:6px;padding:10px 12px;margin-top:8px"><div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#b06010;margin-bottom:4px">LP Action</div><div style="font-size:0.80rem;color:#aaaaaa;line-height:1.5">{action}</div></div>' if action else ''}
                     </div>
                     """, unsafe_allow_html=True)
             else:
@@ -1773,7 +1923,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
     with tab_chat:
         st.markdown("""
         <div style="margin-bottom:16px">
-          <div style="font-size:1.05rem;font-weight:700;color:#0f1923">AI Research Assistant</div>
+          <div style="font-size:1.05rem;font-weight:700;color:#e8e8e8">AI Research Assistant</div>
           <div style="font-size:0.80rem;color:#8fa3bb;margin-top:2px">
             Powered by GPT-4o · Knows everything about the analyzed firm
           </div>
