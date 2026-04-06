@@ -1,28 +1,28 @@
 """
-LLM Client — Anthropic Claude (claude-sonnet-4-6).
+LLM Client — OpenAI (gpt-4o).
 """
 
 import json
-import anthropic
+import openai
 
 
 class LLMClient:
     def __init__(self, api_key: str):
-        self._client = anthropic.Anthropic(api_key=api_key)
-        self.provider = "anthropic"
-        self.model = "claude-sonnet-4-6"
+        self._client = openai.OpenAI(api_key=api_key)
+        self.provider = "openai"
+        self.model = "gpt-4o"
 
     def complete(self, system: str, user: str,
                  max_tokens: int = 8000, **_) -> str:
-        message = self._client.messages.create(
+        response = self._client.chat.completions.create(
             model=self.model,
             max_tokens=max_tokens,
-            system=system,
             messages=[
+                {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
         )
-        return (message.content[0].text or "").strip()
+        return (response.choices[0].message.content or "").strip()
 
     def complete_json(self, system: str, user: str,
                       max_tokens: int = 8000, **_) -> dict:
@@ -46,21 +46,17 @@ class LLMClient:
                 f"First 200 chars: {text[:200]!r}"
             )
 
-
     def chat(self, messages: list[dict], max_tokens: int = 2000) -> str:
         """
-        Fast conversational completion using claude-haiku-4-5.
+        Fast conversational completion using gpt-4o-mini.
         messages: list of {"role": "system"|"user"|"assistant", "content": str}
         """
-        system = next((m["content"] for m in messages if m["role"] == "system"), "")
-        convo = [m for m in messages if m["role"] != "system"]
-        message = self._client.messages.create(
-            model="claude-haiku-4-5-20251001",
+        response = self._client.chat.completions.create(
+            model="gpt-4o-mini",
             max_tokens=max_tokens,
-            system=system,
-            messages=convo,
+            messages=messages,
         )
-        return (message.content[0].text or "").strip()
+        return (response.choices[0].message.content or "").strip()
 
 
 def make_client(api_key: str) -> LLMClient:

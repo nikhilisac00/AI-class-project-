@@ -524,7 +524,13 @@ with st.sidebar:
         help="Free tier at tavily.com (1,000/mo). Falls back to DuckDuckGo.",
     )
 
-    openai_key = _secret("ANTHROPIC_API_KEY")
+    openai_key = st.text_input(
+        "OpenAI API Key",
+        value=_secret("OPENAI_API_KEY"),
+        type="password",
+        help="Required. Get one at platform.openai.com",
+    )
+    st.caption("Model: gpt-4o")
 
     st.divider()
     st.markdown('<div class="section-label">Research Options</div>', unsafe_allow_html=True)
@@ -772,7 +778,7 @@ if st.session_state.confirmed_firm:
         <div style="background:#1a0a00;border:1px solid #5a3000;border-left:3px solid #c87020;
                     border-radius:6px;padding:12px 16px;margin-bottom:10px">
           <span style="color:#d08030;font-weight:700;font-size:0.88rem">
-            API key not configured. Set ANTHROPIC_API_KEY in your environment or Streamlit secrets.
+            ← Enter your OpenAI API key in the sidebar to run the analysis.
           </span>
         </div>
         """, unsafe_allow_html=True)
@@ -2338,7 +2344,7 @@ Be direct, concise, and professional. No firm has been analyzed yet in this sess
         # Chat input
         if prompt := st.chat_input(placeholder, key="chat_input"):
             if not openai_key:
-                st.error("API key not configured. Set ANTHROPIC_API_KEY in your environment or Streamlit secrets.")
+                st.error("Add your OpenAI API key in the sidebar to use the AI Assistant.")
             else:
                 # Add user message
                 st.session_state.chat_messages.append({"role": "user", "content": prompt})
