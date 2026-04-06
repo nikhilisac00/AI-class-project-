@@ -24,147 +24,115 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
-
 /* ── Hide Streamlit chrome ────────────────────────────────────── */
 #MainMenu, footer, header { visibility: hidden; }
 .stDeployButton { display: none; }
 
-/* ── Bloomberg black background ───────────────────────────────── */
+/* ── App-level black background ──────────────────────────────── */
 .stApp, [data-testid="stAppViewContainer"] { background: #000000 !important; }
 [data-testid="stHeader"] { background: #000000 !important; }
 .main .block-container { background: #000000 !important; }
 .block-container {
-    padding-top: 0.5rem !important;
+    padding-top: 1.25rem !important;
     padding-bottom: 2rem !important;
-    padding-left: 1rem !important;
-    padding-right: 1rem !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
     max-width: 100% !important;
 }
 
-/* ── Bloomberg monospace typography ──────────────────────────── */
-html, body, [class*="css"], * {
-    font-family: "IBM Plex Mono", "Courier New", "Lucida Console", monospace !important;
-    color: #ff8c00;
+/* ── Global typography ────────────────────────────────────────── */
+html, body, [class*="css"] {
+    font-family: "Inter", "Segoe UI", ui-sans-serif, sans-serif !important;
+    color: #e0e0e0;
 }
-
-/* ── Top status bar ───────────────────────────────────────────── */
-.bbg-statusbar {
-    background: #ff6600;
-    color: #000000 !important;
-    font-size: 0.72rem;
-    font-weight: 700;
-    padding: 2px 12px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin: -0.5rem -1rem 0.75rem -1rem;
-    letter-spacing: 0.04em;
-}
-.bbg-statusbar span { color: #000000 !important; }
 
 /* ── Sidebar ──────────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
-    background: #000000 !important;
-    border-right: 1px solid #ff6600 !important;
+    background: #050505 !important;
+    border-right: 1px solid #1a1a1a !important;
 }
 [data-testid="stSidebar"] * {
-    color: #ff8c00 !important;
-    font-family: "IBM Plex Mono", monospace !important;
+    color: #aaaaaa !important;
 }
 [data-testid="stSidebar"] hr {
-    border-color: #331a00 !important;
+    border-color: #1a1a1a !important;
 }
 [data-testid="stSidebar"] label {
-    font-size: 0.68rem !important;
+    font-size: 0.72rem !important;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #cc5500 !important;
+    letter-spacing: 0.06em;
+    color: #555555 !important;
 }
 [data-testid="stSidebar"] input {
-    background: #0a0500 !important;
-    border: 1px solid #ff6600 !important;
-    border-radius: 0 !important;
-    color: #ff8c00 !important;
-    font-family: "IBM Plex Mono", monospace !important;
-}
-[data-testid="stSidebar"] input:focus {
-    border-color: #ffaa00 !important;
-    box-shadow: 0 0 0 1px #ff6600 !important;
+    background: #111111 !important;
+    border-color: #2a2a2a !important;
+    color: #e0e0e0 !important;
 }
 
-/* ── Main text inputs ─────────────────────────────────────────── */
+/* ── Inputs ────────────────────────────────────────────────────── */
 [data-testid="stTextInput"] input {
-    font-family: "IBM Plex Mono", monospace !important;
-    font-size: 0.92rem !important;
-    border-radius: 0 !important;
-    border: 1px solid #ff6600 !important;
-    border-left: 3px solid #ff6600 !important;
-    padding: 8px 12px !important;
-    background: #050200 !important;
-    color: #ffaa00 !important;
+    font-size: 1rem !important;
+    border-radius: 6px !important;
+    border: 1px solid #2a2a2a !important;
+    padding: 10px 16px !important;
+    background: #111111 !important;
+    color: #e0e0e0 !important;
 }
 [data-testid="stTextInput"] input:focus {
-    border-color: #ffaa00 !important;
-    box-shadow: 0 0 6px rgba(255,102,0,0.3) !important;
-}
-[data-testid="stTextInput"] input::placeholder {
-    color: #663300 !important;
+    border-color: #444444 !important;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.06) !important;
 }
 
 /* ── Metric cards ─────────────────────────────────────────────── */
 .metric-card {
-    background: #000000;
-    border: 1px solid #331a00;
-    border-top: 2px solid #ff6600;
-    border-radius: 0;
-    padding: 10px 12px;
-    text-align: left;
+    background: #0f0f0f;
+    border: 1px solid #1e1e1e;
+    border-top: 2px solid #2a2a2a;
+    border-radius: 6px;
+    padding: 12px 14px;
+    text-align: center;
 }
 .metric-card .metric-label {
-    font-size: 0.60rem;
+    font-size: 0.65rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.10em;
-    color: #cc5500;
+    letter-spacing: 0.07em;
+    color: #555555;
     margin-bottom: 4px;
 }
 .metric-card .metric-value {
-    font-size: 1.15rem;
+    font-size: 1.3rem;
     font-weight: 700;
-    color: #ffdd00;
+    color: #e0e0e0;
     line-height: 1.2;
 }
 .metric-card .metric-sub {
-    font-size: 0.60rem;
-    color: #664400;
+    font-size: 0.65rem;
+    color: #555555;
     margin-top: 2px;
 }
 .metric-card.risk-card {
-    border-top: 2px solid #ff0000;
+    border-top: 2px solid #c0392b;
 }
 
 /* ── Firm result header ───────────────────────────────────────── */
 .firm-header {
-    background: #000000;
-    border: 1px solid #ff6600;
-    border-left: 4px solid #ff6600;
-    border-radius: 0;
-    padding: 10px 16px;
-    margin-bottom: 12px;
+    background: #0a0a0a;
+    border: 1px solid #1a1a1a;
+    border-radius: 6px;
+    padding: 16px 22px;
+    margin-bottom: 16px;
 }
 .firm-header h2 {
-    margin: 0 0 4px 0;
-    font-size: 1.1rem;
+    margin: 0 0 6px 0;
+    font-size: 1.3rem;
     font-weight: 700;
-    color: #ffdd00;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    color: #ffffff;
 }
 .firm-header .firm-meta {
-    font-size: 0.68rem;
-    color: #cc5500;
-    margin-top: 2px;
+    font-size: 0.75rem;
+    color: #555555;
+    margin-top: 4px;
 }
 
 /* ── Step labels ──────────────────────────────────────────────── */
@@ -172,384 +140,299 @@ html, body, [class*="css"], * {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
 }
 .step-label .step-num {
-    background: #1a0800;
-    border: 1px solid #ff6600;
-    color: #ff6600;
-    border-radius: 0;
-    width: 20px; height: 20px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    color: #888888;
+    border-radius: 50%;
+    width: 22px; height: 22px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.68rem; font-weight: 700; flex-shrink: 0;
+    font-size: 0.72rem; font-weight: 700; flex-shrink: 0;
 }
 .step-label .step-title {
-    font-size: 0.88rem;
+    font-size: 0.95rem;
     font-weight: 700;
-    color: #ff8c00;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    color: #cccccc;
 }
 
 /* ── Risk tier banner ─────────────────────────────────────────── */
 .risk-tier-banner {
-    border-radius: 0;
-    border-left: 4px solid currentColor;
-    padding: 8px 14px;
-    font-size: 0.82rem;
+    border-radius: 6px;
+    padding: 10px 16px;
+    font-size: 0.9rem;
     font-weight: 700;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
     display: flex;
     align-items: center;
     gap: 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
 }
 
 /* ── Section label ────────────────────────────────────────────── */
 .section-label {
-    font-size: 0.62rem;
+    font-size: 0.65rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: #cc5500;
+    letter-spacing: 0.08em;
+    color: #555555;
     margin-bottom: 4px;
-    border-bottom: 1px solid #331a00;
-    padding-bottom: 2px;
 }
 
 /* ── Sidebar config title ─────────────────────────────────────── */
 .sb-title {
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     font-weight: 700;
-    color: #ff6600;
-    letter-spacing: 0.08em;
+    color: #888888;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
-    padding: 8px 0 6px 0;
-    border-bottom: 1px solid #ff6600;
+    padding: 12px 0 8px 0;
+    border-bottom: 1px solid #1a1a1a;
     margin-bottom: 10px;
 }
 
 /* ── Badges ───────────────────────────────────────────────────── */
 .badge {
     display: inline-block;
-    padding: 1px 6px;
-    border-radius: 0;
-    font-size: 0.65rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
     line-height: 1.6;
-    text-transform: uppercase;
 }
 
 /* ── Buttons ───────────────────────────────────────────────────── */
 .stButton > button {
-    background: #000000 !important;
-    border: 1px solid #ff6600 !important;
-    color: #ff8c00 !important;
-    border-radius: 0 !important;
-    font-family: "IBM Plex Mono", monospace !important;
-    font-size: 0.72rem !important;
-    font-weight: 700 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.06em !important;
-    transition: all 0.1s !important;
+    background: #111111 !important;
+    border: 1px solid #2a2a2a !important;
+    color: #cccccc !important;
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    transition: all 0.15s !important;
 }
 .stButton > button:hover {
-    background: #1a0800 !important;
-    border-color: #ffaa00 !important;
-    color: #ffdd00 !important;
-    box-shadow: 0 0 8px rgba(255,102,0,0.4) !important;
+    background: #1a1a1a !important;
+    border-color: #3a3a3a !important;
+    color: #ffffff !important;
 }
 .stButton > button[kind="primary"] {
-    background: #ff6600 !important;
-    border: 1px solid #ff8c00 !important;
-    color: #000000 !important;
-    font-weight: 800 !important;
-    padding: 0.45rem 1.5rem !important;
+    background: #1a1a1a !important;
+    border: 1px solid #404040 !important;
+    color: #ffffff !important;
+    padding: 0.4rem 1.5rem !important;
+    letter-spacing: 0.02em !important;
 }
 .stButton > button[kind="primary"]:hover {
-    background: #ff8c00 !important;
-    border-color: #ffaa00 !important;
-    box-shadow: 0 0 12px rgba(255,102,0,0.6) !important;
+    background: #252525 !important;
+    border-color: #555555 !important;
 }
 
 /* ── Tabs ─────────────────────────────────────────────────────── */
 [data-testid="stTabs"] [data-baseweb="tab-list"] {
     background: #000000 !important;
-    border-bottom: 1px solid #ff6600 !important;
-    gap: 0 !important;
+    border-bottom: 1px solid #1a1a1a !important;
 }
 [data-testid="stTabs"] button[role="tab"] {
-    font-family: "IBM Plex Mono", monospace !important;
-    font-size: 0.68rem !important;
-    font-weight: 700 !important;
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
     text-transform: uppercase !important;
-    letter-spacing: 0.08em !important;
-    padding: 6px 16px !important;
+    letter-spacing: 0.05em !important;
+    padding: 6px 14px !important;
     background: transparent !important;
-    color: #664400 !important;
-    border-radius: 0 !important;
+    color: #444444 !important;
 }
 [data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
-    background: #1a0800 !important;
-    color: #ffdd00 !important;
-    border-bottom: 2px solid #ff6600 !important;
+    color: #e0e0e0 !important;
+    border-bottom-color: #e0e0e0 !important;
 }
 
 /* ── Expanders ────────────────────────────────────────────────── */
 [data-testid="stExpander"] {
-    background: #000000 !important;
-    border: 1px solid #331a00 !important;
-    border-left: 2px solid #ff6600 !important;
-    border-radius: 0 !important;
+    background: #0a0a0a !important;
+    border: 1px solid #1a1a1a !important;
+    border-radius: 6px !important;
 }
 [data-testid="stExpander"] summary {
-    font-size: 0.76rem !important;
-    font-weight: 700 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.06em !important;
-    color: #ff8c00 !important;
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+    color: #aaaaaa !important;
 }
 
 /* ── Containers with border ───────────────────────────────────── */
 [data-testid="stVerticalBlockBorderWrapper"] {
-    background: #000000 !important;
-    border: 1px solid #331a00 !important;
-    border-radius: 0 !important;
+    background: #0a0a0a !important;
+    border: 1px solid #1a1a1a !important;
+    border-radius: 8px !important;
 }
 
 /* ── Alerts ────────────────────────────────────────────────────── */
 [data-testid="stAlert"] {
-    background: #050200 !important;
-    border: 1px solid #331a00 !important;
-    border-radius: 0 !important;
+    background: #0d0d0d !important;
+    border: 1px solid #2a2a2a !important;
+    border-radius: 6px !important;
 }
+/* tone down the vivid success/warning/error colors */
 [data-testid="stAlert"][data-baseweb="notification"] {
-    background: #050200 !important;
+    background: #0d0d0d !important;
 }
 div[data-testid="stAlert"] > div {
-    color: #ff8c00 !important;
+    color: #cccccc !important;
 }
+/* success = left green border only */
 div[class*="stSuccess"] > div,
 div[data-testid="stAlert"][kind="success"] {
-    background: #000000 !important;
-    border-left: 3px solid #00cc44 !important;
+    background: #0a0a0a !important;
+    border-color: #1a4a2a !important;
+    border-left: 3px solid #2a7a4a !important;
 }
+/* warning = amber border */
 div[class*="stWarning"] > div,
 div[data-testid="stAlert"][kind="warning"] {
-    background: #000000 !important;
-    border-left: 3px solid #ff6600 !important;
+    background: #0a0a0a !important;
+    border-left: 3px solid #7a5a10 !important;
 }
+/* error = red border */
 div[class*="stError"] > div,
 div[data-testid="stAlert"][kind="error"] {
-    background: #000000 !important;
-    border-left: 3px solid #ff0000 !important;
+    background: #0a0a0a !important;
+    border-left: 3px solid #7a1a1a !important;
 }
+/* info = blue border */
 div[class*="stInfo"] > div,
 div[data-testid="stAlert"][kind="info"] {
-    background: #000000 !important;
-    border-left: 3px solid #00aaff !important;
+    background: #0a0a0a !important;
+    border-left: 3px solid #1a3a6a !important;
 }
 
 /* ── Native metrics ────────────────────────────────────────────── */
-[data-testid="stMetricLabel"] p { color: #cc5500 !important; font-size: 0.65rem !important; text-transform: uppercase; letter-spacing: 0.08em; }
-[data-testid="stMetricValue"]   { color: #ffdd00 !important; font-size: 1.3rem !important; }
-
-/* ── Progress bar ──────────────────────────────────────────────── */
-[data-testid="stProgressBar"] > div > div {
-    background-color: #ff6600 !important;
-}
-[data-testid="stProgressBar"] > div {
-    background-color: #1a0800 !important;
-}
+[data-testid="stMetricLabel"] p { color: #555555 !important; }
+[data-testid="stMetricValue"]   { color: #e0e0e0 !important; }
 
 /* ── Dividers ─────────────────────────────────────────────────── */
-hr { border-color: #331a00 !important; }
+hr { border-color: #1a1a1a !important; }
 
 /* ── Captions ─────────────────────────────────────────────────── */
 .stCaption, [data-testid="stCaptionContainer"] {
-    font-size: 0.68rem !important;
-    color: #664400 !important;
+    font-size: 0.72rem !important;
+    color: #555555 !important;
 }
 
 /* ── Markdown ──────────────────────────────────────────────────── */
 [data-testid="stMarkdownContainer"] p,
-[data-testid="stMarkdownContainer"] li { color: #cc7700; font-size: 0.85rem; }
+[data-testid="stMarkdownContainer"] li { color: #aaaaaa; }
 [data-testid="stMarkdownContainer"] h1,
 [data-testid="stMarkdownContainer"] h2,
 [data-testid="stMarkdownContainer"] h3,
-[data-testid="stMarkdownContainer"] h4 {
-    color: #ffdd00;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-bottom: 1px solid #331a00;
-    padding-bottom: 4px;
-}
-[data-testid="stMarkdownContainer"] a  { color: #00aaff; }
-[data-testid="stMarkdownContainer"] strong { color: #ffdd00; }
-[data-testid="stMarkdownContainer"] code {
-    background: #0a0500 !important;
-    color: #00ff88 !important;
-    border: 1px solid #331a00 !important;
-    padding: 1px 4px !important;
-    font-size: 0.82rem !important;
-}
+[data-testid="stMarkdownContainer"] h4 { color: #e0e0e0; }
+[data-testid="stMarkdownContainer"] a  { color: #4a9eff; }
 
-/* ── Hero card ─────────────────────────────────────────────────── */
+/* ── Hero card ────────────────────────────────────────────────────────────── */
 .hero-card {
     background: #000000;
-    border: 0;
-    border-bottom: 1px solid #ff6600;
-    padding: 10px 12px 10px 12px;
-    margin-bottom: 10px;
+    border-radius: 10px;
+    padding: 22px 28px 18px 28px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid #1a1a1a;
 }
 .hero-row {
-    display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
 }
 .hero-icon {
-    background: #1a0800;
-    border: 1px solid #ff6600;
-    border-radius: 0;
-    width: 28px; height: 28px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    width: 32px; height: 32px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.9rem; flex-shrink: 0;
+    font-size: 1rem; flex-shrink: 0;
 }
-.hero-title {
-    font-size: 1.1rem; font-weight: 800;
-    color: #ff6600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-}
-.hero-sub {
-    font-size: 0.62rem; color: #664400; margin-top: 2px; letter-spacing: 0.04em;
-    text-transform: uppercase;
-}
+.hero-title { font-size: 1.25rem; font-weight: 800; color: #ffffff; letter-spacing: -0.02em; }
+.hero-sub   { font-size: 0.70rem; color: #444444; margin-top: 3px; letter-spacing: 0.02em; }
 
-/* ── Horizontal step flow ──────────────────────────────────────── */
+/* ── Horizontal step flow ────────────────────────────────────────────────── */
 .step-flow {
     display: flex; align-items: center;
-    background: #000000;
-    border: 1px solid #331a00;
-    padding: 8px 12px;
+    background: #080808;
+    border: 1px solid #1a1a1a;
+    border-radius: 8px; padding: 10px 16px;
 }
-.sf-step { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.sf-step { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
 .sf-circle {
-    width: 22px; height: 22px; border-radius: 0;
+    width: 26px; height: 26px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.66rem; font-weight: 800; flex-shrink: 0;
-    border: 1px solid currentColor;
+    font-size: 0.70rem; font-weight: 800; flex-shrink: 0;
 }
 .sf-text { min-width: 0; }
-.sf-name { font-size: 0.68rem; font-weight: 700; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.04em; }
-.sf-hint { font-size: 0.60rem; opacity: 0.5; white-space: nowrap; }
-.sf-arrow { color: #663300; font-size: 0.9rem; padding: 0 6px; flex-shrink: 0; }
-.sf-step.s1 .sf-circle { color:#00aaff; border-color:#00aaff; background:#000510; }
-.sf-step.s1 .sf-name   { color:#00aaff; }
-.sf-step.s1 .sf-hint   { color:#003355; }
-.sf-step.s2 .sf-circle { color:#00cc44; border-color:#00cc44; background:#000a02; }
-.sf-step.s2 .sf-name   { color:#00cc44; }
-.sf-step.s2 .sf-hint   { color:#003311; }
-.sf-step.s3 .sf-circle { color:#ff6600; border-color:#ff6600; background:#0a0300; }
-.sf-step.s3 .sf-name   { color:#ff6600; }
-.sf-step.s3 .sf-hint   { color:#4a2000; }
-.sf-step.s4 .sf-circle { color:#ffdd00; border-color:#ffdd00; background:#060500; }
-.sf-step.s4 .sf-name   { color:#ffdd00; }
-.sf-step.s4 .sf-hint   { color:#443300; }
+.sf-name { font-size: 0.76rem; font-weight: 700; white-space: nowrap; }
+.sf-hint { font-size: 0.64rem; opacity: 0.45; white-space: nowrap; }
+.sf-arrow { color: #2a2a2a; font-size: 1rem; padding: 0 8px; flex-shrink: 0; }
+.sf-step.s1 .sf-circle { background:#0d1f35; color:#4a8fd4; }
+.sf-step.s1 .sf-name   { color:#4a8fd4; }
+.sf-step.s1 .sf-hint   { color:#2a4a65; }
+.sf-step.s2 .sf-circle { background:#0d2a1d; color:#3aaa7a; }
+.sf-step.s2 .sf-name   { color:#3aaa7a; }
+.sf-step.s2 .sf-hint   { color:#1a4a2a; }
+.sf-step.s3 .sf-circle { background:#2a1800; color:#c89020; }
+.sf-step.s3 .sf-name   { color:#c89020; }
+.sf-step.s3 .sf-hint   { color:#4a3000; }
+.sf-step.s4 .sf-circle { background:#220d2d; color:#9a5ad4; }
+.sf-step.s4 .sf-name   { color:#9a5ad4; }
+.sf-step.s4 .sf-hint   { color:#3a1a4a; }
 
-/* ── Search section ────────────────────────────────────────────── */
+/* ── Search section card ─────────────────────────────────────────────────── */
 .search-section {
     background: #000000;
-    border: 1px solid #331a00;
-    border-top: 2px solid #ff6600;
-    padding: 12px 14px 10px 14px;
-    margin-bottom: 12px;
+    border: 1px solid #1a1a1a;
+    border-radius: 10px;
+    padding: 18px 22px 14px 22px;
+    margin-bottom: 16px;
 }
 .search-section-title {
-    font-size: 0.62rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.12em;
-    color: #ff6600; margin-bottom: 8px;
+    font-size: 0.67rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.09em;
+    color: #444444; margin-bottom: 10px;
 }
 
-/* ── Example chips ─────────────────────────────────────────────── */
+/* ── Example chips ───────────────────────────────────────────────────────── */
 .chip-section-label {
-    font-size: 0.60rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.10em;
-    color: #664400; margin: 8px 0 4px 0;
+    font-size: 0.64rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: #333333; margin: 10px 0 6px 0;
 }
 div[data-testid="column"] .stButton > button {
-    background: #000000 !important;
-    border: 1px solid #4a2000 !important;
-    border-radius: 0 !important;
-    color: #ff6600 !important;
-    font-size: 0.66rem !important;
-    font-weight: 700 !important;
+    background: #0a0a0a !important;
+    border: 1px solid #222222 !important;
+    border-radius: 20px !important;
+    color: #666666 !important;
+    font-size: 0.70rem !important;
+    font-weight: 600 !important;
     padding: 4px 0 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.06em !important;
-    transition: all 0.1s !important;
+    transition: all 0.15s !important;
 }
 div[data-testid="column"] .stButton > button:hover {
-    background: #1a0800 !important;
-    border-color: #ff6600 !important;
-    color: #ffdd00 !important;
-    box-shadow: 0 0 6px rgba(255,102,0,0.3) !important;
+    background: #141414 !important;
+    border-color: #333333 !important;
+    color: #cccccc !important;
 }
 
-/* ── Criteria strip ────────────────────────────────────────────── */
+/* ── Criteria strip ──────────────────────────────────────────────────────── */
 .criteria-strip {
-    background: #000000; border: 1px solid #1a0800;
-    border-left: 2px solid #ff6600;
-    padding: 10px 14px; margin-top: 8px;
+    background: #080808; border: 1px solid #1a1a1a;
+    border-radius: 8px; padding: 12px 16px; margin-top: 10px;
 }
 .criteria-strip-title {
-    font-size: 0.60rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.12em;
-    color: #cc5500; margin-bottom: 6px;
+    font-size: 0.65rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.09em;
+    color: #444444; margin-bottom: 8px;
 }
 .criteria-row {
-    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 3px 14px;
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px 16px;
 }
 .crit-item {
-    display: flex; align-items: baseline; gap: 5px;
-    font-size: 0.68rem; color: #884400; line-height: 1.5;
+    display: flex; align-items: baseline; gap: 6px;
+    font-size: 0.74rem; color: #555555; line-height: 1.5;
 }
-.crit-dot { color: #ff6600; font-size: 0.64rem; flex-shrink: 0; }
-
-/* ── Scrollbar ─────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #000000; }
-::-webkit-scrollbar-thumb { background: #ff6600; }
-::-webkit-scrollbar-thumb:hover { background: #ffaa00; }
-
-/* ── Select boxes / dropdowns ──────────────────────────────────── */
-[data-testid="stSelectbox"] > div > div {
-    background: #050200 !important;
-    border: 1px solid #ff6600 !important;
-    border-radius: 0 !important;
-    color: #ff8c00 !important;
-}
-
-/* ── Chat input ────────────────────────────────────────────────── */
-[data-testid="stChatInput"] textarea {
-    background: #050200 !important;
-    border: 1px solid #ff6600 !important;
-    border-radius: 0 !important;
-    color: #ffaa00 !important;
-    font-family: "IBM Plex Mono", monospace !important;
-}
-[data-testid="stChatMessage"] {
-    background: #050200 !important;
-    border: 1px solid #1a0800 !important;
-    border-left: 2px solid #ff6600 !important;
-    border-radius: 0 !important;
-}
-
-/* ── Toggle / slider ───────────────────────────────────────────── */
-[data-testid="stToggle"] label { color: #ff8c00 !important; }
-
-/* ── Spinner text ──────────────────────────────────────────────── */
-[data-testid="stSpinner"] p { color: #ff6600 !important; }
+.crit-dot { color: #333333; font-size: 0.68rem; flex-shrink: 0; }
 
 </style>
 """, unsafe_allow_html=True)
@@ -702,28 +585,22 @@ def _sf(n, label, hint, cls):
       </div>
     </div>'''
 
-_now = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
 st.markdown(f"""
-<div class="bbg-statusbar">
-  <span>&#9632; AI ALT INVESTMENTS RESEARCH TERMINAL</span>
-  <span>SEC EDGAR · IAPD · FRED · GPT-4o · 8 AGENTS</span>
-  <span>{_now}</span>
-</div>
 <div class="hero-card">
   <div class="hero-row">
-    <div class="hero-icon">&#9632;</div>
+    <div class="hero-icon">📋</div>
     <div>
       <div class="hero-title">LP Due Diligence Intelligence</div>
-      <div class="hero-sub">SEC EDGAR 13F &nbsp;|&nbsp; IAPD / FORM ADV &nbsp;|&nbsp; FORM D &nbsp;|&nbsp; FRED MACRO &nbsp;|&nbsp; GPT-4o &nbsp;|&nbsp; 8 AI AGENTS</div>
+      <div class="hero-sub">SEC EDGAR 13F &nbsp;·&nbsp; IAPD / Form ADV &nbsp;·&nbsp; Form D &nbsp;·&nbsp; FRED Macro &nbsp;·&nbsp; Claude &nbsp;·&nbsp; 8 AI Agents</div>
     </div>
   </div>
   <div class="step-flow">
     {_sf(1, "Search", "Firm name or CRD", "s1")}
-    <div class="sf-arrow">&gt;</div>
+    <div class="sf-arrow">›</div>
     {_sf(2, "Confirm", "Select from IAPD", "s2")}
-    <div class="sf-arrow">&gt;</div>
+    <div class="sf-arrow">›</div>
     {_sf(3, "Analyze", "8 agents run", "s3")}
-    <div class="sf-arrow">&gt;</div>
+    <div class="sf-arrow">›</div>
     {_sf(4, "Review", "IC memo + risk", "s4")}
   </div>
 </div>
