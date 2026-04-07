@@ -607,81 +607,6 @@ with st.sidebar:
     st.caption("Data: IAPD · SEC EDGAR 13F · Form D · FRED")
     st.caption("No hallucination — every fact cites a real API field")
 
-    # ── Persistent AI Chat ───────────────────────────────────────────────────
-    st.markdown("""
-<div style="border-top:0.5px solid #22253a;margin-top:12px;padding-top:12px">
-  <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-    <div style="width:6px;height:6px;border-radius:50%;background:#2271c2"></div>
-    <span style="font-size:9px;font-weight:500;color:#3d4260;text-transform:uppercase;letter-spacing:0.08em">AI Assistant</span>
-  </div>
-</div>""", unsafe_allow_html=True)
-
-    # Build system prompt (context-aware if analysis is done)
-    if st.session_state.pipeline_done and st.session_state.pipeline_result:
-        _pr   = st.session_state.pipeline_result
-        _firm = _pr.get("firm_name", "the analyzed firm")
-        _tier = (_pr.get("risk_report") or {}).get("overall_risk_tier", "UNKNOWN")
-        _rec  = (_pr.get("scorecard")   or {}).get("recommendation",    "UNKNOWN")
-        _sb_system = f"""You are an expert LP due diligence analyst assistant.
-A full due diligence analysis on {_firm} has been completed.
-Risk Tier: {_tier} | IC Recommendation: {_rec}
-Answer concisely and professionally. Cite specific findings when relevant.
-Do not fabricate data not present in the analysis."""
-        _sb_placeholder = f"Ask about {_firm}..."
-    else:
-        _sb_system = """You are an expert LP due diligence analyst specializing in
-alternative investments, hedge funds, private equity, and institutional investing.
-Answer questions about due diligence, SEC filings, fund managers, LP/GP dynamics.
-Be direct and concise. No firm has been analyzed yet in this session."""
-        _sb_placeholder = "Ask about LP due diligence..."
-
-    # Render chat history
-    chat_container = st.container()
-    with chat_container:
-        for msg in st.session_state.sidebar_chat_messages[-6:]:  # show last 6
-            role_color = "#4a90d9" if msg["role"] == "user" else "#7a7f9a"
-            role_label = "You" if msg["role"] == "user" else "AI"
-            st.markdown(f"""
-<div style="background:#0f1117;border:0.5px solid #22253a;border-radius:4px;
-     padding:6px 8px;margin-bottom:4px">
-  <div style="font-size:8px;color:{role_color};font-weight:500;margin-bottom:2px;
-       text-transform:uppercase;letter-spacing:0.05em">{role_label}</div>
-  <div style="font-size:11px;color:#7a7f9a;line-height:1.4">{msg["content"]}</div>
-</div>""", unsafe_allow_html=True)
-
-    # Input
-    sb_prompt = st.text_input(
-        "chat",
-        placeholder=_sb_placeholder,
-        label_visibility="collapsed",
-        key="sidebar_chat_input",
-    )
-    sb_send = st.button("Send", use_container_width=True, key="sidebar_chat_send")
-
-    if sb_send and sb_prompt.strip():
-        if not openai_key:
-            st.warning("Add your OpenAI API key above to chat.")
-        else:
-            st.session_state.sidebar_chat_messages.append(
-                {"role": "user", "content": sb_prompt.strip()}
-            )
-            _msgs = [{"role": "system", "content": _sb_system}]
-            _msgs += st.session_state.sidebar_chat_messages
-            try:
-                _sb_client = make_client(openai_key)
-                _sb_reply  = _sb_client.chat(_msgs)
-            except Exception as _e:
-                _sb_reply = f"Error: {_e}"
-            st.session_state.sidebar_chat_messages.append(
-                {"role": "assistant", "content": _sb_reply}
-            )
-            st.rerun()
-
-    if st.session_state.sidebar_chat_messages:
-        if st.button("Clear", use_container_width=True, key="sidebar_chat_clear"):
-            st.session_state.sidebar_chat_messages = []
-            st.rerun()
-
 
 # ── Header (always visible) ──────────────────────────────────────────────────
 
@@ -2540,3 +2465,80 @@ Be direct, concise, and professional. No firm has been analyzed yet in this sess
             if st.button("Clear conversation", type="secondary", key="clear_chat"):
                 st.session_state.chat_messages = []
                 st.rerun()
+
+# ── Persistent AI Chat (main page) ──────────────────────────────────────────
+
+st.markdown("""
+<div style="margin-top:32px;border-top:0.5px solid #22253a;padding-top:24px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="width:8px;height:8px;border-radius:50%;background:#2271c2"></div>
+      <span style="font-size:13px;font-weight:500;color:#e2e4f0">AI Research Assistant</span>
+    </div>
+    <span style="font-size:10px;color:#3d4260">Powered by GPT-4o · Always available</span>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Build system prompt
+if st.session_state.pipeline_done and st.session_state.pipeline_result:
+    _mpr   = st.session_state.pipeline_result
+    _mfirm = _mpr.get("firm_name", "the analyzed firm")
+    _mtier = (_mpr.get("risk_report") or {}).get("overall_risk_tier", "UNKNOWN")
+    _mrec  = (_mpr.get("scorecard")   or {}).get("recommendation",    "UNKNOWN")
+    _mflags = (_mpr.get("risk_report") or {}).get("flags", [])
+    _mgaps  = (_mpr.get("risk_report") or {}).get("critical_data_gaps", [])
+    _mcomm  = (_mpr.get("risk_report") or {}).get("overall_commentary", "")
+    _mdir   = (_mpr.get("director_review") or {}).get("director_commentary", "")
+    import json as _mjson
+    _main_system = f"""You are an expert LP due diligence analyst assistant.
+A full due diligence analysis on {_mfirm} has been completed.
+Risk Tier: {_mtier} | IC Recommendation: {_mrec}
+Overall Commentary: {_mcomm}
+Director Commentary: {_mdir}
+Risk Flags ({len(_mflags)} total): {_mjson.dumps([f.get('finding','') for f in _mflags[:5]], default=str)}
+Critical Data Gaps: {_mjson.dumps(_mgaps[:5], default=str)}
+Answer concisely and professionally. Cite specific findings when relevant.
+Do not fabricate data not present in the analysis."""
+    _main_placeholder = f"Ask anything about {_mfirm} or the due diligence findings..."
+else:
+    _main_system = """You are an expert LP due diligence analyst specializing in
+alternative investments, hedge funds, private equity, and institutional investing.
+Answer questions about due diligence, SEC filings, fund managers, LP/GP dynamics, fund structures.
+Be direct and concise. No firm has been analyzed yet in this session."""
+    _main_placeholder = "Ask anything about LP due diligence, fund managers, or investing..."
+
+# Render chat history
+for msg in st.session_state.sidebar_chat_messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+# Chat input
+if prompt := st.chat_input(_main_placeholder, key="main_chat_input"):
+    if not openai_key:
+        st.error("Add your OpenAI API key in the sidebar to use the AI Assistant.")
+    else:
+        st.session_state.sidebar_chat_messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        _main_msgs = [{"role": "system", "content": _main_system}]
+        _main_msgs += st.session_state.sidebar_chat_messages
+
+        with st.chat_message("assistant"):
+            with st.spinner(""):
+                try:
+                    _main_client = make_client(openai_key)
+                    _main_reply  = _main_client.chat(_main_msgs)
+                except Exception as _me:
+                    _main_reply = f"Sorry, I encountered an error: {_me}"
+            st.markdown(_main_reply)
+
+        st.session_state.sidebar_chat_messages.append(
+            {"role": "assistant", "content": _main_reply}
+        )
+
+if st.session_state.sidebar_chat_messages:
+    if st.button("Clear conversation", type="secondary", key="main_chat_clear"):
+        st.session_state.sidebar_chat_messages = []
+        st.rerun()
