@@ -633,26 +633,56 @@ def render_steps(current_step):
         ("Analyze", "8 agents run"),
         ("Review",  "Download report"),
     ]
-    html = '<div style="display:flex;align-items:center;padding:0 2px">'
+    html = '<div style="display:flex;gap:8px;padding:0 2px">'
     for i, (name, desc) in enumerate(steps, 1):
+        completed = i < current_step
         active = i == current_step
-        circle_bg     = "#2271c2" if active else "#1a1d2a"
-        circle_color  = "white"   if active else "#3d4260"
-        circle_border = ""        if active else "border:0.5px solid #22253a;"
-        name_color    = "#4a90d9" if active else "#3d4260"
-        name_weight   = "500"     if active else "400"
-        html += f"""
-        <div style="display:flex;align-items:center;gap:6px;flex:1">
-          <div style="width:20px;height:20px;border-radius:50%;background:{circle_bg};{circle_border}
-               display:flex;align-items:center;justify-content:center;font-size:10px;
-               font-weight:500;color:{circle_color};flex-shrink:0">{i}</div>
-          <div>
-            <div style="font-size:11px;font-weight:{name_weight};color:{name_color}">{name}</div>
-            <div style="font-size:9px;color:#3d4260">{desc}</div>
-          </div>
-        </div>"""
-        if i < len(steps):
-            html += '<div style="flex:1;max-width:36px;height:1px;background:#22253a;margin:0 6px"></div>'
+
+        if completed:
+            pill_bg = "#0d2a1d"
+            pill_border = "1px solid #2ecc71"
+            pill_shadow = ""
+            pill_opacity = ""
+            icon = '<div style="font-size:14px;color:#2ecc71;flex-shrink:0">&#10003;</div>'
+            name_style = "font-size:11px;font-weight:700;color:#2ecc71"
+            desc_style = "font-size:9px;color:#1a5a32"
+            desc_text = "Completed"
+        elif active:
+            pill_bg = "#0d1f35"
+            pill_border = "1.5px solid #4a90d9"
+            pill_shadow = "box-shadow:0 0 10px rgba(74,144,217,0.3);"
+            pill_opacity = ""
+            icon = (
+                f'<div style="width:22px;height:22px;border-radius:50%;background:#2271c2;'
+                f'display:flex;align-items:center;justify-content:center;font-size:11px;'
+                f'color:white;font-weight:800;flex-shrink:0">{i}</div>'
+            )
+            name_style = "font-size:11px;font-weight:800;color:#ffffff"
+            desc_style = "font-size:9px;color:#4a90d9"
+            desc_text = desc
+        else:
+            pill_bg = "#0a0a0a"
+            pill_border = "1px solid #1a1a1a"
+            pill_shadow = ""
+            pill_opacity = "opacity:0.5;"
+            icon = (
+                f'<div style="width:22px;height:22px;border-radius:50%;background:#1a1d2a;'
+                f'border:1px solid #22253a;display:flex;align-items:center;justify-content:center;'
+                f'font-size:11px;color:#3d4260;font-weight:600;flex-shrink:0">{i}</div>'
+            )
+            name_style = "font-size:11px;font-weight:400;color:#3d4260"
+            desc_style = "font-size:9px;color:#2a2d40"
+            desc_text = desc
+
+        html += (
+            f'<div style="flex:1;background:{pill_bg};border:{pill_border};border-radius:8px;'
+            f'padding:10px 14px;display:flex;align-items:center;gap:10px;{pill_shadow}{pill_opacity}">'
+            f'{icon}'
+            f'<div>'
+            f'<div style="{name_style}">{name}</div>'
+            f'<div style="{desc_style}">{desc_text}</div>'
+            f'</div></div>'
+        )
     html += '</div>'
     return html
 
