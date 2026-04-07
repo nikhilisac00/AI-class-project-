@@ -692,7 +692,6 @@ _EXAMPLE_FIRMS = [
 
 if not st.session_state.confirmed_firm:
     st.markdown('<div style="background:#13151e;border:0.5px solid #22253a;border-radius:8px;padding:16px">', unsafe_allow_html=True)
-    st.markdown('<p style="font-size:9px;font-weight:500;color:#3d4260;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Search investment manager</p>', unsafe_allow_html=True)
 
     col_q, col_find = st.columns([5, 1])
     with col_q:
