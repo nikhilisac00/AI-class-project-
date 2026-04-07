@@ -79,7 +79,7 @@ def search_adviser_by_name(name: str, max_results: int = 5) -> list[dict]:
             "crd": src.get("firm_source_id"),
             "firm_name": src.get("firm_name"),
             "sec_number": src.get("firm_ia_full_sec_number"),
-            "registration_status": src.get("firm_ia_scope"),
+            "registration_status": src.get("firm_ia_scope") if isinstance(src.get("firm_ia_scope"), str) else str(src.get("firm_ia_scope", "")),
             "has_disclosures": src.get("firm_ia_disclosure_fl") == "Y",
             "city": addr.get("city"),
             "state": addr.get("state"),
