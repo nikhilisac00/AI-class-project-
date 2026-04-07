@@ -916,6 +916,13 @@ if st.session_state.confirmed_firm:
         </div>
         """, unsafe_allow_html=True)
 
+    st.markdown("""
+    <style>
+    div[data-testid="stVerticalBlock"] .stButton > button[kind="primary"]:not([disabled]) {
+        box-shadow: 0 0 10px rgba(34,113,194,0.25) !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
     run_button = st.button(
         f"Run Due Diligence on {st.session_state.confirmed_firm.get('firm_name', '')}",
         type="primary",
