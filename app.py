@@ -702,30 +702,46 @@ if not st.session_state.confirmed_firm:
         find_btn = st.button("Search", type="primary", use_container_width=True)
 
     # Example chips
-    st.markdown('<div class="chip-section-label">Quick examples — click to search</div>', unsafe_allow_html=True)
-    chip_cols = st.columns(len(_EXAMPLE_FIRMS))
-    for _ci, (_firm_name, _firm_sub) in enumerate(_EXAMPLE_FIRMS):
-        with chip_cols[_ci]:
-            if st.button(_firm_name, key=f"chip_{_ci}", use_container_width=True, help=_firm_sub):
-                st.session_state.search_query = _firm_name
-                st.session_state._auto_search  = True
-                st.rerun()
+    st.markdown('<p style="font-size:9px;color:#3d4260;text-transform:uppercase;letter-spacing:0.05em;margin:10px 0 5px">Quick examples</p>', unsafe_allow_html=True)
+    ex_col1, ex_col2, ex_col3 = st.columns(3)
+    examples = ["Ares Management", "Apollo Global Management", "Two Sigma Investments"]
+    for ex_col, firm in zip([ex_col1, ex_col2, ex_col3], examples):
+        if ex_col.button(firm, use_container_width=True):
+            st.session_state.search_query = firm
+            st.rerun()
 
-    # Criteria below chips
-    st.markdown("""
-<div class="criteria-strip">
-  <div class="criteria-strip-title">Which firms qualify?</div>
-  <div class="criteria-row">
-    <div class="crit-item"><span class="crit-dot">◆</span><span>SEC-registered adviser (CRD number)</span></div>
-    <div class="crit-item"><span class="crit-dot">◆</span><span>Files Form ADV with IAPD</span></div>
-    <div class="crit-item"><span class="crit-dot">◆</span><span>Hedge funds, PE, quant, family offices</span></div>
-    <div class="crit-item"><span class="crit-dot">◆</span><span>Files 13F quarterly (&gt;$100M US equities)</span></div>
-    <div class="crit-item"><span class="crit-dot">◆</span><span>US-based or US-registered operations</span></div>
-    <div class="crit-item"><span class="crit-dot">◆</span><span>State-registered also supported (less data)</span></div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)  # close search card
+
+    # Eligibility card grid
+    eligibility = [
+        ("SEC-registered advisers", ["Requires a valid CRD number", "Files 13F quarterly (>$100M equities)"]),
+        ("Form ADV filers",         ["Registered with IAPD", "US-based or US-registered ops"]),
+        ("Supported fund types",    ["Hedge funds, PE, quant, family offices", "State-registered (less data)"]),
+    ]
+    cols = st.columns(3)
+    for col, (title, items) in zip(cols, eligibility):
+        items_html = "".join(
+            f'<div style="display:flex;gap:5px;margin-bottom:3px">'
+            f'<div style="width:4px;height:4px;border-radius:50%;background:#2271c2;margin-top:4px;flex-shrink:0"></div>'
+            f'<div style="font-size:10px;color:#565a72;line-height:1.4">{item}</div></div>'
+            for item in items
+        )
+        col.markdown(f"""
+    <div style="background:#13151e;border:0.5px solid #22253a;border-radius:6px;padding:10px 12px">
+      <div style="font-size:10px;font-weight:500;color:#7a7f9a;margin-bottom:5px">{title}</div>
+      {items_html}
+    </div>""", unsafe_allow_html=True)
+
+    # Agents bar
+    active_agents   = ["13F Holdings", "Form ADV", "Form D", "FRED Macro"]
+    inactive_agents = ["News Research", "Compliance", "Risk Scoring", "Portfolio Analysis"]
+    active_chips   = "".join(f'<span style="font-size:9px;padding:2px 7px;border-radius:3px;font-weight:500;background:#0e2144;color:#4a90d9;border:0.5px solid #1a3a6e;margin-right:4px">{a}</span>' for a in active_agents)
+    inactive_chips = "".join(f'<span style="font-size:9px;padding:2px 7px;border-radius:3px;font-weight:500;background:#1a1d2a;color:#3d4260;border:0.5px solid #22253a;margin-right:4px">{a}</span>' for a in inactive_agents)
+    st.markdown(f"""
+<div style="display:flex;align-items:center;gap:10px;background:#13151e;border:0.5px solid #22253a;border-radius:6px;padding:8px 12px;margin-top:8px;flex-wrap:wrap">
+  <span style="font-size:9px;color:#3d4260;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap">Active agents</span>
+  <div style="display:flex;flex-wrap:wrap;gap:4px">{active_chips}{inactive_chips}</div>
+</div>""", unsafe_allow_html=True)
 else:
     # Firm already confirmed — show minimal search bar for changing
     col_q, col_find = st.columns([5, 1])
