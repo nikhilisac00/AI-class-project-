@@ -691,8 +691,6 @@ _EXAMPLE_FIRMS = [
 ]
 
 if not st.session_state.confirmed_firm:
-    st.markdown('<div style="background:#13151e;border:0.5px solid #22253a;border-radius:8px;padding:16px">', unsafe_allow_html=True)
-
     col_q, col_find = st.columns([5, 1])
     with col_q:
         query_input = st.text_input(
@@ -715,7 +713,6 @@ if not st.session_state.confirmed_firm:
             st.session_state._auto_search  = True
             st.rerun()
 
-    st.markdown('</div>', unsafe_allow_html=True)  # close search card
 
     # Eligibility card grid
     eligibility = [
