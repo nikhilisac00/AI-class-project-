@@ -227,23 +227,33 @@ html, body, [class*="css"] {
     color: #cccccc !important;
     border-radius: 6px !important;
     font-weight: 600 !important;
-    transition: all 0.15s !important;
+    transition: all 0.15s ease !important;
 }
 .stButton > button:hover {
     background: #1a1a1a !important;
     border-color: #3a3a3a !important;
     color: #ffffff !important;
 }
+.stButton > button:active {
+    background: #0a0a0a !important;
+    border-color: #4a90d9 !important;
+    color: #ffffff !important;
+    transform: scale(0.97) !important;
+}
 .stButton > button[kind="primary"] {
-    background: #1a1a1a !important;
-    border: 1px solid #404040 !important;
+    background: linear-gradient(135deg, #1a3a6e, #2271c2) !important;
+    border: 1px solid #2271c2 !important;
     color: #ffffff !important;
     padding: 0.4rem 1.5rem !important;
     letter-spacing: 0.02em !important;
 }
 .stButton > button[kind="primary"]:hover {
-    background: #252525 !important;
-    border-color: #555555 !important;
+    background: linear-gradient(135deg, #2271c2, #4a90d9) !important;
+    border-color: #4a90d9 !important;
+}
+.stButton > button[kind="primary"]:active {
+    background: linear-gradient(135deg, #0e2144, #1a3a6e) !important;
+    transform: scale(0.97) !important;
 }
 
 /* ── Tabs ─────────────────────────────────────────────────────── */
@@ -425,12 +435,18 @@ div[data-testid="column"] .stButton > button {
     font-size: 0.70rem !important;
     font-weight: 600 !important;
     padding: 4px 0 !important;
-    transition: all 0.15s !important;
+    transition: all 0.15s ease !important;
 }
 div[data-testid="column"] .stButton > button:hover {
     background: #141414 !important;
     border-color: #333333 !important;
     color: #cccccc !important;
+}
+div[data-testid="column"] .stButton > button:active {
+    background: #0a0a0a !important;
+    border-color: #4a90d9 !important;
+    color: #ffffff !important;
+    transform: scale(0.97) !important;
 }
 
 /* ── Criteria strip ──────────────────────────────────────────────────────── */
