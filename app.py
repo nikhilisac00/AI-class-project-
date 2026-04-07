@@ -24,6 +24,20 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+  .stApp { background-color: #0f1117; }
+  section[data-testid="stSidebar"] { background-color: #13151e; border-right: 0.5px solid #22253a; }
+  section[data-testid="stSidebar"] label,
+  section[data-testid="stSidebar"] .stMarkdown p { color: #565a72 !important; font-size: 11px !important; }
+  #MainMenu, footer, header { visibility: hidden; }
+  .block-container { padding-top: 1.5rem; padding-bottom: 1rem; }
+  .stTextInput input { background-color: #0f1117 !important; border: 0.5px solid #22253a !important; color: #7a7f9a !important; border-radius: 6px !important; font-size: 12px !important; }
+  .stButton > button { background-color: #2271c2 !important; color: white !important; border: none !important; border-radius: 6px !important; font-size: 12px !important; font-weight: 500 !important; padding: 0.45rem 1.2rem !important; }
+  .stButton > button:hover { background-color: #4a90d9 !important; }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<style>
 /* ── Hide Streamlit chrome ────────────────────────────────────── */
 #MainMenu, footer, header { visibility: hidden; }
 .stDeployButton { display: none; }
@@ -497,7 +511,17 @@ for _k, _v in [
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown('<div class="sb-title">⚙ Configuration</div>', unsafe_allow_html=True)
+    st.sidebar.markdown("""
+<div style="display:flex;align-items:center;gap:8px;padding-bottom:14px;border-bottom:0.5px solid #22253a;margin-bottom:12px">
+  <div style="width:26px;height:26px;background:#1a3a6e;border-radius:6px;display:flex;align-items:center;justify-content:center">
+    <div style="width:10px;height:10px;border:1.5px solid #4a90d9;border-radius:2px;transform:rotate(10deg)"></div>
+  </div>
+  <div>
+    <div style="font-size:12px;font-weight:500;color:#e2e4f0;line-height:1.2">LP Due Diligence</div>
+    <div style="font-size:10px;color:#565a72">Intelligence Suite</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
     def _secret(key: str) -> str:
         """Read from env vars first, then Streamlit secrets (for Cloud deployments)."""
@@ -509,13 +533,18 @@ with st.sidebar:
                 pass
         return val or ""
 
-    st.markdown('<div class="section-label">API Keys</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<p style="font-size:9px;font-weight:500;color:#3d4260;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">API Keys</p>', unsafe_allow_html=True)
+
     fred_key = st.text_input(
         "FRED API Key (optional)",
         value=_secret("FRED_API_KEY"),
         type="password",
         help="Free at fred.stlouisfed.org — adds macro rates/spreads.",
     )
+    if fred_key:
+        st.sidebar.markdown('<p style="font-size:10px;color:#4a90d9;margin-top:-10px">● active</p>', unsafe_allow_html=True)
+    else:
+        st.sidebar.markdown('<p style="font-size:10px;color:#3d4260;margin-top:-10px">Not configured</p>', unsafe_allow_html=True)
 
     tavily_key = st.text_input(
         "Tavily API Key (optional)",
@@ -523,6 +552,10 @@ with st.sidebar:
         type="password",
         help="Free tier at tavily.com (1,000/mo). Falls back to DuckDuckGo.",
     )
+    if tavily_key:
+        st.sidebar.markdown('<p style="font-size:10px;color:#4a90d9;margin-top:-10px">● active</p>', unsafe_allow_html=True)
+    else:
+        st.sidebar.markdown('<p style="font-size:10px;color:#3d4260;margin-top:-10px">Not configured</p>', unsafe_allow_html=True)
 
     openai_key = st.text_input(
         "OpenAI API Key",
@@ -530,10 +563,14 @@ with st.sidebar:
         type="password",
         help="Required. Get one at platform.openai.com",
     )
+    if openai_key:
+        st.sidebar.markdown('<p style="font-size:10px;color:#4a90d9;margin-top:-10px">● active</p>', unsafe_allow_html=True)
+    else:
+        st.sidebar.markdown('<p style="font-size:10px;color:#3d4260;margin-top:-10px">Not configured</p>', unsafe_allow_html=True)
     st.caption("Model: gpt-4o")
 
-    st.divider()
-    st.markdown('<div class="section-label">Research Options</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<p style="font-size:9px;font-weight:500;color:#3d4260;text-transform:uppercase;letter-spacing:0.08em;margin-top:12px;margin-bottom:4px">Research</p>', unsafe_allow_html=True)
+
     run_news = st.toggle(
         "Deep News Research",
         value=True,
