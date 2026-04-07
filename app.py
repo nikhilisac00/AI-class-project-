@@ -603,45 +603,60 @@ with st.sidebar:
     st.caption("No hallucination — every fact cites a real API field")
 
 
-# ── Hero card (always visible) ───────────────────────────────────────────────
+# ── Header (always visible) ──────────────────────────────────────────────────
 
-_step_active = (
+def render_steps(current_step):
+    steps = [
+        ("Search",  "Firm name or CRD"),
+        ("Confirm", "Select from IAPD"),
+        ("Analyze", "8 agents run"),
+        ("Review",  "Download report"),
+    ]
+    html = '<div style="display:flex;align-items:center;padding:0 2px">'
+    for i, (name, desc) in enumerate(steps, 1):
+        active = i == current_step
+        circle_bg     = "#2271c2" if active else "#1a1d2a"
+        circle_color  = "white"   if active else "#3d4260"
+        circle_border = ""        if active else "border:0.5px solid #22253a;"
+        name_color    = "#4a90d9" if active else "#3d4260"
+        name_weight   = "500"     if active else "400"
+        html += f"""
+        <div style="display:flex;align-items:center;gap:6px;flex:1">
+          <div style="width:20px;height:20px;border-radius:50%;background:{circle_bg};{circle_border}
+               display:flex;align-items:center;justify-content:center;font-size:10px;
+               font-weight:500;color:{circle_color};flex-shrink:0">{i}</div>
+          <div>
+            <div style="font-size:11px;font-weight:{name_weight};color:{name_color}">{name}</div>
+            <div style="font-size:9px;color:#3d4260">{desc}</div>
+          </div>
+        </div>"""
+        if i < len(steps):
+            html += '<div style="flex:1;max-width:36px;height:1px;background:#22253a;margin:0 6px"></div>'
+    html += '</div>'
+    return html
+
+_current_step = (
     4 if st.session_state.pipeline_done else
     3 if st.session_state.get("_pipeline_running") else
     2 if st.session_state.confirmed_firm else
     1
 )
 
-def _sf(n, label, hint, cls):
-    active_ring = ' outline:2px solid currentColor;outline-offset:2px;' if n == _step_active else ''
-    return f'''<div class="sf-step {cls}">
-      <div class="sf-circle" style="{active_ring}">{n}</div>
-      <div class="sf-text">
-        <div class="sf-name">{label}</div>
-        <div class="sf-hint">{hint}</div>
-      </div>
-    </div>'''
-
-st.markdown(f"""
-<div class="hero-card">
-  <div class="hero-row">
-    <div class="hero-icon">📋</div>
-    <div>
-      <div class="hero-title">LP Due Diligence Intelligence</div>
-      <div class="hero-sub">SEC EDGAR 13F &nbsp;·&nbsp; IAPD / Form ADV &nbsp;·&nbsp; Form D &nbsp;·&nbsp; FRED Macro &nbsp;·&nbsp; Claude &nbsp;·&nbsp; 8 AI Agents</div>
+st.markdown("""
+<div style="background:#13151e;border:0.5px solid #22253a;border-radius:8px;padding:14px 18px;margin-bottom:14px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <span style="font-size:14px;font-weight:500;color:#e2e4f0">LP Due Diligence Intelligence</span>
+    <div style="display:flex;gap:5px">
+      <span style="font-size:9px;padding:2px 7px;border-radius:3px;background:#0e2144;color:#4a90d9;border:0.5px solid #1a3a6e;font-weight:500">13F</span>
+      <span style="font-size:9px;padding:2px 7px;border-radius:3px;background:#0e2144;color:#4a90d9;border:0.5px solid #1a3a6e;font-weight:500">IAPD</span>
+      <span style="font-size:9px;padding:2px 7px;border-radius:3px;background:#1a1d2a;color:#3d4260;border:0.5px solid #22253a;font-weight:500">Form D</span>
+      <span style="font-size:9px;padding:2px 7px;border-radius:3px;background:#1a1d2a;color:#3d4260;border:0.5px solid #22253a;font-weight:500">FRED</span>
+      <span style="font-size:9px;padding:2px 7px;border-radius:3px;background:#0e2144;color:#4a90d9;border:0.5px solid #1a3a6e;font-weight:500">8 Agents</span>
     </div>
   </div>
-  <div class="step-flow">
-    {_sf(1, "Search", "Firm name or CRD", "s1")}
-    <div class="sf-arrow">›</div>
-    {_sf(2, "Confirm", "Select from IAPD", "s2")}
-    <div class="sf-arrow">›</div>
-    {_sf(3, "Analyze", "8 agents run", "s3")}
-    <div class="sf-arrow">›</div>
-    {_sf(4, "Review", "IC memo + risk", "s4")}
-  </div>
-</div>
 """, unsafe_allow_html=True)
+st.markdown(render_steps(_current_step), unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
 # ────────────────────────────────────────────────────────────────────────────
 # STEP 1 — Firm Search & Confirmation
