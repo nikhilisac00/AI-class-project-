@@ -658,6 +658,23 @@ st.markdown("""
 st.markdown(render_steps(_current_step), unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
+# ── Stats row ────────────────────────────────────────────────────────────────
+
+col1, col2, col3, col4 = st.columns(4)
+stats = [
+    ("Data sources", "5",              "APIs connected"),
+    ("AI agents",    "8",              "Parallel analysis"),
+    ("Coverage",     "13F+",           ">$100M AUM"),
+    ("Report depth", f"{news_rounds} rds", "Research rounds"),
+]
+for col, (label, val, sub) in zip([col1, col2, col3, col4], stats):
+    col.markdown(f"""
+    <div style="background:#13151e;border:0.5px solid #22253a;border-radius:6px;padding:10px 12px;margin-bottom:10px">
+      <div style="font-size:9px;color:#3d4260;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:3px">{label}</div>
+      <div style="font-size:16px;font-weight:500;color:#4a90d9">{val}</div>
+      <div style="font-size:9px;color:#3d4260;margin-top:1px">{sub}</div>
+    </div>""", unsafe_allow_html=True)
+
 # ────────────────────────────────────────────────────────────────────────────
 # STEP 1 — Firm Search & Confirmation
 # ────────────────────────────────────────────────────────────────────────────
@@ -669,8 +686,8 @@ _EXAMPLE_FIRMS = [
 ]
 
 if not st.session_state.confirmed_firm:
-    st.markdown('<div class="search-section">', unsafe_allow_html=True)
-    st.markdown('<div class="search-section-title">Search Investment Manager</div>', unsafe_allow_html=True)
+    st.markdown('<div style="background:#13151e;border:0.5px solid #22253a;border-radius:8px;padding:16px">', unsafe_allow_html=True)
+    st.markdown('<p style="font-size:9px;font-weight:500;color:#3d4260;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Search investment manager</p>', unsafe_allow_html=True)
 
     col_q, col_find = st.columns([5, 1])
     with col_q:
@@ -708,7 +725,7 @@ if not st.session_state.confirmed_firm:
   </div>
 </div>
 """, unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)  # close search-section
+    st.markdown('</div>', unsafe_allow_html=True)  # close search card
 else:
     # Firm already confirmed — show minimal search bar for changing
     col_q, col_find = st.columns([5, 1])
