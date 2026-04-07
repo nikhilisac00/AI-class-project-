@@ -33,6 +33,10 @@ st.markdown("""
   .stTextInput input { background-color: #0f1117 !important; border: 0.5px solid #22253a !important; color: #7a7f9a !important; border-radius: 6px !important; font-size: 12px !important; }
   .stButton > button { background-color: #2271c2 !important; color: white !important; border: none !important; border-radius: 6px !important; font-size: 12px !important; font-weight: 500 !important; padding: 0.45rem 1.2rem !important; }
   .stButton > button:hover { background-color: #4a90d9 !important; }
+  div[data-testid="stAlert"] { background-color: #13151e !important; border: 0.5px solid #22253a !important; color: #7a7f9a !important; border-radius: 6px !important; }
+  div[data-testid="stSpinner"] { color: #4a90d9 !important; }
+  .stDataFrame { background: #13151e !important; border: 0.5px solid #22253a !important; border-radius: 6px !important; }
+  .stDataFrame td, .stDataFrame th { color: #7a7f9a !important; border-color: #22253a !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -708,6 +712,7 @@ if not st.session_state.confirmed_firm:
     for ex_col, firm in zip([ex_col1, ex_col2, ex_col3], examples):
         if ex_col.button(firm, use_container_width=True):
             st.session_state.search_query = firm
+            st.session_state._auto_search  = True
             st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)  # close search card
