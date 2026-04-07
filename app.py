@@ -505,8 +505,9 @@ for _k, _v in [
     ("search_query",    ""),
     ("pipeline_done",   False),
     ("pipeline_result", {}),
-    ("chat_messages",   []),
-    ("_auto_search",    False),
+    ("chat_messages",        []),
+    ("sidebar_chat_messages", []),
+    ("_auto_search",         False),
 ]:
     if _k not in st.session_state:
         st.session_state[_k] = _v
@@ -605,6 +606,81 @@ with st.sidebar:
     st.divider()
     st.caption("Data: IAPD · SEC EDGAR 13F · Form D · FRED")
     st.caption("No hallucination — every fact cites a real API field")
+
+    # ── Persistent AI Chat ───────────────────────────────────────────────────
+    st.markdown("""
+<div style="border-top:0.5px solid #22253a;margin-top:12px;padding-top:12px">
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+    <div style="width:6px;height:6px;border-radius:50%;background:#2271c2"></div>
+    <span style="font-size:9px;font-weight:500;color:#3d4260;text-transform:uppercase;letter-spacing:0.08em">AI Assistant</span>
+  </div>
+</div>""", unsafe_allow_html=True)
+
+    # Build system prompt (context-aware if analysis is done)
+    if st.session_state.pipeline_done and st.session_state.pipeline_result:
+        _pr   = st.session_state.pipeline_result
+        _firm = _pr.get("firm_name", "the analyzed firm")
+        _tier = (_pr.get("risk_report") or {}).get("overall_risk_tier", "UNKNOWN")
+        _rec  = (_pr.get("scorecard")   or {}).get("recommendation",    "UNKNOWN")
+        _sb_system = f"""You are an expert LP due diligence analyst assistant.
+A full due diligence analysis on {_firm} has been completed.
+Risk Tier: {_tier} | IC Recommendation: {_rec}
+Answer concisely and professionally. Cite specific findings when relevant.
+Do not fabricate data not present in the analysis."""
+        _sb_placeholder = f"Ask about {_firm}..."
+    else:
+        _sb_system = """You are an expert LP due diligence analyst specializing in
+alternative investments, hedge funds, private equity, and institutional investing.
+Answer questions about due diligence, SEC filings, fund managers, LP/GP dynamics.
+Be direct and concise. No firm has been analyzed yet in this session."""
+        _sb_placeholder = "Ask about LP due diligence..."
+
+    # Render chat history
+    chat_container = st.container()
+    with chat_container:
+        for msg in st.session_state.sidebar_chat_messages[-6:]:  # show last 6
+            role_color = "#4a90d9" if msg["role"] == "user" else "#7a7f9a"
+            role_label = "You" if msg["role"] == "user" else "AI"
+            st.markdown(f"""
+<div style="background:#0f1117;border:0.5px solid #22253a;border-radius:4px;
+     padding:6px 8px;margin-bottom:4px">
+  <div style="font-size:8px;color:{role_color};font-weight:500;margin-bottom:2px;
+       text-transform:uppercase;letter-spacing:0.05em">{role_label}</div>
+  <div style="font-size:11px;color:#7a7f9a;line-height:1.4">{msg["content"]}</div>
+</div>""", unsafe_allow_html=True)
+
+    # Input
+    sb_prompt = st.text_input(
+        "chat",
+        placeholder=_sb_placeholder,
+        label_visibility="collapsed",
+        key="sidebar_chat_input",
+    )
+    sb_send = st.button("Send", use_container_width=True, key="sidebar_chat_send")
+
+    if sb_send and sb_prompt.strip():
+        if not openai_key:
+            st.warning("Add your OpenAI API key above to chat.")
+        else:
+            st.session_state.sidebar_chat_messages.append(
+                {"role": "user", "content": sb_prompt.strip()}
+            )
+            _msgs = [{"role": "system", "content": _sb_system}]
+            _msgs += st.session_state.sidebar_chat_messages
+            try:
+                _sb_client = make_client(openai_key)
+                _sb_reply  = _sb_client.chat(_msgs)
+            except Exception as _e:
+                _sb_reply = f"Error: {_e}"
+            st.session_state.sidebar_chat_messages.append(
+                {"role": "assistant", "content": _sb_reply}
+            )
+            st.rerun()
+
+    if st.session_state.sidebar_chat_messages:
+        if st.button("Clear", use_container_width=True, key="sidebar_chat_clear"):
+            st.session_state.sidebar_chat_messages = []
+            st.rerun()
 
 
 # ── Header (always visible) ──────────────────────────────────────────────────
