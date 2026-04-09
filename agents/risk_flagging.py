@@ -74,7 +74,7 @@ CRITICAL RULES:
 
 
 def run(analysis: dict, raw_data: dict, client: LLMClient,
-        news_report: dict = None) -> dict:
+        news_report: dict = None, scoring_weights: dict = None) -> dict:
 
     news_block = ""
     if news_report and (news_report.get("news_flags") or news_report.get("news_summary")):
@@ -134,7 +134,12 @@ Ingestion errors: {raw_data.get("errors", [])}
 {fund_block}
 {enforcement_block}
 {news_block}
-
+{f"""
+<lp_scoring_weights>
+The LP has specified custom importance weights (1=low, 10=high).
+Reflect these in severity decisions:
+{json.dumps(scoring_weights, indent=2)}
+</lp_scoring_weights>""" if scoring_weights else ""}
 Apply the LP risk framework. For each flag:
 - What SPECIFICALLY in the data supports this?
 - Is this a real flag or just a data gap?

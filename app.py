@@ -481,8 +481,10 @@ import agents.risk_flagging   as risk_agent       # noqa: E402
 import agents.memo_generation as memo_agent       # noqa: E402
 import agents.ic_scorecard      as scorecard_agent    # noqa: E402
 import agents.research_director as director_agent    # noqa: E402
-import agents.comparables       as comparables_agent # noqa: E402
-from tools.llm_client import make_client             # noqa: E402
+import agents.comparables       as comparables_agent  # noqa: E402
+import agents.comparison        as comparison_agent   # noqa: E402
+import agents.portfolio_fit     as portfolio_fit_agent # noqa: E402
+from tools.llm_client import make_client              # noqa: E402
 from tools.pal_client  import is_available as pal_available, call_consensus  # noqa: E402
 try:
     from tools.memo_export import to_docx, to_pdf    # noqa: E402
@@ -523,10 +525,39 @@ for _k, _v in [
     ("pipeline_result", {}),
     ("chat_messages",        []),
     ("sidebar_chat_messages", []),
-    ("_auto_search",         False),
+    ("_auto_search",           False),
+    ("firm_b_result",          {}),
+    ("comparison_result",      {}),
+    ("portfolio_fit_result",   {}),
 ]:
     if _k not in st.session_state:
         st.session_state[_k] = _v
+
+
+# ── Watch List helpers ────────────────────────────────────────────────────────
+
+_WATCHLIST_PATH = Path("./output/watchlist.json")
+
+
+def _load_watchlist() -> list:
+    """Load the LP watch list from disk."""
+    try:
+        if _WATCHLIST_PATH.exists():
+            return json.loads(_WATCHLIST_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return []
+
+
+def _save_watchlist(items: list) -> None:
+    """Persist the LP watch list to disk."""
+    try:
+        _WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _WATCHLIST_PATH.write_text(
+            json.dumps(items, indent=2, default=str), encoding="utf-8"
+        )
+    except Exception:
+        pass
 
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
@@ -618,6 +649,23 @@ with st.sidebar:
         value="./output/memos",
         help="Where to save memo and JSON files",
     )
+
+    st.divider()
+    st.markdown(
+        '<div class="section-label">Risk Scoring Weights</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption("Adjust how each risk dimension is weighted (1 = low priority, 10 = critical)")
+    w_regulatory = st.slider("Regulatory / Compliance", 1, 10, 8)
+    w_key_person = st.slider("Key Person Risk", 1, 10, 7)
+    w_structure  = st.slider("Fund Structure", 1, 10, 5)
+    w_fees       = st.slider("Fee Structure", 1, 10, 4)
+    scoring_weights = {
+        "Regulatory": w_regulatory,
+        "Key Person": w_key_person,
+        "Fund Structure": w_structure,
+        "Fees": w_fees,
+    }
 
     st.divider()
     st.caption("Data: IAPD · SEC EDGAR 13F · Form D · FRED")
@@ -1005,7 +1053,8 @@ if run_button:
                 st.warning("News notes: " + " | ".join(news_report["errors"]))
 
         status_box.info("⏳ Step 4 — Scanning for LP risk flags · regulatory disclosures · key-person concentration · data gaps...")
-        risk_report = risk_agent.run(analysis, raw_data, client, news_report=news_report)
+        risk_report = risk_agent.run(analysis, raw_data, client, news_report=news_report,
+                                     scoring_weights=scoring_weights)
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Risk flagging complete")
 
@@ -1159,16 +1208,35 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             f'Notice filings: {", ".join(notice_states)}</div>'
         )
 
-    st.markdown(f"""
-    <div class="firm-header">
-      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
-        <h2>{firm_name}</h2>
-        <div>{badges_html}</div>
-      </div>
-      <div class="firm-meta">{meta_html}</div>
-      {notice_html}
-    </div>
-    """, unsafe_allow_html=True)
+    _hdr_col, _wl_col = st.columns([5, 1])
+    with _hdr_col:
+        st.markdown(f"""
+        <div class="firm-header">
+          <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+            <h2>{firm_name}</h2>
+            <div>{badges_html}</div>
+          </div>
+          <div class="firm-meta">{meta_html}</div>
+          {notice_html}
+        </div>
+        """, unsafe_allow_html=True)
+    with _wl_col:
+        st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+        _wl = _load_watchlist()
+        _already_watched = any(w.get("firm_name") == firm_name for w in _wl)
+        if _already_watched:
+            st.success("On Watch List", icon="👁")
+        elif st.button("+ Watch List", use_container_width=True,
+                       help="Add to LP watch list"):
+            _wl.append({
+                "firm_name": firm_name,
+                "crd": adv.get("crd_number") or "",
+                "added_date": datetime.now().strftime("%Y-%m-%d"),
+                "risk_tier": tier,
+                "recommendation": (scorecard or {}).get("recommendation", ""),
+            })
+            _save_watchlist(_wl)
+            st.rerun()
 
     # ── Key Metric Cards ──────────────────────────────────────────────────
     tier_color_map = {"HIGH": "#b03030", "MEDIUM": "#b06010", "LOW": "#1a7a4a"}
@@ -1495,6 +1563,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
         tab_memo, tab_scorecard, tab_risk, tab_director,
         tab_enf, tab_comparables, tab_funds, tab_news,
         tab_fact_check, tab_pal, tab_raw, tab_chat,
+        tab_portfolio_fit, tab_compare, tab_watchlist,
     ) = st.tabs([
         "DD Memo",
         f"IC Scorecard{_rec_badge}",
@@ -1508,6 +1577,9 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
         "PAL Consensus",
         "Raw Data",
         "💬 AI Assistant",
+        "Portfolio Fit",
+        "Compare",
+        "Watch List 👁",
     ])
 
     # ─ IC Scorecard ──────────────────────────────────────────────────────
@@ -2591,3 +2663,372 @@ if st.session_state.sidebar_chat_messages:
     if st.button("Clear conversation", type="secondary", key="main_chat_clear"):
         st.session_state.sidebar_chat_messages = []
         st.rerun()
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# New tabs (Portfolio Fit, Compare, Watch List) — inside pipeline_done guard
+# ────────────────────────────────────────────────────────────────────────────
+
+if st.session_state.pipeline_done and st.session_state.pipeline_result:
+    pr          = st.session_state.pipeline_result
+    raw_data    = pr["raw_data"]
+    analysis    = pr["analysis"]
+    risk_report = pr["risk_report"]
+    scorecard   = pr.get("scorecard", {})
+    firm_name   = pr["firm_name"]
+    adv         = (raw_data or {}).get("adv_summary", {})
+    tier        = (risk_report or {}).get("overall_risk_tier", "UNKNOWN")
+
+    # ─ Portfolio Fit ─────────────────────────────────────────────────────
+    with tab_portfolio_fit:
+        st.markdown("### Portfolio Fit Scoring")
+        st.caption(
+            "Define your LP's current portfolio allocation. "
+            "GPT-4o scores how well this manager fits — strategy overlap, "
+            "geographic/vintage diversification, size fit, risk budget."
+        )
+
+        with st.form("portfolio_fit_form"):
+            st.markdown("**Strategy Allocation (% of alternatives portfolio)**")
+            pf_c1, pf_c2, pf_c3 = st.columns(3)
+            pf_pe    = pf_c1.number_input("Private Equity %", 0, 100, 30)
+            pf_pc    = pf_c2.number_input("Private Credit %", 0, 100, 15)
+            pf_hf    = pf_c3.number_input("Hedge Fund %", 0, 100, 25)
+            pf_re    = pf_c1.number_input("Real Estate %", 0, 100, 15)
+            pf_infra = pf_c2.number_input("Infrastructure %", 0, 100, 10)
+            pf_vc    = pf_c3.number_input("Venture Capital %", 0, 100, 5)
+
+            st.markdown("*Geographic Allocation (%)*")
+            geo_c1, geo_c2, geo_c3 = st.columns(3)
+            pf_na   = geo_c1.number_input("North America %", 0, 100, 60)
+            pf_eu   = geo_c2.number_input("Europe %", 0, 100, 25)
+            pf_asia = geo_c3.number_input("Asia %", 0, 100, 15)
+
+            st.markdown("*Portfolio Parameters*")
+            par_c1, par_c2, par_c3 = st.columns(3)
+            pf_num_mgrs    = par_c1.number_input("Current # Managers", 1, 100, 18)
+            pf_target_mgrs = par_c2.number_input("Target # Managers", 1, 100, 20)
+            pf_check_mm    = par_c3.number_input("Typical Check Size ($M)", 1, 500, 25)
+            pf_risk_budget = st.selectbox(
+                "Risk Budget Remaining", ["LOW", "MEDIUM", "HIGH"], index=1
+            )
+
+            st.markdown("**Vintage Exposure (% committed per year)**")
+            vint_c1, vint_c2, vint_c3, vint_c4, vint_c5 = st.columns(5)
+            v2020 = vint_c1.number_input("2020 %", 0, 100, 10)
+            v2021 = vint_c2.number_input("2021 %", 0, 100, 30)
+            v2022 = vint_c3.number_input("2022 %", 0, 100, 25)
+            v2023 = vint_c4.number_input("2023 %", 0, 100, 20)
+            v2024 = vint_c5.number_input("2024 %", 0, 100, 15)
+
+            fit_submit = st.form_submit_button(
+                "Score Portfolio Fit", type="primary", use_container_width=True
+            )
+
+        if fit_submit:
+            if not openai_key:
+                st.error("OpenAI API key required.")
+            else:
+                lp_portfolio = {
+                    "strategies": {
+                        "Private Equity": pf_pe,
+                        "Private Credit": pf_pc,
+                        "Hedge Fund": pf_hf,
+                        "Real Estate": pf_re,
+                        "Infrastructure": pf_infra,
+                        "Venture Capital": pf_vc,
+                    },
+                    "geographies": {
+                        "North America": pf_na,
+                        "Europe": pf_eu,
+                        "Asia": pf_asia,
+                    },
+                    "num_managers": pf_num_mgrs,
+                    "target_managers": pf_target_mgrs,
+                    "typical_check_size_mm": pf_check_mm,
+                    "vintage_exposure": {
+                        "2020": v2020, "2021": v2021,
+                        "2022": v2022, "2023": v2023, "2024": v2024,
+                    },
+                    "risk_budget_remaining": pf_risk_budget,
+                }
+                with st.spinner("Scoring portfolio fit..."):
+                    _fit = portfolio_fit_agent.run(
+                        firm_name=firm_name,
+                        analysis=analysis,
+                        risk_report=risk_report,
+                        raw_data=raw_data,
+                        lp_portfolio=lp_portfolio,
+                        client=make_client(openai_key),
+                    )
+                st.session_state.portfolio_fit_result = _fit
+
+        _fit_result = st.session_state.get("portfolio_fit_result", {})
+        if _fit_result and _fit_result.get("fit_score") is not None:
+            _fit_score = _fit_result.get("fit_score", 0)
+            _fit_label = _fit_result.get("fit_label", "")
+            _fit_color = (
+                "#1a7a4a" if _fit_score >= 85 else
+                "#2980b9" if _fit_score >= 65 else
+                "#b06010" if _fit_score >= 45 else
+                "#c0392b"
+            )
+            _fit_rec = _fit_result.get("recommendation", "")
+            _fit_rec_color = {
+                "ADD": "#1a7a4a", "CONSIDER": "#2980b9", "SKIP": "#c0392b"
+            }.get(_fit_rec, "#4a5568")
+
+            st.markdown(f"""
+            <div style="background:#ffffff;border:1px solid #e2e6ea;
+                        border-left:6px solid {_fit_color};border-radius:8px;
+                        padding:18px 22px;margin:12px 0">
+              <div style="font-size:2.2rem;font-weight:800;color:{_fit_color};
+                          line-height:1">{_fit_score}</div>
+              <div style="font-size:1rem;font-weight:700;color:{_fit_color};
+                          margin-top:4px">{_fit_label}</div>
+              <div style="margin-top:10px">
+                <span style="background:{_fit_rec_color};color:#fff;padding:3px 12px;
+                             border-radius:4px;font-size:0.85rem;font-weight:700">
+                  {_fit_rec}
+                </span>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            _fit_reco_detail = _fit_result.get("recommendation_detail", "")
+            if _fit_reco_detail:
+                st.markdown(f"*Recommendation:* {_fit_reco_detail}")
+
+            _dim_scores = _fit_result.get("dimension_scores", {})
+            if _dim_scores:
+                st.markdown("*Dimension Scores*")
+                _dim_cols = st.columns(3)
+                for _di, (_dim, _dv) in enumerate(_dim_scores.items()):
+                    with _dim_cols[_di % 3]:
+                        _ds = _dv.get("score", 0) if isinstance(_dv, dict) else 0
+                        _dr = _dv.get("rationale", "") if isinstance(_dv, dict) else ""
+                        _dc = (
+                            "#1a7a4a" if _ds >= 70
+                            else ("#b06010" if _ds >= 45 else "#c0392b")
+                        )
+                        st.markdown(
+                            f'<div style="border:1px solid #e2e6ea;border-radius:6px;'
+                            f'padding:10px 12px;margin-bottom:8px">'
+                            f'<div style="font-size:0.65rem;font-weight:700;'
+                            f'text-transform:uppercase;color:#8fa3bb;'
+                            f'letter-spacing:0.07em">'
+                            f'{_dim.replace("_", " ")}</div>'
+                            f'<div style="font-size:1.4rem;font-weight:800;'
+                            f'color:{_dc}">{_ds}</div>'
+                            f'<div style="font-size:0.72rem;color:#4a5568;'
+                            f'margin-top:3px">{_dr}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+            _fit_gaps = _fit_result.get("fit_gaps", [])
+            _fit_concerns = _fit_result.get("fit_concerns", [])
+            _g1, _g2 = st.columns(2)
+            with _g1:
+                if _fit_gaps:
+                    st.markdown("*Gaps This Manager Fills*")
+                    for g in _fit_gaps:
+                        st.markdown(f"- {g}")
+            with _g2:
+                if _fit_concerns:
+                    st.markdown("*Concerns / Overlaps*")
+                    for c in _fit_concerns:
+                        st.markdown(f"- {c}")
+
+    # ─ Compare ───────────────────────────────────────────────────────────
+    with tab_compare:
+        st.markdown("### Side-by-Side Manager Comparison")
+        st.caption(
+            f"Compare *{firm_name}* against another manager. "
+            "Enter a second firm, run its analysis, then generate a "
+            "head-to-head comparison."
+        )
+
+        _b_name_input = st.text_input(
+            "Second firm name or CRD",
+            placeholder='e.g. "Two Sigma Investments" or "149729"',
+            key="firm_b_input",
+        )
+        _run_b = st.button(
+            "Analyze Second Firm", type="primary",
+            disabled=not (openai_key and _b_name_input.strip()),
+            key="run_firm_b",
+        )
+
+        if _run_b and _b_name_input.strip():
+            with st.spinner(f"Running mini-pipeline for {_b_name_input.strip()}..."):
+                try:
+                    _client_b = make_client(openai_key)
+                    _b_candidates = resolver_agent.resolve(
+                        _b_name_input.strip(),
+                        tavily_key=tavily_key or None,
+                        max_candidates=1,
+                    )
+                    _b_firm = _b_candidates[0] if _b_candidates else None
+                    _b_crd = (_b_firm or {}).get("crd", _b_name_input.strip())
+                    _b_raw = ingestion_agent.run(
+                        _b_crd,
+                        fred_api_key=fred_key or None,
+                        website=None,
+                        client=_client_b,
+                        tavily_key=tavily_key or None,
+                    )
+                    _b_analysis = analysis_agent.run(_b_raw, _client_b)
+                    _b_risk = risk_agent.run(
+                        _b_analysis, _b_raw, _client_b,
+                        scoring_weights=scoring_weights,
+                    )
+                    _b_scorecard = scorecard_agent.run(
+                        _b_analysis, _b_risk, _b_raw, _client_b,
+                    )
+                    _b_firm_name = (
+                        (_b_analysis or {}).get("firm_overview", {}).get("name")
+                        or (_b_firm or {}).get("firm_name", _b_name_input.strip())
+                    )
+                    st.session_state.firm_b_result = {
+                        "firm_name": _b_firm_name,
+                        "raw_data": _b_raw,
+                        "analysis": _b_analysis,
+                        "risk_report": _b_risk,
+                        "scorecard": _b_scorecard,
+                    }
+                    st.session_state.comparison_result = {}
+                except Exception as _e:
+                    st.error(f"Firm B analysis failed: {_e}")
+
+        _b_res = st.session_state.get("firm_b_result", {})
+        if _b_res.get("firm_name"):
+            st.success(f"Firm B analyzed: **{_b_res['firm_name']}**")
+            _run_compare = st.button(
+                "Generate Comparison Report", type="primary", key="run_comparison"
+            )
+            if _run_compare:
+                with st.spinner("Generating comparison..."):
+                    _comp = comparison_agent.run(
+                        firm_a_name=firm_name,
+                        firm_b_name=_b_res["firm_name"],
+                        analysis_a=analysis,
+                        analysis_b=_b_res["analysis"],
+                        risk_report_a=risk_report,
+                        risk_report_b=_b_res["risk_report"],
+                        raw_data_a=raw_data,
+                        raw_data_b=_b_res["raw_data"],
+                        scorecard_a=scorecard,
+                        scorecard_b=_b_res.get("scorecard"),
+                        client=make_client(openai_key),
+                    )
+                    st.session_state.comparison_result = _comp
+
+        _comp_res = st.session_state.get("comparison_result", {})
+        if _comp_res and _comp_res.get("dimensions"):
+            _ca = _comp_res.get("manager_a", firm_name)
+            _cb = _comp_res.get("manager_b", "")
+            _winner = _comp_res.get("overall_winner", "")
+            _winner_name = (
+                _ca if _winner == "A"
+                else (_cb if _winner == "B" else "Tied")
+            )
+            _winner_color = "#1a7a4a" if _winner in ("A", "B") else "#4a5568"
+
+            st.markdown(f"""
+            <div style="background:#ffffff;border:1px solid #e2e6ea;
+                        border-left:6px solid {_winner_color};border-radius:8px;
+                        padding:14px 18px;margin:12px 0">
+              <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;
+                          color:#8fa3bb;margin-bottom:4px">Overall Winner</div>
+              <div style="font-size:1.1rem;font-weight:800;color:{_winner_color}">
+                {_winner_name}</div>
+              <div style="font-size:0.82rem;color:#4a5568;margin-top:6px">
+                {_comp_res.get("overall_rationale", "")}
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            _comp_rec = _comp_res.get("recommendation", "")
+            _comp_detail = _comp_res.get("recommendation_detail", "")
+            if _comp_rec:
+                st.markdown(f"*Recommendation:* {_comp_rec}")
+            if _comp_detail:
+                st.markdown(_comp_detail)
+
+            import pandas as pd
+            _dims = _comp_res.get("dimensions", [])
+            if _dims:
+                st.markdown("**Dimension-by-Dimension Comparison**")
+                _win_icon = {
+                    "A": f"✅ {_ca}", "B": f"✅ {_cb}",
+                    "TIED": "🟡 Tied", "INSUFFICIENT DATA": "⚪ N/A",
+                }
+                _df_comp = pd.DataFrame([{
+                    "Dimension": d.get("dimension", ""),
+                    _ca[:20]: d.get("manager_a_value", ""),
+                    _cb[:20]: d.get("manager_b_value", ""),
+                    "Winner": _win_icon.get(d.get("winner", ""), d.get("winner", "")),
+                    "Rationale": d.get("rationale", ""),
+                } for d in _dims])
+                st.dataframe(_df_comp, use_container_width=True, hide_index=True)
+
+            _diffs = _comp_res.get("key_differentiators", [])
+            if _diffs:
+                st.markdown("*Key Differentiators*")
+                for _d in _diffs:
+                    st.markdown(f"- {_d}")
+
+    # ─ Watch List ────────────────────────────────────────────────────────
+    with tab_watchlist:
+        st.markdown("### LP Watch List")
+        st.caption(
+            "Firms added to your watch list. "
+            "Use this to track managers you want to monitor over time."
+        )
+
+        _wl_items = _load_watchlist()
+        if not _wl_items:
+            st.info(
+                f"No firms on watch list yet. "
+                f"Click *+ Watch List* in the firm header to add *{firm_name}*."
+            )
+        else:
+            for _wi, _witem in enumerate(_wl_items):
+                _w_name = _witem.get("firm_name", "")
+                _w_crd  = _witem.get("crd", "")
+                _w_date = _witem.get("added_date", "")
+                _w_tier = _witem.get("risk_tier", "")
+                _w_rec  = _witem.get("recommendation", "")
+                _tc = {
+                    "HIGH": "#c0392b", "MEDIUM": "#e67e22", "LOW": "#27ae60"
+                }.get(_w_tier, "#8fa3bb")
+                with st.container(border=True):
+                    _wc1, _wc2 = st.columns([5, 1])
+                    with _wc1:
+                        st.markdown(f"*{_w_name}*")
+                        _wmeta = []
+                        if _w_crd:
+                            _wmeta.append(f"CRD: {_w_crd}")
+                        if _w_date:
+                            _wmeta.append(f"Added: {_w_date}")
+                        if _w_tier:
+                            _wmeta.append(
+                                f'Risk: <span style="color:{_tc};font-weight:700">'
+                                f'{_w_tier}</span>'
+                            )
+                        if _w_rec:
+                            _wmeta.append(f"IC: *{_w_rec}*")
+                        st.markdown(
+                            "  ·  ".join(_wmeta), unsafe_allow_html=True
+                        )
+                    with _wc2:
+                        if st.button("Remove", key=f"wl_rm_{_wi}",
+                                     use_container_width=True):
+                            _wl_items.pop(_wi)
+                            _save_watchlist(_wl_items)
+                            st.rerun()
+
+            if st.button("Clear All", type="secondary", key="wl_clear_all"):
+                _save_watchlist([])
+                st.rerun()
