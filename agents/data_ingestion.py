@@ -10,7 +10,6 @@ from tools.edgar_client import (
     get_adviser_detail,
     extract_adv_summary,
     search_13f_filings,
-    search_13f_by_cik,
 )
 from tools.fred_client import get_market_context, latest_value
 
@@ -44,7 +43,7 @@ def run(firm_input: str, fred_api_key: str = None) -> dict:
         "errors":        [],
     }
 
-    # ── Step 1: Resolve CRD ───────────────────────────────────────────────────────────────
+    # ── Step 1: Resolve CRD ────────────────────────────────────────────────────────────────────────
     if firm_input.isdigit():
         crd = firm_input
         raw_data["crd"] = crd
@@ -64,7 +63,7 @@ def run(firm_input: str, fred_api_key: str = None) -> dict:
             raw_data["crd"] = crd
             print(f"[Ingestion] Resolved to CRD {crd}: {results[0]['firm_name']}")
 
-    # ── Step 2: Pull IAPD/ADV detail ─────────────────────────────────────────────────────
+    # ── Step 2: Pull IAPD/ADV detail ─────────────────────────────────────────────────────────────
     _iacontent = None   # keep for Step 5
     if crd:
         print(f"[Ingestion] Fetching IAPD detail for CRD {crd}")
@@ -76,7 +75,7 @@ def run(firm_input: str, fred_api_key: str = None) -> dict:
         else:
             raw_data["errors"].append(f"IAPD detail fetch failed for CRD {crd}")
 
-    # ── Step 3: Search 13F filings on EDGAR ─────────────────────────────────────────────
+    # ── Step 3: Search 13F filings on EDGAR ───────────────────────────────────────────────────────────
     search_name = firm_input if not firm_input.isdigit() else raw_data["adv_summary"].get("firm_name", "")
     if search_name:
         print(f"[Ingestion] Searching EDGAR for 13F filings: '{search_name}'")
@@ -88,7 +87,7 @@ def run(firm_input: str, fred_api_key: str = None) -> dict:
                 "firm may not hold reportable US equity positions above $100M threshold"
             )
 
-    # ── Step 4: Pull macro context from FRED ──────────────────────────────────────────
+    # ── Step 4: Pull macro context from FRED ────────────────────────────────────────────────────────
     print("[Ingestion] Fetching macro context from FRED")
     macro = get_market_context(api_key=fred_api_key)
     if macro:
@@ -99,7 +98,7 @@ def run(firm_input: str, fred_api_key: str = None) -> dict:
     else:
         raw_data["errors"].append("FRED macro data unavailable (check API key)")
 
-    # ── Step 5: ADV enrichment (13F portfolio value + IAPD disclosure details) ──────────
+    # ── Step 5: ADV enrichment (13F portfolio value + IAPD disclosure details) ──────────────────
     adv_search_name = (
         raw_data["adv_summary"].get("firm_name")
         or (search_name if not firm_input.isdigit() else None)

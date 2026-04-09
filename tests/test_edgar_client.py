@@ -3,11 +3,10 @@ Tests for tools/edgar_client.py — parsing and extraction logic.
 HTTP calls are mocked.
 """
 
-import pytest
 from tools.edgar_client import extract_adv_summary
 
 
-# ── extract_adv_summary ────────────────────────────────────────────────────────
+# ── extract_adv_summary ────────────────────────────────────────────────────────────────────────────────
 
 class TestExtractAdvSummary:
     def _make_detail(self, **overrides):

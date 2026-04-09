@@ -9,18 +9,29 @@ Input: fund name or CRD number. Output: structured DD memo ready for IC review.
 app.py              ← Streamlit UI (main entry point)
 main.py             ← CLI entry point
 agents/
-  data_ingestion.py ← Step 1: pulls IAPD + EDGAR 13F + FRED data
-  fund_analysis.py  ← Step 2: OpenAI o3 structured analysis
-  risk_flagging.py  ← Step 3: OpenAI o3 LP risk flags
-  memo_generation.py← Step 4: OpenAI o3 IC-ready memo
+  data_ingestion.py   ← Orchestrates all data pulls (no LLM); runs sub-agents in parallel
+  firm_resolver.py    ← Resolves firm name/CRD from user input
+  fund_analysis.py    ← GPT-4o structured analysis (firm type, 13F, funds, disclosures)
+  risk_flagging.py    ← GPT-4o LP risk flags (regulatory, key person, fund structure)
+  memo_generation.py  ← GPT-4o IC-ready DD memo (narrative synthesis only)
+  enforcement.py      ← SEC enforcement deep-dive (EDGAR + web)
+  fund_discovery.py   ← Form D + IAPD relying advisors + web search
+  news_research.py    ← Multi-round news research and flagging
+  comparables.py      ← Peer/comparable fund analysis
+  ic_scorecard.py     ← IC scoring across risk dimensions
+  research_director.py← Orchestrates multi-agent research pipeline
 tools/
-  edgar_client.py   ← IAPD search + EDGAR EFTS + ADV summary parser
-  adv_parser.py     ← 13F XML parser + IAPD disclosure parser
-  fred_client.py    ← FRED macro series (rates, spreads, VIX)
-  llm_client.py     ← LLMClient wrapper (OpenAI o3)
-  pal_client.py     ← PAL MCP optional consensus (not required)
+  edgar_client.py       ← IAPD search + EDGAR EFTS + ADV summary parser
+  adv_parser.py         ← 13F XML parser + IAPD disclosure parser
+  fred_client.py        ← FRED macro series (rates, spreads, VIX)
+  llm_client.py         ← LLMClient wrapper (OpenAI gpt-4o / gpt-4o-mini)
+  enforcement_client.py ← SEC enforcement data client
+  formd_client.py       ← Form D filing data client
+  web_search_client.py  ← Web search (Tavily primary, DuckDuckGo fallback)
+  pal_client.py         ← PAL MCP optional consensus (not required)
 tests/              ← pytest suite (run: pytest tests/ -v --cov=tools --cov=agents)
 docs/               ← Research brief, architecture docs
+driver-plan/        ← DRIVER planning artifacts
 ```
 
 ## Critical Rules (enforce in all code reviews)
@@ -38,11 +49,17 @@ docs/               ← Research brief, architecture docs
 | EDGAR Submissions | data.sec.gov | None |
 | FRED | api.stlouisfed.org | Free key (`FRED_API_KEY`) |
 | OpenAI | api.openai.com | `OPENAI_API_KEY` |
+| Tavily | tavily.com | Free key (`TAVILY_API_KEY`, optional) |
+
+## LLM Stack
+- **Primary model**: `gpt-4o` — used by fund_analysis, risk_flagging, memo_generation, enforcement, news_research, comparables, ic_scorecard
+- **Fast model**: `gpt-4o-mini` — used by firm_resolver and conversational steps
+- **Client**: `tools/llm_client.py` — `LLMClient` wraps `openai.OpenAI`
 
 ## Running Locally
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # add OPENAI_API_KEY and FRED_API_KEY
+cp .env.example .env   # add OPENAI_API_KEY, FRED_API_KEY, TAVILY_API_KEY
 streamlit run app.py   # Streamlit UI
 python main.py "AQR Capital Management"  # CLI
 ```
@@ -59,12 +76,14 @@ pytest tests/ -v --cov=tools --cov=agents --cov-report=term-missing
 
 ## Environment Variables
 ```
-OPENAI_API_KEY     # required for all agent calls
-FRED_API_KEY       # optional — macro context (free at fred.stlouisfed.org)
+OPENAI_API_KEY    # required — GPT-4o for all agent LLM calls
+FRED_API_KEY      # optional — macro context (free at fred.stlouisfed.org)
+TAVILY_API_KEY    # optional — news/web search (free tier at tavily.com)
 ```
 
 ## Streamlit Cloud Secrets (share.streamlit.io)
 ```toml
 OPENAI_API_KEY = "sk-..."
 FRED_API_KEY = "..."
+TAVILY_API_KEY = "..."
 ```

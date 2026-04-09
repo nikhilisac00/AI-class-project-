@@ -14,11 +14,9 @@ PAL tools used:
 """
 
 import asyncio
-import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
 
 # Path to the local PAL server installation
 PAL_SERVER_DIR = Path(os.getenv("PAL_SERVER_DIR", str(Path.home() / "pal-mcp-server")))
@@ -103,8 +101,6 @@ def call_consensus(question: str, content: str,
     Returns:
         Consensus validation text, or None if PAL unavailable
     """
-    # Use PAL's chat tool for a focused validation review
-    # (consensus tool calls multiple models internally)
     prompt = f"""You are validating an AI-generated investment due diligence memo.
 
 QUESTION: {question}
