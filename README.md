@@ -35,9 +35,9 @@ No hallucination. Every fact in the memo traces to a real API response. Missing 
 ```
 app.py / main.py
 ├── Agent 1: Data Ingestion   → IAPD + EDGAR 13F XML + FRED (no LLM)
-├── Agent 2: Fund Analysis    → OpenAI o3 (reasoning model)
-├── Agent 3: Risk Flagging    → OpenAI o3 (reasoning model)
-└── Agent 4: Memo Generation  → OpenAI o3 (reasoning model)
+├── Agent 2: Fund Analysis    → OpenAI (gpt-4o)
+├── Agent 3: Risk Flagging    → OpenAI (gpt-4o)
+└── Agent 4: Memo Generation  → OpenAI (gpt-4o)
 ```
 
 See [`docs/research-brief.md`](docs/research-brief.md) for full architecture and data source mapping.
@@ -51,7 +51,7 @@ See [`docs/research-brief.md`](docs/research-brief.md) for full architecture and
 | [IAPD](https://adviserinfo.sec.gov) | Registration status, disclosure flags, brochure metadata | None |
 | [SEC EDGAR 13F](https://data.sec.gov) | Portfolio value (USD), holdings count — proxy AUM | None |
 | [FRED](https://fred.stlouisfed.org) | Fed funds rate, 10Y yield, HY spread, VIX | Free key |
-| OpenAI o3 | Fund analysis, risk flagging, memo generation | API key |
+| OpenAI GPT-4o | Fund analysis, risk flagging, memo generation | API key |
 
 ---
 
@@ -70,6 +70,7 @@ cp .env.example .env
 # Edit .env and add:
 #   OPENAI_API_KEY=your_key
 #   FRED_API_KEY=your_fred_key  (optional — free at fred.stlouisfed.org)
+#   TAVILY_API_KEY=your_key     (optional — free at tavily.com)
 ```
 
 ### 3. Run (Streamlit UI)
@@ -148,7 +149,7 @@ PRs from `feature/*` → `dev` → `main`. CI runs on every push.
 
 - **Fund performance**: Private returns are not public. The system flags this and generates a standard GP ask.
 - **Proprietary databases**: No Preqin, PitchBook, Bloomberg (planned: financialdatasets.ai, LSEG)
-- **Real-time news**: No news scraping in current version
+- **Real-time news**: Tavily/DuckDuckGo web search available when `TAVILY_API_KEY` is set
 
 ---
 
@@ -156,9 +157,10 @@ PRs from `feature/*` → `dev` → `main`. CI runs on every push.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `OPENAI_API_KEY` | Yes | OpenAI API key for o3 model |
+| `OPENAI_API_KEY` | Yes | OpenAI API key for GPT-4o |
 | `FRED_API_KEY` | No | Free FRED key — adds macro context |
+| `TAVILY_API_KEY` | No | Free Tavily key — adds news/web search |
 
 ---
 
-*AI Finance class project · OpenAI o3 · SEC EDGAR · IAPD · FRED*
+*AI Finance class project · OpenAI GPT-4o · SEC EDGAR · IAPD · FRED*
