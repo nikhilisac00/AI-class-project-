@@ -3,9 +3,7 @@ Tests for tools/adv_parser.py — pure-function logic only.
 No real HTTP calls; all external I/O is mocked.
 """
 
-import xml.etree.ElementTree as ET
-from unittest.mock import patch, MagicMock
-import pytest
+from unittest.mock import patch
 
 from tools.adv_parser import (
     parse_iapd_disclosures,
@@ -14,7 +12,7 @@ from tools.adv_parser import (
 )
 
 
-# ── parse_iapd_disclosures ─────────────────────────────────────────────────────
+# ── parse_iapd_disclosures ────────────────────────────────────────────────────────────────────────────────
 
 class TestParseIapdDisclosures:
     def test_empty_iacontent_returns_empty_list(self):
@@ -67,7 +65,7 @@ class TestParseIapdDisclosures:
         assert result[0]["details"] == [{"label": "Sanction", "value": "$500K fine"}]
 
 
-# ── parse_brochure_metadata ────────────────────────────────────────────────────
+# ── parse_brochure_metadata ─────────────────────────────────────────────────────────────────────────────
 
 class TestParseBrochureMetadata:
     def test_empty_iacontent_returns_empty_dict(self):
@@ -112,7 +110,7 @@ class TestParseBrochureMetadata:
         assert "adviserinfo.sec.gov" in result["note"]
 
 
-# ── _parse_13f_xml (value unit detection) ─────────────────────────────────────
+# ── _parse_13f_xml (value unit detection) ───────────────────────────────────────────────────────────────
 
 MOCK_XML_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 <edgarSubmission>
