@@ -19,7 +19,6 @@ All endpoints are public. No auth required.
 
 import re
 import time
-import json
 import requests
 import xml.etree.ElementTree as ET
 from typing import Optional
@@ -33,7 +32,7 @@ HEADERS = {
 }
 
 
-# ── HTTP helpers ──────────────────────────────────────────────────────────────
+# ── HTTP helpers ──────────────────────────────────────────────────────────────────────────────
 
 def _json(url: str, params: dict = None) -> Optional[dict]:
     for attempt in range(3):
@@ -60,7 +59,7 @@ def _text(url: str) -> Optional[str]:
         return None
 
 
-# ── 13F portfolio value (proxy AUM for public equity managers) ─────────────────
+# ── 13F portfolio value (proxy AUM for public equity managers) ─────────────────────────────
 
 def _find_cik_for_13f(firm_name: str) -> Optional[str]:
     """Find EDGAR CIK for a firm by searching 13F-HR filings on EFTS."""
@@ -109,11 +108,9 @@ def _xml_file_from_filing(cik: str, acc: str) -> Optional[str]:
     html = _text(base + acc + "-index.htm")
     if not html:
         return None
-    # Look for primary_doc.xml (has tableValueTotal) but NOT inside xslForm subdir
     for name in re.findall(r'href="[^"]*?/([^/\"]+\.xml)"', html, re.I):
         if name.lower() == "primary_doc.xml":
             return name
-    # Fallback to any .xml not in an xsl subdirectory
     for name in re.findall(r'href="(?!.*xslForm)[^"]*?/([^/\"]+\.xml)"', html, re.I):
         if name.lower() not in ("xsl.xml",):
             return name
@@ -144,8 +141,6 @@ def _parse_13f_xml(cik: str, acc: str, xml_file: str, period: Optional[str]) -> 
     except ET.ParseError:
         return {}
 
-    # Detect schema version to determine value units.
-    # X0202 (effective 2025-01-01) reports values in dollars; earlier in thousands.
     schema_el = root.find(".//schemaVersion")
     schema_ver = schema_el.text.strip() if schema_el is not None and schema_el.text else ""
     use_dollars = schema_ver >= "X0202" or (period or "") >= "2024-12-31"
@@ -168,7 +163,6 @@ def _parse_13f_xml(cik: str, acc: str, xml_file: str, period: Optional[str]) -> 
         else:
             out["portfolio_value_fmt"] = f"${val_usd/1e6:.1f}M"
 
-    # Holdings count — prefer tableEntryTotal from the summary doc
     entry_el = root.find(".//tableEntryTotal")
     if entry_el is not None and entry_el.text and entry_el.text.strip().isdigit():
         out["holdings_count"] = int(entry_el.text.strip())
@@ -197,14 +191,12 @@ def _get_13f_portfolio_value(firm_name: str) -> dict:
         "note": None,
     }
 
-    # Step 1: find CIK via EFTS
     cik = _find_cik_for_13f(firm_name)
     if not cik:
         result["note"] = "No 13F-HR filings found — firm may not hold >$100M in US public equities"
         return result
     result["cik"] = cik
 
-    # Step 2: get most recent 13F-HR accession via submissions API
     filing = _latest_13f_from_submissions(cik)
     if not filing:
         result["note"] = f"CIK {cik} found but no 13F-HR in recent submissions"
@@ -215,13 +207,11 @@ def _get_13f_portfolio_value(firm_name: str) -> dict:
     result["filing_date"]     = filing["filing_date"]
     result["period_of_report"] = filing["period_of_report"]
 
-    # Step 3: find the XML file via HTML index
     xml_file = _xml_file_from_filing(cik, acc)
     if not xml_file:
         result["note"] = f"13F filing found (CIK={cik}) but XML document not located in index"
         return result
 
-    # Step 4: parse XML for portfolio value and holdings count
     parsed = _parse_13f_xml(cik, acc, xml_file, filing["period_of_report"])
     result.update(parsed)
 
@@ -236,7 +226,7 @@ def _get_13f_portfolio_value(firm_name: str) -> dict:
     return result
 
 
-# ── Disclosure details from IAPD iacontent ────────────────────────────────────
+# ── Disclosure details from IAPD iacontent ────────────────────────────────────────────────────────
 
 def parse_iapd_disclosures(iacontent: dict) -> list[dict]:
     """
@@ -246,7 +236,6 @@ def parse_iapd_disclosures(iacontent: dict) -> list[dict]:
     """
     disclosures = []
 
-    # Keys in iacontent that contain disclosure arrays
     disclosure_keys = [
         "iaCriminalDisclosures",
         "iaRegulatoryDisclosures",
@@ -283,7 +272,6 @@ def parse_iapd_disclosures(iacontent: dict) -> list[dict]:
                 ),
                 "details": [],
             }
-            # Some disclosures have a details sub-array
             detail_items = item.get("disclosureDetails", []) or item.get("details", [])
             if isinstance(detail_items, list):
                 for d in detail_items:
@@ -297,7 +285,7 @@ def parse_iapd_disclosures(iacontent: dict) -> list[dict]:
     return disclosures
 
 
-# ── Brochure metadata ─────────────────────────────────────────────────────────
+# ── Brochure metadata ──────────────────────────────────────────────────────────────────────────────
 
 def parse_brochure_metadata(iacontent: dict) -> dict:
     """
@@ -330,7 +318,7 @@ def parse_brochure_metadata(iacontent: dict) -> dict:
     }
 
 
-# ── Main entry point ──────────────────────────────────────────────────────────
+# ── Main entry point ─────────────────────────────────────────────────────────────────────────────
 
 def fetch_adv_data(firm_name: str, iacontent: dict = None) -> dict:
     """
@@ -359,11 +347,9 @@ def fetch_adv_data(firm_name: str, iacontent: dict = None) -> dict:
         "error": None,
     }
 
-    # 13F portfolio value
     print(f"[ADV Enrichment] Fetching 13F data for '{firm_name}'")
     result["thirteenf"] = _get_13f_portfolio_value(firm_name)
 
-    # Disclosures and brochure from iacontent (if provided)
     if iacontent:
         result["disclosures"] = parse_iapd_disclosures(iacontent)
         result["brochure"]    = parse_brochure_metadata(iacontent)

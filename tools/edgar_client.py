@@ -43,7 +43,7 @@ def _get(url: str, params: dict = None, retries: int = 3) -> dict | None:
     return None
 
 
-# ─── IAPD: search ─────────────────────────────────────────────────────────────
+# ─── IAPD: search ──────────────────────────────────────────────────────────────────────────────────
 
 def search_adviser_by_name(name: str, max_results: int = 5) -> list[dict]:
     """
@@ -66,7 +66,6 @@ def search_adviser_by_name(name: str, max_results: int = 5) -> list[dict]:
     results = []
     for h in hits:
         src = h.get("_source", {})
-        # Parse address from embedded JSON string
         addr = {}
         addr_raw = src.get("firm_ia_address_details", "")
         if addr_raw:
@@ -125,7 +124,6 @@ def extract_adv_summary(iacontent: dict, search_hit: dict = None) -> dict:
     scope_flags = iacontent.get("orgScopeStatusFlags", {})
     address_details = iacontent.get("iaFirmAddressDetails", {})
     brochures = iacontent.get("brochures", [])
-    registration = iacontent.get("registrationStatus", {})
     notice_filings = iacontent.get("noticeFilings", [])
 
     # Address parsing
@@ -173,19 +171,19 @@ def extract_adv_summary(iacontent: dict, search_hit: dict = None) -> dict:
         # From search results (if provided)
         "has_disclosures": search_hit.get("has_disclosures") if search_hit else None,
 
-        # Fields not available in this API — must be obtained from ADV Part 1 PDF/XML
-        "aum_regulatory": None,     # Not in IAPD API — in ADV Part 1 Item 5
-        "num_clients": None,        # Not in IAPD API — in ADV Part 1 Item 5
-        "num_employees": None,      # Not in IAPD API — in ADV Part 1 Item 5
-        "fee_types": [],            # Not in IAPD API — in ADV Part 2
-        "min_account_size": None,   # Not in IAPD API — in ADV Part 2
-        "key_personnel": [],        # Not in IAPD API — in Schedule A/B
+        # Fields not available in this API
+        "aum_regulatory": None,
+        "num_clients": None,
+        "num_employees": None,
+        "fee_types": [],
+        "min_account_size": None,
+        "key_personnel": [],
     }
 
     return summary
 
 
-# ─── EDGAR: 13F filings ───────────────────────────────────────────────────────
+# ─── EDGAR: 13F filings ─────────────────────────────────────────────────────────────────────────────
 
 def search_13f_filings(firm_name: str, max_results: int = 5) -> list[dict]:
     """
@@ -240,7 +238,7 @@ def search_13f_by_cik(cik: str, max_results: int = 5) -> list[dict]:
                 "cik": cik,
                 "accession_number": accessions[i] if i < len(accessions) else None,
                 "filing_date": dates[i] if i < len(dates) else None,
-                "period_ending": None,  # not in submissions API directly
+                "period_ending": None,
                 "form": form,
                 "description": descriptions[i] if i < len(descriptions) else None,
             })
@@ -250,7 +248,6 @@ def search_13f_by_cik(cik: str, max_results: int = 5) -> list[dict]:
 def get_submissions_by_cik(cik: str) -> dict | None:
     """
     Pull filing history for an entity by SEC CIK (zero-padded to 10 digits).
-    E.g. cik='1234567' → fetches CIK0001234567.json
     """
     cik_padded = cik.zfill(10)
     url = EDGAR_SUBMIT.format(cik=cik_padded)

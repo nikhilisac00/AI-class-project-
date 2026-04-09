@@ -24,15 +24,15 @@ st.set_page_config(
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-import agents.data_ingestion  as ingestion_agent
-import agents.fund_analysis   as analysis_agent
-import agents.risk_flagging   as risk_agent
-import agents.memo_generation as memo_agent
-from tools.llm_client import make_client
-from tools.pal_client  import is_available as pal_available, call_consensus
+import agents.data_ingestion  as ingestion_agent  # noqa: E402
+import agents.fund_analysis   as analysis_agent   # noqa: E402
+import agents.risk_flagging   as risk_agent       # noqa: E402
+import agents.memo_generation as memo_agent       # noqa: E402
+from tools.llm_client import make_client          # noqa: E402
+from tools.pal_client  import is_available as pal_available, call_consensus  # noqa: E402
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────────────────────────────────
 
 def _badge(label: str, color: str) -> str:
     return (
@@ -47,7 +47,7 @@ def _tier_color(tier: str) -> str:
     return {"HIGH": "#c0392b", "MEDIUM": "#e67e22", "LOW": "#27ae60"}.get(tier, "#95a5a6")
 
 
-# ── Sidebar ────────────────────────────────────────────────────────────────────
+# ── Sidebar ──────────────────────────────────────────────────────────────────────────────────
 
 with st.sidebar:
     st.title("Settings")
@@ -94,7 +94,7 @@ with st.sidebar:
     st.caption("No hallucination — every fact traces to a real API call")
 
 
-# ── Header ─────────────────────────────────────────────────────────────────────
+# ── Header ───────────────────────────────────────────────────────────────────────────────────
 
 st.title("AI Alternative Investments Research Associate")
 st.caption("Autonomous due diligence — from CRD number to IC-ready memo")
@@ -116,7 +116,7 @@ with st.expander("How it works", expanded=False):
 1. **IAPD** — resolve firm name → CRD → ADV registration data
 2. **SEC EDGAR** — fetch latest 13F-HR filing, parse portfolio value from XML
 3. **FRED** — pull macro context (rates, spreads, VIX)
-4. **Claude Opus 4.6** (extended thinking) — analyze, flag risks, generate memo
+4. **OpenAI GPT-4o** — analyze, flag risks, generate memo
 5. *(optional)* **PAL MCP** — Gemini-3-Pro consensus validation of risk flags
 
 **No hallucination:** `null` is returned for any missing field. Data gaps are surfaced explicitly in the memo.
@@ -126,7 +126,7 @@ with st.expander("How it works", expanded=False):
 st.divider()
 
 
-# ── Run pipeline ───────────────────────────────────────────────────────────────
+# ── Run pipeline ─────────────────────────────────────────────────────────────────────────────
 
 if run_button:
     if not api_key:
@@ -152,12 +152,12 @@ if run_button:
         if raw_data.get("errors"):
             st.warning("Ingestion notes: " + " | ".join(raw_data["errors"]))
 
-        status_box.info("Step 2/5 — Fund analysis (Claude + extended thinking)...")
+        status_box.info("Step 2/5 — Fund analysis (GPT-4o)...")
         progress_bar.progress(35, text="Analyzing...")
         analysis = analysis_agent.run(raw_data, client)
         progress_bar.progress(55, text="Analysis complete")
 
-        status_box.info("Step 3/5 — Risk flagging (Claude + extended thinking)...")
+        status_box.info("Step 3/5 — Risk flagging (GPT-4o)...")
         progress_bar.progress(58, text="Flagging risks...")
         risk_report = risk_agent.run(analysis, raw_data, client)
         progress_bar.progress(75, text="Risk flagging complete")
@@ -174,7 +174,7 @@ if run_button:
             )
             progress_bar.progress(85, text="PAL complete")
 
-        status_box.info("Step 4/5 — Generating DD memo (Claude + extended thinking)...")
+        status_box.info("Step 4/5 — Generating DD memo (GPT-4o)...")
         progress_bar.progress(87, text="Generating memo...")
         memo = memo_agent.run(analysis, risk_report, raw_data, client)
         progress_bar.progress(100, text="Done")
@@ -185,7 +185,7 @@ if run_button:
         st.exception(e)
         st.stop()
 
-    # ── Save outputs ──────────────────────────────────────────────────────────
+    # ── Save outputs ────────────────────────────────────────────────────────────────────────────────
     firm_name = (
         (analysis or {}).get("firm_overview", {}).get("name")
         or firm_input.strip()
@@ -209,7 +209,7 @@ if run_button:
                 json.dumps(obj, indent=2, default=str), encoding="utf-8"
             )
 
-    # ── Extract display fields ────────────────────────────────────────────────
+    # ── Extract display fields ────────────────────────────────────────────────────────────────────────────
     adv     = (raw_data  or {}).get("adv_summary",  {})
     adv_xml = (raw_data  or {}).get("adv_xml_data", {})
     ov      = (analysis  or {}).get("firm_overview", {})
@@ -219,7 +219,7 @@ if run_button:
     macro   = (raw_data  or {}).get("market_context", {})
     tier    = (risk_report or {}).get("overall_risk_tier", "UNKNOWN")
 
-    # ── ① Firm Identity Header ────────────────────────────────────────────────
+    # ── ① Firm Identity Header ────────────────────────────────────────────────────────────────────────
     st.subheader(firm_name)
 
     reg_status = adv.get("registration_status") or ov.get("registration_status")
@@ -242,10 +242,14 @@ if run_button:
         st.markdown(" ".join(identity_parts), unsafe_allow_html=True)
 
     meta_parts = []
-    if crd_str:  meta_parts.append(f"CRD: **{crd_str}**")
-    if sec_str:  meta_parts.append(f"SEC: **{sec_str}**")
-    if city and state_str: meta_parts.append(f"**{city}, {state_str}**")
-    if adv_date: meta_parts.append(f"Latest ADV: **{adv_date}**")
+    if crd_str:
+        meta_parts.append(f"CRD: **{crd_str}**")
+    if sec_str:
+        meta_parts.append(f"SEC: **{sec_str}**")
+    if city and state_str:
+        meta_parts.append(f"**{city}, {state_str}**")
+    if adv_date:
+        meta_parts.append(f"Latest ADV: **{adv_date}**")
     if meta_parts:
         st.caption("  ·  ".join(meta_parts))
 
@@ -253,7 +257,7 @@ if run_button:
     if notice_states:
         st.caption(f"Notice filings in: {', '.join(notice_states)}")
 
-    # ── ② Key Metric Cards ────────────────────────────────────────────────────
+    # ── ② Key Metric Cards ────────────────────────────────────────────────────────────────────────────
     st.markdown("---")
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric(
@@ -280,7 +284,7 @@ if run_button:
         help="Overall LP due diligence risk tier from risk flagging agent",
     )
 
-    # ── ③ Source & Brochure Captions ─────────────────────────────────────────
+    # ── ③ Source & Brochure Captions ───────────────────────────────────────────────────────────────────────
     if tf.get("accession") and tf.get("cik"):
         acc_clean  = tf["accession"].replace("-", "")
         filing_url = (
@@ -303,9 +307,9 @@ if run_button:
             "PDF at adviserinfo.sec.gov"
         )
 
-    # ── ④ Disclosure Banner ───────────────────────────────────────────────────
+    # ── ④ Disclosure Banner ──────────────────────────────────────────────────────────────────────────────
     if discl:
-        import pandas as pd
+        import pandas as pd  # noqa: PLC0415
         with st.expander(
             f"Disclosure Events ({len(discl)}) — from IAPD", expanded=False
         ):
@@ -322,28 +326,30 @@ if run_button:
             "Visit adviserinfo.sec.gov for full details."
         )
 
-    # ── ⑤ Macro Context Panel ────────────────────────────────────────────────
+    # ── ⑤ Macro Context Panel ──────────────────────────────────────────────────────────────────────────
     if macro:
         st.markdown("---")
         st.caption("**Market Context** (FRED — latest readings)")
         m1, m2, m3, m4, m5 = st.columns(5)
-        def _m(series): return macro.get(series, {}).get("latest") or "—"
+
+        def _m(series):
+            return macro.get(series, {}).get("latest") or "—"
+
         m1.metric("Fed Funds",  _m("fed_funds_rate") + "%"  if _m("fed_funds_rate") != "—" else "—")
         m2.metric("10Y Yield",  _m("ten_yr_yield")   + "%"  if _m("ten_yr_yield")   != "—" else "—")
         m3.metric("HY Spread",  _m("hy_spread")             if _m("hy_spread")      != "—" else "—")
         m4.metric("IG Spread",  _m("ig_spread")             if _m("ig_spread")      != "—" else "—")
         m5.metric("VIX",        _m("vix")                   if _m("vix")            != "—" else "—")
 
-    # ── ⑥ Results Tabs ────────────────────────────────────────────────────────
+    # ── ⑥ Results Tabs ───────────────────────────────────────────────────────────────────────────────────
     st.markdown("---")
     tab_risk, tab_memo, tab_pal, tab_raw = st.tabs([
         "Risk Dashboard", "DD Memo", "PAL Consensus", "Raw Data",
     ])
 
-    # ─ Risk Dashboard ──────────────────────────────────────────────────────────
+    # ─ Risk Dashboard ─────────────────────────────────────────────────────────────────────────────────────
     with tab_risk:
         if risk_report:
-            # Risk tier banner
             tier_c = _tier_color(tier)
             st.markdown(
                 f'<div style="background:{tier_c};color:#fff;padding:10px 16px;'
@@ -358,7 +364,6 @@ if run_button:
 
             flags = risk_report.get("flags", [])
             if flags:
-                # Sort: HIGH → MEDIUM → LOW
                 order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
                 flags_sorted = sorted(flags, key=lambda f: order.get(f.get("severity",""), 9))
 
@@ -395,7 +400,7 @@ if run_button:
         else:
             st.warning("Risk report not available.")
 
-    # ─ DD Memo ─────────────────────────────────────────────────────────────────
+    # ─ DD Memo ──────────────────────────────────────────────────────────────────────────────────────
     with tab_memo:
         if memo:
             dl1, dl2 = st.columns(2)
@@ -425,7 +430,7 @@ if run_button:
         else:
             st.warning("Memo not generated.")
 
-    # ─ PAL Consensus ───────────────────────────────────────────────────────────
+    # ─ PAL Consensus ──────────────────────────────────────────────────────────────────────────────────
     with tab_pal:
         if pal_review:
             st.subheader("PAL Multi-Model Consensus Review")
@@ -439,7 +444,7 @@ if run_button:
                 "risk flags with Gemini-3-Pro via PAL MCP."
             )
 
-    # ─ Raw Data ────────────────────────────────────────────────────────────────
+    # ─ Raw Data ──────────────────────────────────────────────────────────────────────────────────────
     with tab_raw:
         if raw_data:
             with st.expander("13F XML Data (EDGAR)", expanded=True):
@@ -453,5 +458,5 @@ if run_button:
             with st.expander("Ingestion Errors / Notes"):
                 st.json(raw_data.get("errors", []))
         if analysis:
-            with st.expander("Structured Analysis (Claude output)"):
+            with st.expander("Structured Analysis (GPT-4o output)"):
                 st.json(analysis)
