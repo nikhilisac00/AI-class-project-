@@ -235,7 +235,7 @@ Return ONLY a JSON object with this exact schema (null for any missing field):
 }}
 """
 
-    print(f"[Fund Analysis] Calling {client.provider} ({client.model}) with extended thinking...")
+    print(f"[Fund Analysis] Calling {client.provider} ({client.model})...")
     return client.complete_json(
         system=SYSTEM_PROMPT,
         user=user_message,

@@ -488,7 +488,7 @@ def _fetch_13f_quarters(cik: str, n_quarters: int = 8) -> list[dict]:
     return history
 
 
-def _get_13f_portfolio_value(firm_name: str) -> dict:
+def get_13f_portfolio_value(firm_name: str) -> dict:
     """
     Find the most recent 13F-HR filing and extract total portfolio value.
     Uses EFTS to resolve CIK, then EDGAR submissions API for the latest filing.
@@ -686,7 +686,7 @@ def fetch_adv_data(firm_name: str, iacontent: dict = None) -> dict:
 
     # 13F portfolio value (latest)
     print(f"[ADV Enrichment] Fetching 13F data for '{firm_name}'")
-    result["thirteenf"] = _get_13f_portfolio_value(firm_name)
+    result["thirteenf"] = get_13f_portfolio_value(firm_name)
 
     # 13F history — reuse the CIK already resolved above (no second EFTS search)
     cik = result["thirteenf"].get("cik")

@@ -10,7 +10,7 @@ Usage:
     python main.py "Two Sigma"     --output-dir ./output/memos
 
 Data sources: SEC EDGAR (IAPD/ADV + 13F), FRED API
-Model: Claude Sonnet 4.6
+Model: OpenAI GPT-4o
 """
 
 import argparse
@@ -41,16 +41,20 @@ console = Console()
 
 
 def validate_env() -> str:
-    key = os.getenv("ANTHROPIC_API_KEY")
+    key = os.getenv("OPENAI_API_KEY")
     if not key:
-        console.print("[bold red]Error:[/] ANTHROPIC_API_KEY not set. Add it to .env")
+        console.print("[bold red]Error:[/] OPENAI_API_KEY not set. Add it to .env")
         sys.exit(1)
     return key
 
 
 def save_outputs(firm_name: str, raw_data: dict, analysis: dict,
                  risk_report: dict, memo: str, output_dir: str):
-    """Save all agent outputs to timestamped files."""
+    """Save all agent outputs to timestamped files.
+
+    Returns (memo_path, ts, safe_name) so callers can reuse the same
+    timestamp prefix for additional output files.
+    """
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_name = "".join(c if c.isalnum() or c in "_ -" else "_" for c in firm_name)[:40]
     base = Path(output_dir) / f"{ts}_{safe_name}"
@@ -68,7 +72,7 @@ def save_outputs(firm_name: str, raw_data: dict, analysis: dict,
     memo_path = base.parent / f"{base.name}_DD_MEMO.md"
     memo_path.write_text(memo, encoding="utf-8")
 
-    return memo_path
+    return memo_path, ts, safe_name
 
 
 def print_risk_summary(risk_report: dict):
@@ -131,12 +135,6 @@ def main():
         action="store_true",
         help="Skip news research agent (faster; requires no TAVILY_API_KEY)",
     )
-    parser.add_argument(
-        "--news-rounds",
-        type=int,
-        default=3,
-        help="Max research rounds for news agent (default: 3)",
-    )
     args = parser.parse_args()
 
     api_key = validate_env()
@@ -148,7 +146,7 @@ def main():
     console.print(Panel(
         f"[bold]AI Alternatives Research Associate[/]\n"
         f"Target: [cyan]{args.firm}[/]\n"
-        f"Model: Claude Sonnet 4.6\n"
+        f"Model: GPT-4o\n"
         f"Sources: IAPD · SEC EDGAR · {'FRED' if not args.no_fred else 'FRED skipped'}"
         f" · {'News (' + ('Tavily' if tavily_key else 'DuckDuckGo') + ')' if not args.no_news else 'News skipped'}",
         title="Starting Analysis",
@@ -187,7 +185,7 @@ def main():
     # ── Agent 2: Fund Analysis ────────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Running fund analysis (Claude reasoning)...", total=None)
+        task = p.add_task("Running fund analysis (GPT-4o reasoning)...", total=None)
         analysis = analysis_agent.run(raw_data, client)
         p.update(task, description="Fund analysis complete", completed=True)
 
@@ -197,8 +195,7 @@ def main():
         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                       console=console) as p:
             task = p.add_task(
-                f"Deep news research ({args.news_rounds} rounds, "
-                f"{'Tavily' if tavily_key else 'DuckDuckGo'})...",
+                f"Deep news research ({'Tavily' if tavily_key else 'DuckDuckGo'})...",
                 total=None,
             )
             news_report = news_agent.run(
@@ -206,7 +203,6 @@ def main():
                 analysis=analysis,
                 client=client,
                 tavily_api_key=tavily_key,
-                max_rounds=args.news_rounds,
             )
             p.update(task, description=(
                 f"News research complete — "
@@ -230,7 +226,7 @@ def main():
     # ── Agent 4: Risk Flagging ────────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Running risk flagging (Claude reasoning)...", total=None)
+        task = p.add_task("Running risk flagging (GPT-4o reasoning)...", total=None)
         risk_report = risk_agent.run(analysis, raw_data, client, news_report=news_report)
         p.update(task, description="Risk flagging complete", completed=True)
 
@@ -239,7 +235,7 @@ def main():
     # ── Agent 5: Memo Generation ──────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Generating DD memo (Claude reasoning)...", total=None)
+        task = p.add_task("Generating DD memo (GPT-4o reasoning)...", total=None)
         memo = memo_agent.run(analysis, risk_report, raw_data, client,
                               news_report=news_report)
         p.update(task, description="Memo generation complete", completed=True)
@@ -247,7 +243,7 @@ def main():
     # ── Agent 6: IC Scorecard ─────────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Generating IC Scorecard (Claude reasoning)...", total=None)
+        task = p.add_task("Generating IC Scorecard (GPT-4o reasoning)...", total=None)
         scorecard = scorecard_agent.run(analysis, risk_report, raw_data, client,
                                         news_report=news_report)
         p.update(task, description="IC Scorecard complete", completed=True)
@@ -262,11 +258,9 @@ def main():
         console.print(f"[dim]{scorecard['recommendation_summary']}[/]")
 
     # ── Save outputs ──────────────────────────────────────────────────────────
-    memo_path = save_outputs(
+    memo_path, ts, safe_name = save_outputs(
         firm_name, raw_data, analysis, risk_report, memo, args.output_dir
     )
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    safe_name = "".join(c if c.isalnum() or c in "_ -" else "_" for c in firm_name)[:40]
     if news_report:
         news_path = Path(args.output_dir) / f"{ts}_{safe_name}_news_report.json"
         news_path.write_text(json.dumps(news_report, indent=2, default=str), encoding="utf-8")
@@ -287,7 +281,7 @@ def main():
     # ── Agent 8: Research Director ────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
-        task = p.add_task("Research Director review (Claude reasoning)...", total=None)
+        task = p.add_task("Research Director review (GPT-4o reasoning)...", total=None)
         director_review = director_agent.run(
             analysis, risk_report, raw_data, scorecard, client,
             news_report=news_report,

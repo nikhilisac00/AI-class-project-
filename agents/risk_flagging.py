@@ -169,7 +169,7 @@ Return ONLY a JSON object:
 }}
 """
 
-    print(f"[Risk Flagging] Calling {client.provider} ({client.model}) with extended thinking...")
+    print(f"[Risk Flagging] Calling {client.provider} ({client.model})...")
     return client.complete_json(
         system=SYSTEM_PROMPT,
         user=user_message,

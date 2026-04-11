@@ -13,7 +13,7 @@ score and rank by similarity to the target firm.
 """
 
 from tools.edgar_client import search_adviser_by_name, get_adviser_detail, extract_adv_summary
-from tools.adv_parser import _get_13f_portfolio_value
+from tools.adv_parser import get_13f_portfolio_value
 
 
 def _extract_keywords(firm_name: str) -> list[str]:
@@ -152,7 +152,7 @@ def run(firm_name: str, adv_summary: dict, raw_data: dict,
             summary = extract_adv_summary(detail, search_hit=c)
 
             # Quick 13F lookup (no XML parsing — just portfolio value)
-            thirteenf = _get_13f_portfolio_value(name)
+            thirteenf = get_13f_portfolio_value(name)
 
             peers.append(_make_row(name, summary, thirteenf))
         except Exception:

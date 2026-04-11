@@ -16,6 +16,7 @@ Output:
 """
 
 import json
+
 from tools.llm_client import LLMClient
 from tools import web_search_client
 
@@ -136,20 +137,18 @@ def run(
     analysis: dict = None,
     client: LLMClient = None,
     tavily_api_key: str = None,
-    max_rounds: int = 3,          # kept for API compatibility, agent self-terminates
-    queries_per_round: int = 5,   # kept for API compatibility
+    **_,
 ) -> dict:
-    """
-    Run the news research agent.
+    """Run the news research agent.
 
     Args:
-        firm_name     : resolved firm name
-        analysis      : fund_analysis output (provides context — fund names, personnel)
-        client        : LLMClient instance
-        tavily_api_key: Tavily API key
-        max_rounds    : unused (agent decides when to stop), kept for compatibility
+        firm_name:      Resolved firm name.
+        analysis:       fund_analysis output (provides context — fund names, personnel).
+        client:         LLMClient instance.
+        tavily_api_key: Tavily API key.
 
-    Returns news_report dict.
+    Returns:
+        news_report dict.
     """
     news_report = {
         "firm_name":         firm_name,

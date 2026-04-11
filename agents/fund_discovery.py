@@ -17,7 +17,7 @@ Output: same shape as before so downstream agents need no changes:
 """
 
 import json
-import re
+
 from tools.llm_client import LLMClient
 from tools.formd_client import search_funds_for_gp
 from tools import web_search_client
