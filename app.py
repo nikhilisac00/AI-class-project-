@@ -484,8 +484,9 @@ import agents.research_director as director_agent    # noqa: E402
 import agents.comparables       as comparables_agent  # noqa: E402
 import agents.comparison        as comparison_agent   # noqa: E402
 import agents.portfolio_fit     as portfolio_fit_agent # noqa: E402
-from tools.llm_client import make_client              # noqa: E402
-from tools.pal_client  import is_available as pal_available, call_consensus  # noqa: E402
+from tools.llm_client    import make_client              # noqa: E402
+from tools.pal_client    import is_available as pal_available, call_consensus  # noqa: E402
+from tools.reconciliation import run_all as reconcile_sources  # noqa: E402
 try:
     from tools.memo_export import to_docx, to_pdf    # noqa: E402
 except ImportError:
@@ -1022,10 +1023,20 @@ if run_button:
         if raw_data.get("errors"):
             st.warning("Ingestion notes: " + " | ".join(raw_data["errors"]))
 
-        status_box.info(f"⏳ Step 2 — Analyzing firm structure · {_ingest_summary} · Running Claude reasoning...")
+        status_box.info(f"⏳ Step 2 — Analyzing firm structure · {_ingest_summary} · Running GPT-4o reasoning...")
         analysis = analysis_agent.run(raw_data, client)
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Analysis complete")
+
+        # Cross-source reconciliation (13F vs ADV AUM, Form D vs ADV fund count)
+        recon_results = reconcile_sources(analysis, raw_data)
+        raw_data["reconciliation"] = recon_results
+        recon_warns = [r for r in recon_results if r["status"] == "WARN"]
+        if recon_warns:
+            status_box.warning(
+                f"⚠ Data reconciliation: {len(recon_warns)} discrepancy(ies) flagged — "
+                + " | ".join(r["check"] for r in recon_warns)
+            )
 
         firm_name_resolved = (
             (analysis or {}).get("firm_overview", {}).get("name")

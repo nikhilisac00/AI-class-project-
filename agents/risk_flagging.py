@@ -12,6 +12,7 @@ An LP risk analyst needs to understand:
 
 import json
 from tools.llm_client import LLMClient
+from tools.schemas import validate_risk_report, format_validation_errors
 
 
 SYSTEM_PROMPT = """You are a risk analyst at a $15B institutional LP (pension fund).
@@ -170,9 +171,25 @@ Return ONLY a JSON object:
 """
 
     print(f"[Risk Flagging] Calling {client.provider} ({client.model})...")
-    return client.complete_json(
+    result = client.complete_json(
         system=SYSTEM_PROMPT,
         user=user_message,
         max_tokens=8000,
         thinking_tokens=6000,
     )
+
+    errors = validate_risk_report(result)
+    if errors:
+        print(f"[Risk Flagging] Schema validation failed ({len(errors)} errors) — retrying...")
+        retry_message = user_message + format_validation_errors(errors)
+        result = client.complete_json(
+            system=SYSTEM_PROMPT,
+            user=retry_message,
+            max_tokens=6000,
+            thinking_tokens=4000,
+        )
+        remaining = validate_risk_report(result)
+        if remaining:
+            print(f"[Risk Flagging] Retry still has {len(remaining)} schema errors: {remaining}")
+
+    return result

@@ -1,6 +1,6 @@
 """
 AI Alternative Investments Research Associate
-=============================================
+===
 Autonomous agent system that produces LP-grade due diligence memos.
 
 Usage:
@@ -34,27 +34,24 @@ import agents.memo_generation as memo_agent
 import agents.ic_scorecard      as scorecard_agent
 import agents.research_director as director_agent
 import agents.comparables       as comparables_agent
-from tools.llm_client import make_client
+from tools.llm_client    import make_client
+from tools.reconciliation import run_all as reconcile_sources
 
 load_dotenv()
 console = Console()
 
 
 def validate_env() -> str:
-    key = os.getenv("OPENAI_API_KEY")
+    key = os.getenv("ANTHROPIC_API_KEY")
     if not key:
-        console.print("[bold red]Error:[/] OPENAI_API_KEY not set. Add it to .env")
+        console.print("[bold red]Error:[/] ANTHROPIC_API_KEY not set. Add it to .env")
         sys.exit(1)
     return key
 
 
 def save_outputs(firm_name: str, raw_data: dict, analysis: dict,
                  risk_report: dict, memo: str, output_dir: str):
-    """Save all agent outputs to timestamped files.
-
-    Returns (memo_path, ts, safe_name) so callers can reuse the same
-    timestamp prefix for additional output files.
-    """
+    """Save all agent outputs to timestamped files."""
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_name = "".join(c if c.isalnum() or c in "_ -" else "_" for c in firm_name)[:40]
     base = Path(output_dir) / f"{ts}_{safe_name}"
@@ -72,7 +69,7 @@ def save_outputs(firm_name: str, raw_data: dict, analysis: dict,
     memo_path = base.parent / f"{base.name}_DD_MEMO.md"
     memo_path.write_text(memo, encoding="utf-8")
 
-    return memo_path, ts, safe_name
+    return memo_path
 
 
 def print_risk_summary(risk_report: dict):
@@ -128,12 +125,18 @@ def main():
     parser.add_argument(
         "--raw-only",
         action="store_true",
-        help="Only run data ingestion, skip LLM analysis",
+        help="Only run data ingestion, skip Claude analysis",
     )
     parser.add_argument(
         "--no-news",
         action="store_true",
         help="Skip news research agent (faster; requires no TAVILY_API_KEY)",
+    )
+    parser.add_argument(
+        "--news-rounds",
+        type=int,
+        default=3,
+        help="Max research rounds for news agent (default: 3)",
     )
     args = parser.parse_args()
 
@@ -146,7 +149,7 @@ def main():
     console.print(Panel(
         f"[bold]AI Alternatives Research Associate[/]\n"
         f"Target: [cyan]{args.firm}[/]\n"
-        f"Model: GPT-4o\n"
+        f"Model: OpenAI GPT-4o\n"
         f"Sources: IAPD · SEC EDGAR · {'FRED' if not args.no_fred else 'FRED skipped'}"
         f" · {'News (' + ('Tavily' if tavily_key else 'DuckDuckGo') + ')' if not args.no_news else 'News skipped'}",
         title="Starting Analysis",
@@ -157,12 +160,7 @@ def main():
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Ingesting data from EDGAR / IAPD / FRED...", total=None)
-        raw_data = ingestion_agent.run(
-            args.firm,
-            fred_api_key=fred_key,
-            client=client,
-            tavily_key=tavily_key,
-        )
+        raw_data = ingestion_agent.run(args.firm, fred_api_key=fred_key)
         p.update(task, description="Data ingestion complete", completed=True)
 
     firm_name = (
@@ -183,19 +181,30 @@ def main():
         return
 
     # ── Agent 2: Fund Analysis ────────────────────────────────────────────────
+
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Running fund analysis (GPT-4o reasoning)...", total=None)
         analysis = analysis_agent.run(raw_data, client)
         p.update(task, description="Fund analysis complete", completed=True)
 
-    # ── Agent 3: News Research ────────────────────────────────────────────────
+    # Cross-source reconciliation
+    recon_results = reconcile_sources(analysis, raw_data)
+    raw_data["reconciliation"] = recon_results
+    for r in recon_results:
+        icon = {"PASS": "✓", "WARN": "⚠", "FAIL": "✗", "SKIP": "–"}.get(r["status"], "?")
+        console.print(f"  [dim]{icon} {r['check']}: {r['status']} — {r['detail'][:80]}...[/dim]"
+                      if len(r["detail"]) > 80 else
+                      f"  [dim]{icon} {r['check']}: {r['status']} — {r['detail']}[/dim]")
+
+    # ── Agent 3: News Research (Karpathy autoresearch) ────────────────────────
     news_report = None
     if not args.no_news:
         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                       console=console) as p:
             task = p.add_task(
-                f"Deep news research ({'Tavily' if tavily_key else 'DuckDuckGo'})...",
+                f"Deep news research ({args.news_rounds} rounds, "
+                f"{'Tavily' if tavily_key else 'DuckDuckGo'})...",
                 total=None,
             )
             news_report = news_agent.run(
@@ -203,6 +212,7 @@ def main():
                 analysis=analysis,
                 client=client,
                 tavily_api_key=tavily_key,
+                max_rounds=args.news_rounds,
             )
             p.update(task, description=(
                 f"News research complete — "
@@ -258,9 +268,11 @@ def main():
         console.print(f"[dim]{scorecard['recommendation_summary']}[/]")
 
     # ── Save outputs ──────────────────────────────────────────────────────────
-    memo_path, ts, safe_name = save_outputs(
+    memo_path = save_outputs(
         firm_name, raw_data, analysis, risk_report, memo, args.output_dir
     )
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_name = "".join(c if c.isalnum() or c in "_ -" else "_" for c in firm_name)[:40]
     if news_report:
         news_path = Path(args.output_dir) / f"{ts}_{safe_name}_news_report.json"
         news_path.write_text(json.dumps(news_report, indent=2, default=str), encoding="utf-8")

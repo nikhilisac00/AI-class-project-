@@ -15,6 +15,7 @@ The reasoning step works through:
 import copy
 import json
 from tools.llm_client import LLMClient
+from tools.schemas import validate_analysis, format_validation_errors
 
 
 SYSTEM_PROMPT = """You are a senior alternatives research analyst at a large institutional LP
@@ -236,9 +237,25 @@ Return ONLY a JSON object with this exact schema (null for any missing field):
 """
 
     print(f"[Fund Analysis] Calling {client.provider} ({client.model})...")
-    return client.complete_json(
+    result = client.complete_json(
         system=SYSTEM_PROMPT,
         user=user_message,
         max_tokens=8000,
         thinking_tokens=3000,
     )
+
+    errors = validate_analysis(result)
+    if errors:
+        print(f"[Fund Analysis] Schema validation failed ({len(errors)} errors) — retrying...")
+        retry_message = user_message + format_validation_errors(errors)
+        result = client.complete_json(
+            system=SYSTEM_PROMPT,
+            user=retry_message,
+            max_tokens=8000,
+            thinking_tokens=5000,
+        )
+        remaining = validate_analysis(result)
+        if remaining:
+            print(f"[Fund Analysis] Retry still has {len(remaining)} schema errors: {remaining}")
+
+    return result
