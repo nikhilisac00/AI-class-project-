@@ -236,3 +236,202 @@ class TestFundCountCheck:
         )
         check = _find_check(results, "fund count")
         assert check["status"] == "WARN"
+
+
+# ── TestRiskTierInMemo ─────────────────────────────────────────────────────────
+
+class TestRiskTierInMemo:
+    def test_pass(self):
+        """Risk tier 'MEDIUM' appears in SAMPLE_MEMO — should PASS."""
+        results = run_deterministic_checks(
+            _make_analysis(), _make_risk_report(tier="MEDIUM"), _make_raw_data(),
+            _make_scorecard(), SAMPLE_MEMO
+        )
+        check = _find_check(results, "risk tier in memo")
+        assert check["status"] == "PASS"
+
+    def test_fail_missing(self):
+        """Memo text contains no risk tier string — should FAIL."""
+        memo_without_tier = "This memo has no risk tier information."
+        results = run_deterministic_checks(
+            _make_analysis(), _make_risk_report(tier="HIGH"), _make_raw_data(),
+            _make_scorecard(), memo_without_tier
+        )
+        check = _find_check(results, "risk tier in memo")
+        assert check["status"] == "FAIL"
+
+
+# ── TestHighFlagsInMemo ────────────────────────────────────────────────────────
+
+class TestHighFlagsInMemo:
+    def test_pass_all_referenced(self):
+        """HIGH flag with words present in memo — should PASS."""
+        high_flag = {
+            "category": "Regulatory",
+            "severity": "HIGH",
+            "finding": "Undisclosed conflict of interest with affiliated broker",
+            "evidence": "ADV Part 2",
+        }
+        memo_with_flag = SAMPLE_MEMO + "\n| Regulatory | HIGH | Undisclosed conflict of interest |"
+        results = run_deterministic_checks(
+            _make_analysis(), _make_risk_report(tier="HIGH", flags=[high_flag]),
+            _make_raw_data(), _make_scorecard(), memo_with_flag
+        )
+        check = _find_check(results, "high flags in memo")
+        assert check["status"] == "PASS"
+
+    def test_fail_flag_missing(self):
+        """HIGH flag whose words don't appear in memo — should FAIL."""
+        high_flag = {
+            "category": "Operational",
+            "severity": "HIGH",
+            "finding": "Missing audited financials for three consecutive years",
+            "evidence": "EDGAR",
+        }
+        memo_no_flag = "This memo discusses the firm's investment strategy only."
+        results = run_deterministic_checks(
+            _make_analysis(), _make_risk_report(tier="HIGH", flags=[high_flag]),
+            _make_raw_data(), _make_scorecard(), memo_no_flag
+        )
+        check = _find_check(results, "high flags in memo")
+        assert check["status"] == "FAIL"
+
+    def test_pass_no_high_flags(self):
+        """No HIGH flags exist — should PASS immediately."""
+        results = run_deterministic_checks(
+            _make_analysis(), _make_risk_report(tier="MEDIUM"), _make_raw_data(),
+            _make_scorecard(), SAMPLE_MEMO
+        )
+        check = _find_check(results, "high flags in memo")
+        assert check["status"] == "PASS"
+
+
+# ── TestPortfolioValueInMemo ───────────────────────────────────────────────────
+
+class TestPortfolioValueInMemo:
+    def test_pass(self):
+        """Portfolio value '$5.00B' appears in SAMPLE_MEMO — should PASS."""
+        results = run_deterministic_checks(
+            _make_analysis(portfolio_value="$5.00B"), _make_risk_report(),
+            _make_raw_data(), _make_scorecard(), SAMPLE_MEMO
+        )
+        check = _find_check(results, "portfolio value in memo")
+        assert check["status"] == "PASS"
+
+    def test_warn_missing(self):
+        """Portfolio value not in memo — should WARN."""
+        memo_no_value = "This memo does not mention any portfolio value."
+        results = run_deterministic_checks(
+            _make_analysis(portfolio_value="$9.00B"), _make_risk_report(),
+            _make_raw_data(), _make_scorecard(), memo_no_value
+        )
+        check = _find_check(results, "portfolio value in memo")
+        assert check["status"] == "WARN"
+
+
+# ── TestRegistrationStatusInMemo ──────────────────────────────────────────────
+
+class TestRegistrationStatusInMemo:
+    def test_pass(self):
+        """Registration status 'Active' appears in SAMPLE_MEMO — should PASS."""
+        results = run_deterministic_checks(
+            _make_analysis(reg_status="Active"), _make_risk_report(),
+            _make_raw_data(), _make_scorecard(), SAMPLE_MEMO
+        )
+        check = _find_check(results, "registration in memo")
+        assert check["status"] == "PASS"
+
+    def test_warn_missing(self):
+        """Registration status not found in memo — should WARN."""
+        memo_no_status = "This memo covers only fund performance data."
+        results = run_deterministic_checks(
+            _make_analysis(reg_status="Active"), _make_risk_report(),
+            _make_raw_data(), _make_scorecard(), memo_no_status
+        )
+        check = _find_check(results, "registration in memo")
+        assert check["status"] == "WARN"
+
+
+# ── TestRiskTierVsFlags ────────────────────────────────────────────────────────
+
+class TestRiskTierVsFlags:
+    def test_pass_medium_with_medium_flags(self):
+        """MEDIUM tier with only MEDIUM flags — should PASS."""
+        results = run_deterministic_checks(
+            _make_analysis(), _make_risk_report(tier="MEDIUM"), _make_raw_data(),
+            _make_scorecard(), SAMPLE_MEMO
+        )
+        check = _find_check(results, "risk tier vs flags")
+        assert check["status"] == "PASS"
+
+    def test_fail_low_with_high_flags(self):
+        """LOW tier but a HIGH flag exists — should FAIL."""
+        high_flag = {
+            "category": "Fraud",
+            "severity": "HIGH",
+            "finding": "Fraudulent activity reported",
+            "evidence": "SEC enforcement",
+        }
+        results = run_deterministic_checks(
+            _make_analysis(), _make_risk_report(tier="LOW", flags=[high_flag]),
+            _make_raw_data(), _make_scorecard(), SAMPLE_MEMO
+        )
+        check = _find_check(results, "risk tier vs flags")
+        assert check["status"] == "FAIL"
+
+    def test_pass_high_with_high_flags(self):
+        """HIGH tier with HIGH flags — consistent, should PASS."""
+        high_flags = [
+            {"category": "Fraud", "severity": "HIGH", "finding": "Enforcement action", "evidence": "SEC"},
+            {"category": "Ops", "severity": "HIGH", "finding": "Missing controls", "evidence": "ADV"},
+        ]
+        results = run_deterministic_checks(
+            _make_analysis(), _make_risk_report(tier="HIGH", flags=high_flags),
+            _make_raw_data(), _make_scorecard(), SAMPLE_MEMO
+        )
+        check = _find_check(results, "risk tier vs flags")
+        assert check["status"] == "PASS"
+
+
+# ── TestScorecardVsRiskTier ────────────────────────────────────────────────────
+
+class TestScorecardVsRiskTier:
+    def test_pass_consistent(self):
+        """'PROCEED WITH CAUTION' with HIGH tier — not a PROCEED-without-CAUTION case, PASS."""
+        results = run_deterministic_checks(
+            _make_analysis(), _make_risk_report(tier="HIGH"),
+            _make_raw_data(), _make_scorecard(rec="PROCEED WITH CAUTION"), SAMPLE_MEMO
+        )
+        check = _find_check(results, "scorecard vs risk tier")
+        assert check["status"] == "PASS"
+
+    def test_warn_proceed_with_high_risk(self):
+        """'PROCEED' (no CAUTION) with HIGH tier — should WARN."""
+        results = run_deterministic_checks(
+            _make_analysis(), _make_risk_report(tier="HIGH"),
+            _make_raw_data(), _make_scorecard(rec="PROCEED"), SAMPLE_MEMO
+        )
+        check = _find_check(results, "scorecard vs risk tier")
+        assert check["status"] == "WARN"
+
+
+# ── TestHoldingsCountConsistency ──────────────────────────────────────────────
+
+class TestHoldingsCountConsistency:
+    def test_pass(self):
+        """Both raw and analysis have matching holdings count — should PASS."""
+        results = run_deterministic_checks(
+            _make_analysis(holdings_count=200), _make_risk_report(),
+            _make_raw_data(holdings_count=200), _make_scorecard(), SAMPLE_MEMO
+        )
+        check = _find_check(results, "holdings count")
+        assert check["status"] == "PASS"
+
+    def test_fail_mismatch(self):
+        """Raw has 200 holdings, analysis claims 350 — should FAIL."""
+        results = run_deterministic_checks(
+            _make_analysis(holdings_count=350), _make_risk_report(),
+            _make_raw_data(holdings_count=200), _make_scorecard(), SAMPLE_MEMO
+        )
+        check = _find_check(results, "holdings count")
+        assert check["status"] == "FAIL"
