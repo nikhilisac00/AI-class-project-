@@ -7,125 +7,172 @@ parsing the LLM response and retry once with the error list appended if invalid.
 """
 
 from __future__ import annotations
-from typing import Any
+
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
 
 
-# ── Required top-level keys ──────────────────────────────────────────────────
+# ── Fund Analysis Models ─────────────────────────────────────────────────────
 
-ANALYSIS_REQUIRED_KEYS = {
-    "firm_overview",
-    "fee_structure",
-    "key_personnel",
-    "regulatory_disclosures",
-    "13f_filings",
-    "macro_context_snapshot",
-    "funds_analysis",
-    "data_quality_flags",
-}
+class FirmOverview(BaseModel):
+    """Firm overview from fund analysis agent."""
 
-RISK_REQUIRED_KEYS = {
-    "overall_risk_tier",
-    "flags",
-    "clean_items",
-    "critical_data_gaps",
-    "overall_commentary",
-}
+    model_config = {"extra": "allow"}
 
-VALID_SEVERITIES  = {"HIGH", "MEDIUM", "LOW"}
-VALID_RISK_TIERS  = {"HIGH", "MEDIUM", "LOW"}
-VALID_FLAG_CATEGORIES = {
-    "Regulatory", "Concentration", "Key Person", "Fee/Structure",
-    "Disclosure", "Data Gap", "Operational", "Fund Structure",
-}
-REQUIRED_FLAG_KEYS = {"category", "severity", "finding", "evidence", "lp_action"}
+    name: str | None = None
+    crd: str | None = None
+    sec_number: str | None = None
+    registration_status: str | None = None
+    registration_date: str | None = None
+    headquarters: str | None = None
+    website: str | None = None
+    aum_regulatory: str | None = None
+    aum_note: str | None = None
+    firm_type: str | None = None
+    firm_type_rationale: str | None = None
+    num_clients: int | None = None
+    num_employees: int | None = None
+    num_investment_advisers: int | None = None
+
+
+class FeeStructure(BaseModel):
+    """Fee structure from fund analysis agent."""
+
+    model_config = {"extra": "allow"}
+
+    fee_types: list[str] = Field(default_factory=list)
+    min_account_size: str | None = None
+    notes: str | None = None
+
+
+class KeyPerson(BaseModel):
+    """A key person entry from fund analysis agent."""
+
+    model_config = {"extra": "allow"}
+
+    name: str | None = None
+    crd: str | None = None
+    titles: list[str] = Field(default_factory=list)
+    ownership_pct: str | None = None
+
+
+class RegulatoryDisclosures(BaseModel):
+    """Regulatory disclosure summary from fund analysis agent."""
+
+    model_config = {"extra": "allow"}
+
+    has_disclosures: bool | None = None
+    disclosure_count: int | None = None
+    disclosure_types: list[str] = Field(default_factory=list)
+    severity_assessment: str | None = None
+    assessment: str | None = None
+
+
+class ThirteenFFilings(BaseModel):
+    """13F filing data from fund analysis agent."""
+
+    model_config = {"extra": "allow"}
+
+    available: bool = False
+    most_recent: str | None = None
+    count_found: int | None = None
+    portfolio_value: str | None = None
+    holdings_count: int | None = None
+    period_of_report: str | None = None
+    strategy_signal: str | None = None
+    note: str | None = None
+
+
+class MacroContextSnapshot(BaseModel):
+    """Macro context from fund analysis agent."""
+
+    model_config = {"extra": "allow"}
+
+    fed_funds_rate: str | None = None
+    hy_spread: str | None = None
+    ten_yr_yield: str | None = None
+    notes: str | None = None
+
+
+class FundsAnalysis(BaseModel):
+    """Fund discovery analysis from fund analysis agent."""
+
+    model_config = {"extra": "allow"}
+
+    total_funds_found: int | None = None
+    sources_used: list[str] = Field(default_factory=list)
+    funds: list[dict] = Field(default_factory=list)
+    vintage_summary: str | None = None
+    fundraising_pattern: str | None = None
+    notes: str | None = None
+
+
+class FundAnalysisOutput(BaseModel):
+    """Complete output from the fund analysis agent."""
+
+    model_config = {"extra": "allow", "populate_by_name": True}
+
+    firm_overview: FirmOverview = Field(default_factory=FirmOverview)
+    fee_structure: FeeStructure | dict = Field(default_factory=dict)
+    key_personnel: list[KeyPerson | dict] = Field(default_factory=list)
+    regulatory_disclosures: RegulatoryDisclosures | dict = Field(default_factory=dict)
+    thirteenf_filings: ThirteenFFilings | dict = Field(default_factory=dict, alias="13f_filings")
+    macro_context_snapshot: MacroContextSnapshot | dict = Field(default_factory=dict)
+    funds_analysis: FundsAnalysis | dict = Field(default_factory=dict)
+    data_quality_flags: list[str] = Field(default_factory=list)
+    analyst_notes: str | None = None
+
+
+# ── Risk Flagging Models ─────────────────────────────────────────────────────
+
+class RiskFlag(BaseModel):
+    """A single risk flag from the risk flagging agent."""
+
+    model_config = {"extra": "allow"}
+
+    category: str
+    severity: Literal["HIGH", "MEDIUM", "LOW"]
+    finding: str
+    evidence: str
+    context: str | None = None
+    lp_action: str
+
+
+class RiskReportOutput(BaseModel):
+    """Complete output from the risk flagging agent."""
+
+    model_config = {"extra": "allow"}
+
+    overall_risk_tier: Literal["HIGH", "MEDIUM", "LOW"]
+    overall_commentary: str = Field(min_length=10)
+    flags: list[RiskFlag]
+    clean_items: list[str] = Field(default_factory=list)
+    critical_data_gaps: list[str] = Field(default_factory=list)
 
 
 # ── Validators ───────────────────────────────────────────────────────────────
 
 def validate_analysis(data: Any) -> list[str]:
     """Validate fund_analysis agent output. Returns list of error strings."""
-    errors: list[str] = []
-
     if not isinstance(data, dict):
         return [f"Expected dict, got {type(data).__name__}"]
-
-    for key in ANALYSIS_REQUIRED_KEYS:
-        if key not in data:
-            errors.append(f"Missing required key: '{key}'")
-
-    # firm_overview checks
-    ov = data.get("firm_overview", {})
-    if not isinstance(ov, dict):
-        errors.append("firm_overview must be a dict")
-    else:
-        for field in ("name", "crd", "registration_status"):
-            if field not in ov:
-                errors.append(f"firm_overview missing field: '{field}'")
-
-    # key_personnel must be a list
-    kp = data.get("key_personnel")
-    if kp is not None and not isinstance(kp, list):
-        errors.append("key_personnel must be a list")
-
-    # 13f_filings checks
-    tf = data.get("13f_filings", {})
-    if isinstance(tf, dict):
-        if "available" not in tf:
-            errors.append("13f_filings missing field: 'available'")
-
-    # data_quality_flags must be a list
-    dqf = data.get("data_quality_flags")
-    if dqf is not None and not isinstance(dqf, list):
-        errors.append("data_quality_flags must be a list")
-
-    return errors
+    try:
+        FundAnalysisOutput.model_validate(data)
+        return []
+    except Exception as exc:
+        return [str(e["msg"]) for e in exc.errors()] if hasattr(exc, "errors") else [str(exc)]
 
 
 def validate_risk_report(data: Any) -> list[str]:
     """Validate risk_flagging agent output. Returns list of error strings."""
-    errors: list[str] = []
-
     if not isinstance(data, dict):
         return [f"Expected dict, got {type(data).__name__}"]
-
-    for key in RISK_REQUIRED_KEYS:
-        if key not in data:
-            errors.append(f"Missing required key: '{key}'")
-
-    # overall_risk_tier
-    tier = data.get("overall_risk_tier")
-    if tier is not None and tier not in VALID_RISK_TIERS:
-        errors.append(
-            f"overall_risk_tier must be one of {VALID_RISK_TIERS}, got: '{tier}'"
-        )
-
-    # flags
-    flags = data.get("flags")
-    if flags is not None:
-        if not isinstance(flags, list):
-            errors.append("flags must be a list")
-        else:
-            for i, flag in enumerate(flags):
-                if not isinstance(flag, dict):
-                    errors.append(f"flags[{i}] must be a dict")
-                    continue
-                for fkey in REQUIRED_FLAG_KEYS:
-                    if fkey not in flag:
-                        errors.append(f"flags[{i}] missing key: '{fkey}'")
-                sev = flag.get("severity")
-                if sev is not None and sev not in VALID_SEVERITIES:
-                    errors.append(
-                        f"flags[{i}].severity must be one of {VALID_SEVERITIES}, got: '{sev}'"
-                    )
-
-    # overall_commentary must be a non-empty string
-    commentary = data.get("overall_commentary")
-    if commentary is not None and not isinstance(commentary, str):
-        errors.append("overall_commentary must be a string")
-    elif isinstance(commentary, str) and len(commentary.strip()) < 10:
-        errors.append("overall_commentary is too short (min 10 chars)")
-
-    return errors
+    try:
+        RiskReportOutput.model_validate(data)
+        return []
+    except Exception as exc:
+        return [str(e["msg"]) for e in exc.errors()] if hasattr(exc, "errors") else [str(exc)]
 
 
 def format_validation_errors(errors: list[str]) -> str:
