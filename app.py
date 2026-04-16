@@ -524,8 +524,10 @@ for _k, _v in [
     ("search_query",    ""),
     ("pipeline_done",   False),
     ("pipeline_result", {}),
-    ("chat_messages",        []),
-    ("sidebar_chat_messages", []),
+    ("chat_messages",          []),
+    ("sidebar_chat_messages",  []),
+    ("lp_role",                "Endowment Analyst"),
+    ("chat_suggestions_used",  False),
     ("_auto_search",           False),
     ("firm_b_result",          {}),
     ("comparison_result",      {}),
@@ -2534,169 +2536,404 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
 
     # ─ AI Assistant ──────────────────────────────────────────────────────
     with tab_chat:
-        st.markdown("""
-        <div style="margin-bottom:16px">
-          <div style="font-size:1.05rem;font-weight:700;color:#e0e0e0">AI Research Assistant</div>
-          <div style="font-size:0.80rem;color:#8fa3bb;margin-top:2px">
-            Powered by Claude · Knows everything about the analyzed firm
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
+        import json as _json
 
-        # Build context-aware system prompt
-        if st.session_state.pipeline_done and st.session_state.pipeline_result:
-            pr      = st.session_state.pipeline_result
-            _firm   = pr.get("firm_name", "the analyzed firm")
-            _ov     = (pr.get("analysis") or {}).get("firm_overview", {})
-            _tier   = (pr.get("risk_report") or {}).get("overall_risk_tier", "UNKNOWN")
-            _rec    = (pr.get("scorecard") or {}).get("recommendation", "UNKNOWN")
-            _flags  = (pr.get("risk_report") or {}).get("flags", [])
-            _gaps   = (pr.get("risk_report") or {}).get("critical_data_gaps", [])
-            _commentary = (pr.get("risk_report") or {}).get("overall_commentary", "")
-            _director   = (pr.get("director_review") or {}).get("director_commentary", "")
-            _news_risk  = (pr.get("news_report") or {}).get("overall_news_risk", "N/A")
+        # ── Role personas ──────────────────────────────────────────────────
+        _ROLE_CONTEXT = {
+            "Endowment Analyst": (
+                "You are speaking with a university endowment analyst (long horizon, 10–20 years). "
+                "Use technical language. Prioritise: manager durability, key person succession, "
+                "long-term track record, alignment with perpetual capital mandates."
+            ),
+            "Family Office": (
+                "You are speaking with a family office investor. Balance technical rigour with "
+                "plain-language explanations. Prioritise: wealth preservation, fee efficiency, "
+                "operational transparency, relationship dynamics."
+            ),
+            "Pension Fund": (
+                "You are speaking with a pension fund analyst. Prioritise: regulatory clean record, "
+                "fiduciary duty compliance, drawdown risk, liability-matching implications, governance quality."
+            ),
+        }
 
-            import json as _json
-            system_prompt = f"""You are an expert LP due diligence analyst assistant.
-You have just completed a full due diligence analysis on {_firm}.
+        # ── Helper: tag confidence sources in response ─────────────────────
+        def _apply_badges(text: str) -> str:
+            text = text.replace(
+                "[SEC Data]",
+                '<span style="background:#1a3a5c;color:#7eb8f7;font-size:0.72rem;'
+                'padding:1px 6px;border-radius:4px;font-weight:600">SEC</span>',
+            )
+            text = text.replace(
+                "[General]",
+                '<span style="background:#2a2a2a;color:#a0aec0;font-size:0.72rem;'
+                'padding:1px 6px;border-radius:4px;font-weight:600">General</span>',
+            )
+            return text
 
-Here is a summary of the findings:
-- Risk Tier: {_tier}
-- IC Recommendation: {_rec}
-- News Risk: {_news_risk}
-- Overall Commentary: {_commentary}
-- Director Commentary: {_director}
-- Risk Flags ({len(_flags)} total): {_json.dumps([f.get('finding','') for f in _flags[:5]], default=str)}
-- Critical Data Gaps: {_json.dumps(_gaps[:5], default=str)}
-- Firm Overview: {_json.dumps(_ov, default=str)}
+        # ── Helper: auto-suggest questions from pipeline ───────────────────
+        def _suggest_questions(pr: dict) -> list[str]:
+            suggestions = []
+            flags    = (pr.get("risk_report") or {}).get("flags", [])
+            high     = [f for f in flags if f.get("severity") == "HIGH"]
+            has_disc = (pr.get("analysis") or {}).get("regulatory_disclosures", {}).get("has_disclosures")
+            tier     = (pr.get("risk_report") or {}).get("overall_risk_tier", "")
+            news     = (pr.get("news_report") or {}).get("overall_news_risk", "")
+            funds    = (pr.get("analysis") or {}).get("funds_analysis", {}).get("funds", [])
+            firm     = pr.get("firm_name", "this firm")
 
-Answer the user's questions about this firm, the due diligence findings, or general LP/alternatives investing topics.
-Be direct, concise, and professional. Cite specific findings when relevant.
-If asked about data not in the analysis, say so clearly — do not fabricate."""
-            placeholder = f"Ask anything about {_firm} or the due diligence findings..."
+            if high:
+                cat = high[0].get("category", "risk")
+                suggestions.append(f"What should I do about the {cat} flag?")
+            if has_disc:
+                suggestions.append("Explain the regulatory disclosures in plain English")
+            if tier == "HIGH":
+                suggestions.append("What are the top 3 things I must verify before investing?")
+            elif tier == "MEDIUM":
+                suggestions.append("What would move this from MEDIUM to LOW risk?")
+            if news in ("HIGH", "MEDIUM"):
+                suggestions.append("How serious is the news risk for an LP?")
+            if len(funds) > 3:
+                suggestions.append(f"What does having {len(funds)} funds tell us about strategy?")
+            if not suggestions:
+                suggestions = [
+                    f"What are the most important findings for {firm}?",
+                    "What questions should I ask in the LP meeting?",
+                    "Is this manager suitable for a conservative institutional portfolio?",
+                ]
+            return suggestions[:4]
+
+        # ── Helper: format conversation for export ─────────────────────────
+        def _export_chat(msgs: list, firm: str, role: str) -> str:
+            lines = [
+                "AI RESEARCH ASSISTANT — CONVERSATION EXPORT",
+                f"Firm: {firm}",
+                f"Analyst Role: {role}",
+                "=" * 60,
+            ]
+            for m in msgs:
+                speaker = "You" if m["role"] == "user" else "Alex (LP Research Associate)"
+                lines.append(f"\n{speaker}:\n{m['content']}")
+            return "\n".join(lines)
+
+        # ── Header ─────────────────────────────────────────────────────────
+        pipeline_ready = st.session_state.pipeline_done and st.session_state.pipeline_result
+        _pr = st.session_state.pipeline_result or {}
+        _firm_name = _pr.get("firm_name", "")
+
+        st.markdown(
+            '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">'
+            '<div style="width:36px;height:36px;border-radius:50%;background:#1a3a5c;'
+            'display:flex;align-items:center;justify-content:center;font-size:1.1rem">🎓</div>'
+            '<div><div style="font-size:1.0rem;font-weight:700;color:#e0e0e0">Alex</div>'
+            '<div style="font-size:0.75rem;color:#8fa3bb">LP Research Associate · Powered by GPT-4o</div></div>'
+            f'<div style="margin-left:auto;font-size:0.72rem;padding:3px 8px;border-radius:12px;'
+            f'background:{"#1a3a1a" if pipeline_ready else "#2a2a2a"};'
+            f'color:{"#4caf50" if pipeline_ready else "#888"}">'
+            f'{"● Firm context loaded" if pipeline_ready else "○ No firm analyzed yet"}</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        st.divider()
+
+        # ── LP Role selector ───────────────────────────────────────────────
+        st.markdown(
+            '<div style="font-size:0.72rem;color:#8fa3bb;font-weight:600;'
+            'letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px">'
+            'Your role (shapes how Alex responds)</div>',
+            unsafe_allow_html=True,
+        )
+        _role = st.radio(
+            "lp_role_tab",
+            options=list(_ROLE_CONTEXT.keys()),
+            index=list(_ROLE_CONTEXT.keys()).index(st.session_state.lp_role),
+            horizontal=True,
+            label_visibility="collapsed",
+            key="lp_role_radio_tab",
+        )
+        if _role != st.session_state.lp_role:
+            st.session_state.lp_role = _role
+
+        st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
+
+        # ── Build system prompt ────────────────────────────────────────────
+        _role_ctx = _ROLE_CONTEXT[st.session_state.lp_role]
+        if pipeline_ready:
+            _ov     = (_pr.get("analysis") or {}).get("firm_overview", {})
+            _tier   = (_pr.get("risk_report") or {}).get("overall_risk_tier", "UNKNOWN")
+            _rec    = (_pr.get("scorecard") or {}).get("recommendation", "UNKNOWN")
+            _flags  = (_pr.get("risk_report") or {}).get("flags", [])
+            _gaps   = (_pr.get("risk_report") or {}).get("critical_data_gaps", [])
+            _comm   = (_pr.get("risk_report") or {}).get("overall_commentary", "")
+            _dir    = (_pr.get("director_review") or {}).get("director_commentary", "")
+            _news   = (_pr.get("news_report") or {}).get("overall_news_risk", "N/A")
+            _funds  = (_pr.get("analysis") or {}).get("funds_analysis", {}).get("funds", [])
+            _news_flags = (_pr.get("news_report") or {}).get("news_flags", [])[:5]
+
+            _chat_system = f"""You are Alex, a senior LP due diligence analyst at an institutional investment office.
+{_role_ctx}
+
+A full due diligence analysis on {_firm_name} has been completed. Here are the findings:
+
+FIRM: {_firm_name}
+Risk Tier: {_tier} | IC Recommendation: {_rec} | News Risk: {_news}
+Firm Type: {_ov.get("firm_type", "Unknown")} | HQ: {_ov.get("headquarters", "N/A")}
+AUM: {_ov.get("aum_regulatory", "Not Disclosed")} | Employees: {_ov.get("num_employees", "N/A")}
+Registration: {_ov.get("registration_status", "N/A")}
+
+Overall Commentary: {_comm}
+Director Commentary: {_dir}
+
+Risk Flags ({len(_flags)} total):
+{_json.dumps([{{"severity": f.get("severity"), "category": f.get("category"), "finding": f.get("finding"), "lp_action": f.get("lp_action")}} for f in _flags[:8]], indent=2, default=str)}
+
+Critical Data Gaps: {_json.dumps(_gaps[:5], default=str)}
+
+Funds Found ({len(_funds)}): {_json.dumps([f.get("name") for f in _funds[:10]], default=str)}
+
+News Flags: {_json.dumps([{{"severity": n.get("severity"), "finding": n.get("finding")}} for n in _news_flags], indent=2, default=str)}
+
+RULES:
+- When citing this SEC/EDGAR analysis data, prefix the sentence with [SEC Data]
+- When speaking from general investment knowledge, prefix with [General]
+- Never fabricate data not present in the analysis above
+- Be direct and concise — this is IC-grade communication"""
+            _placeholder = f"Ask anything about {_firm_name} or the due diligence findings..."
         else:
-            system_prompt = """You are an expert LP due diligence analyst assistant specializing in
-alternative investments, hedge funds, private equity, and institutional investing.
-Answer questions about due diligence, SEC filings, IAPD, investment manager evaluation,
-LP/GP dynamics, fund structures, and related topics.
-Be direct, concise, and professional. No firm has been analyzed yet in this session."""
-            placeholder = "Ask anything about LP due diligence, fund managers, or investing..."
+            _chat_system = f"""You are Alex, a senior LP due diligence analyst at an institutional investment office.
+{_role_ctx}
 
-        # Render chat history
-        for msg in st.session_state.chat_messages:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
+No firm has been analyzed yet in this session. Answer general questions about:
+LP due diligence, SEC filings, IAPD, investment manager evaluation, fund structures,
+LP/GP dynamics, Form D, 13F filings, ADV filings, and alternative investments.
 
-        # Chat input
-        if prompt := st.chat_input(placeholder, key="chat_input"):
+When speaking from general knowledge, prefix with [General].
+Be direct and concise."""
+            _placeholder = "Ask anything about LP due diligence, fund managers, or investing..."
+
+        # ── Auto-suggested questions ───────────────────────────────────────
+        if pipeline_ready and not st.session_state.chat_suggestions_used and not st.session_state.chat_messages:
+            st.markdown(
+                '<div style="font-size:0.72rem;color:#8fa3bb;font-weight:600;'
+                'letter-spacing:0.06em;text-transform:uppercase;margin-bottom:8px">'
+                'Suggested questions</div>',
+                unsafe_allow_html=True,
+            )
+            _suggestions = _suggest_questions(_pr)
+            _scols = st.columns(2)
+            for _si, _sq in enumerate(_suggestions):
+                with _scols[_si % 2]:
+                    if st.button(
+                        _sq,
+                        key=f"suggest_tab_{_si}",
+                        use_container_width=True,
+                    ):
+                        st.session_state.chat_suggestions_used = True
+                        st.session_state.chat_messages.append({"role": "user", "content": _sq})
+                        st.rerun()
+            st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+
+        # ── Chat history ───────────────────────────────────────────────────
+        for _msg in st.session_state.chat_messages:
+            if _msg["role"] == "user":
+                with st.chat_message("user"):
+                    st.markdown(_msg["content"])
+            else:
+                with st.chat_message("assistant", avatar="🎓"):
+                    st.markdown(_apply_badges(_msg["content"]), unsafe_allow_html=True)
+
+        # ── Chat input ─────────────────────────────────────────────────────
+        if _prompt := st.chat_input(_placeholder, key="chat_input"):
+            st.session_state.chat_suggestions_used = True
             if not openai_key:
                 st.error("Add your OpenAI API key in the sidebar to use the AI Assistant.")
             else:
-                # Add user message
-                st.session_state.chat_messages.append({"role": "user", "content": prompt})
+                st.session_state.chat_messages.append({"role": "user", "content": _prompt})
                 with st.chat_message("user"):
-                    st.markdown(prompt)
+                    st.markdown(_prompt)
 
-                # Build messages for API call
-                messages = [{"role": "system", "content": system_prompt}]
-                messages += st.session_state.chat_messages
+                _api_msgs = [{"role": "system", "content": _chat_system}]
+                _api_msgs += st.session_state.chat_messages
 
-                # Get response
-                with st.chat_message("assistant"):
-                    with st.spinner(""):
-                        try:
-                            client_chat = make_client(openai_key)
-                            response = client_chat.chat(messages)
-                        except Exception as e:
-                            response = f"Sorry, I encountered an error: {e}"
-                    st.markdown(response)
+                with st.chat_message("assistant", avatar="🎓"):
+                    _reply_holder = st.empty()
+                    _streamed = ""
+                    try:
+                        _cc = make_client(openai_key)
+                        for _chunk in _cc.chat_stream(_api_msgs):
+                            _streamed += _chunk
+                            _reply_holder.markdown(_streamed + "▌")
+                        _reply_holder.markdown(
+                            _apply_badges(_streamed), unsafe_allow_html=True
+                        )
+                    except Exception as _e:
+                        _streamed = f"Sorry, I encountered an error: {_e}"
+                        _reply_holder.markdown(_streamed)
 
                 st.session_state.chat_messages.append(
-                    {"role": "assistant", "content": response}
+                    {"role": "assistant", "content": _streamed}
                 )
 
-        # Clear chat button
+        # ── Bottom controls: export + clear ────────────────────────────────
         if st.session_state.chat_messages:
-            if st.button("Clear conversation", type="secondary", key="clear_chat"):
-                st.session_state.chat_messages = []
-                st.rerun()
+            _bc1, _bc2 = st.columns(2)
+            with _bc1:
+                _export_text = _export_chat(
+                    st.session_state.chat_messages,
+                    _firm_name or "Unknown",
+                    st.session_state.lp_role,
+                )
+                st.download_button(
+                    "⬇  Export Conversation",
+                    data=_export_text,
+                    file_name=f"{safe_name}_chat.txt" if safe_name else "chat_export.txt",
+                    mime="text/plain",
+                    use_container_width=True,
+                    key="export_chat_tab",
+                )
+            with _bc2:
+                if st.button("Clear conversation", type="secondary",
+                             key="clear_chat", use_container_width=True):
+                    st.session_state.chat_messages = []
+                    st.session_state.chat_suggestions_used = False
+                    st.rerun()
 
 # ── Persistent AI Chat (main page) ──────────────────────────────────────────
 
-st.markdown("""
-<div style="margin-top:32px;border-top:0.5px solid #22253a;padding-top:24px">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-    <div style="display:flex;align-items:center;gap:8px">
-      <div style="width:8px;height:8px;border-radius:50%;background:#2271c2"></div>
-      <span style="font-size:13px;font-weight:500;color:#e2e4f0">AI Research Assistant</span>
-    </div>
-    <span style="font-size:10px;color:#3d4260">Powered by GPT-4o · Always available</span>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+import json as _mjson
+
+_mpr    = st.session_state.pipeline_result or {}
+_mfirm  = _mpr.get("firm_name", "")
+_mready = st.session_state.pipeline_done and bool(_mpr)
+
+_MAIN_ROLE_CTX = {
+    "Endowment Analyst": "Focus on long-horizon durability, key person risk, and track record.",
+    "Family Office":      "Balance technical depth with plain-language clarity.",
+    "Pension Fund":       "Prioritise regulatory clean record, governance, and fiduciary compliance.",
+}
+
+def _main_apply_badges(text: str) -> str:
+    text = text.replace(
+        "[SEC Data]",
+        '<span style="background:#1a3a5c;color:#7eb8f7;font-size:0.72rem;'
+        'padding:1px 6px;border-radius:4px;font-weight:600">SEC</span>',
+    )
+    text = text.replace(
+        "[General]",
+        '<span style="background:#2a2a2a;color:#a0aec0;font-size:0.72rem;'
+        'padding:1px 6px;border-radius:4px;font-weight:600">General</span>',
+    )
+    return text
+
+st.markdown(
+    '<div style="margin-top:32px;border-top:0.5px solid #22253a;padding-top:24px;margin-bottom:12px">'
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
+    '<div style="width:32px;height:32px;border-radius:50%;background:#1a3a5c;'
+    'display:flex;align-items:center;justify-content:center;font-size:1rem">🎓</div>'
+    '<div><div style="font-size:0.9rem;font-weight:700;color:#e0e0e0">Alex — LP Research Associate</div>'
+    '<div style="font-size:0.72rem;color:#8fa3bb">Always available · Full context in the AI Chat tab</div></div>'
+    f'<div style="margin-left:auto;font-size:0.70rem;padding:2px 7px;border-radius:10px;'
+    f'background:{"#1a3a1a" if _mready else "#2a2a2a"};'
+    f'color:{"#4caf50" if _mready else "#888"}">'
+    f'{"● " + _mfirm if _mready else "○ No firm loaded"}</div>'
+    '</div></div>',
+    unsafe_allow_html=True,
+)
+
+# Role selector
+_main_role_pick = st.radio(
+    "main_lp_role",
+    options=list(_MAIN_ROLE_CTX.keys()),
+    index=list(_MAIN_ROLE_CTX.keys()).index(st.session_state.lp_role),
+    horizontal=True,
+    label_visibility="collapsed",
+    key="lp_role_radio_main",
+)
+if _main_role_pick != st.session_state.lp_role:
+    st.session_state.lp_role = _main_role_pick
 
 # Build system prompt
-if st.session_state.pipeline_done and st.session_state.pipeline_result:
-    _mpr   = st.session_state.pipeline_result
-    _mfirm = _mpr.get("firm_name", "the analyzed firm")
-    _mtier = (_mpr.get("risk_report") or {}).get("overall_risk_tier", "UNKNOWN")
-    _mrec  = (_mpr.get("scorecard")   or {}).get("recommendation",    "UNKNOWN")
-    _mflags = (_mpr.get("risk_report") or {}).get("flags", [])
-    _mgaps  = (_mpr.get("risk_report") or {}).get("critical_data_gaps", [])
-    _mcomm  = (_mpr.get("risk_report") or {}).get("overall_commentary", "")
-    _mdir   = (_mpr.get("director_review") or {}).get("director_commentary", "")
-    import json as _mjson
-    _main_system = f"""You are an expert LP due diligence analyst assistant.
-A full due diligence analysis on {_mfirm} has been completed.
-Risk Tier: {_mtier} | IC Recommendation: {_mrec}
+_mrole_ctx = _MAIN_ROLE_CTX[st.session_state.lp_role]
+if _mready:
+    _mtier   = (_mpr.get("risk_report") or {}).get("overall_risk_tier", "UNKNOWN")
+    _mrec    = (_mpr.get("scorecard")   or {}).get("recommendation",    "UNKNOWN")
+    _mflags  = (_mpr.get("risk_report") or {}).get("flags", [])
+    _mgaps   = (_mpr.get("risk_report") or {}).get("critical_data_gaps", [])
+    _mcomm   = (_mpr.get("risk_report") or {}).get("overall_commentary", "")
+    _mdir    = (_mpr.get("director_review") or {}).get("director_commentary", "")
+    _mov     = (_mpr.get("analysis") or {}).get("firm_overview", {})
+    _main_system = f"""You are Alex, a senior LP due diligence analyst. {_mrole_ctx}
+Firm: {_mfirm} | Risk Tier: {_mtier} | IC Recommendation: {_mrec}
+Firm Type: {_mov.get("firm_type","Unknown")} | AUM: {_mov.get("aum_regulatory","N/A")}
 Overall Commentary: {_mcomm}
 Director Commentary: {_mdir}
-Risk Flags ({len(_mflags)} total): {_mjson.dumps([f.get('finding','') for f in _mflags[:5]], default=str)}
-Critical Data Gaps: {_mjson.dumps(_mgaps[:5], default=str)}
-Answer concisely and professionally. Cite specific findings when relevant.
-Do not fabricate data not present in the analysis."""
-    _main_placeholder = f"Ask anything about {_mfirm} or the due diligence findings..."
+Risk Flags ({len(_mflags)}): {_mjson.dumps([{{"s":f.get("severity"),"f":f.get("finding")}} for f in _mflags[:6]], default=str)}
+Critical Gaps: {_mjson.dumps(_mgaps[:4], default=str)}
+Tag SEC analysis data with [SEC Data], general knowledge with [General]. Never fabricate."""
+    _main_placeholder = f"Ask about {_mfirm} or the due diligence findings..."
 else:
-    _main_system = """You are an expert LP due diligence analyst specializing in
-alternative investments, hedge funds, private equity, and institutional investing.
-Answer questions about due diligence, SEC filings, fund managers, LP/GP dynamics, fund structures.
-Be direct and concise. No firm has been analyzed yet in this session."""
-    _main_placeholder = "Ask anything about LP due diligence, fund managers, or investing..."
+    _main_system = f"""You are Alex, a senior LP due diligence analyst. {_mrole_ctx}
+No firm analyzed yet. Answer general LP/alternatives investing questions.
+Tag general knowledge with [General]. Be direct and concise."""
+    _main_placeholder = "Ask anything about LP due diligence or alternative investments..."
 
-# Render chat history
-for msg in st.session_state.sidebar_chat_messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+# Chat history
+for _mmsg in st.session_state.sidebar_chat_messages:
+    if _mmsg["role"] == "user":
+        with st.chat_message("user"):
+            st.markdown(_mmsg["content"])
+    else:
+        with st.chat_message("assistant", avatar="🎓"):
+            st.markdown(_main_apply_badges(_mmsg["content"]), unsafe_allow_html=True)
 
-# Chat input
-if prompt := st.chat_input(_main_placeholder, key="main_chat_input"):
+# Input
+if _mprompt := st.chat_input(_main_placeholder, key="main_chat_input"):
     if not openai_key:
         st.error("Add your OpenAI API key in the sidebar to use the AI Assistant.")
     else:
-        st.session_state.sidebar_chat_messages.append({"role": "user", "content": prompt})
+        st.session_state.sidebar_chat_messages.append({"role": "user", "content": _mprompt})
         with st.chat_message("user"):
-            st.markdown(prompt)
+            st.markdown(_mprompt)
 
-        _main_msgs = [{"role": "system", "content": _main_system}]
-        _main_msgs += st.session_state.sidebar_chat_messages
+        _main_api_msgs = [{"role": "system", "content": _main_system}]
+        _main_api_msgs += st.session_state.sidebar_chat_messages
 
-        with st.chat_message("assistant"):
-            with st.spinner(""):
-                try:
-                    _main_client = make_client(openai_key)
-                    _main_reply  = _main_client.chat(_main_msgs)
-                except Exception as _me:
-                    _main_reply = f"Sorry, I encountered an error: {_me}"
-            st.markdown(_main_reply)
+        with st.chat_message("assistant", avatar="🎓"):
+            _mholder  = st.empty()
+            _mstreamed = ""
+            try:
+                _mc = make_client(openai_key)
+                for _mchunk in _mc.chat_stream(_main_api_msgs):
+                    _mstreamed += _mchunk
+                    _mholder.markdown(_mstreamed + "▌")
+                _mholder.markdown(_main_apply_badges(_mstreamed), unsafe_allow_html=True)
+            except Exception as _me:
+                _mstreamed = f"Sorry, I encountered an error: {_me}"
+                _mholder.markdown(_mstreamed)
 
         st.session_state.sidebar_chat_messages.append(
-            {"role": "assistant", "content": _main_reply}
+            {"role": "assistant", "content": _mstreamed}
         )
 
 if st.session_state.sidebar_chat_messages:
-    if st.button("Clear conversation", type="secondary", key="main_chat_clear"):
-        st.session_state.sidebar_chat_messages = []
-        st.rerun()
+    _mc1, _mc2 = st.columns(2)
+    with _mc1:
+        _mexp = "\n\n".join(
+            f"{'You' if m['role']=='user' else 'Alex'}:\n{m['content']}"
+            for m in st.session_state.sidebar_chat_messages
+        )
+        st.download_button(
+            "⬇  Export Conversation",
+            data=_mexp,
+            file_name=f"{safe_name}_chat.txt" if safe_name else "chat_export.txt",
+            mime="text/plain",
+            use_container_width=True,
+            key="export_main_chat",
+        )
+    with _mc2:
+        if st.button("Clear conversation", type="secondary",
+                     key="main_chat_clear", use_container_width=True):
+            st.session_state.sidebar_chat_messages = []
+            st.rerun()
 
 
 # ────────────────────────────────────────────────────────────────────────────

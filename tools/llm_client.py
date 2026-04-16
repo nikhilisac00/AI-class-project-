@@ -51,6 +51,19 @@ class LLMClient:
         )
         return (response.choices[0].message.content or "").strip()
 
+    def chat_stream(self, messages: list[dict], max_tokens: int = 2000):
+        """Stream a chat response, yielding text chunks as they arrive."""
+        stream = self._client.chat.completions.create(
+            model="gpt-4o-mini",
+            max_tokens=max_tokens,
+            messages=messages,
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
+
     # ── Tool-use agent loop ──────────────────────────────────────────────────
 
     def agent_loop_json(
