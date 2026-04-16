@@ -298,5 +298,4 @@ def run(
         system=SYSTEM_PROMPT,
         user=user_message,
         max_tokens=12000,
-        thinking_tokens=6000,
     )

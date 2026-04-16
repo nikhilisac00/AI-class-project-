@@ -175,7 +175,6 @@ Return ONLY a JSON object:
         system=SYSTEM_PROMPT,
         user=user_message,
         max_tokens=8000,
-        thinking_tokens=6000,
     )
 
     errors = validate_risk_report(result)
@@ -186,7 +185,6 @@ Return ONLY a JSON object:
             system=SYSTEM_PROMPT,
             user=retry_message,
             max_tokens=6000,
-            thinking_tokens=4000,
         )
         remaining = validate_risk_report(result)
         if remaining:

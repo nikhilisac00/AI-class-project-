@@ -111,5 +111,4 @@ Return ONLY a JSON object:
         system=SYSTEM_PROMPT,
         user=user_message,
         max_tokens=3000,
-        thinking_tokens=2000,
     )

@@ -241,7 +241,6 @@ Return ONLY a JSON object with this exact schema (null for any missing field):
         system=SYSTEM_PROMPT,
         user=user_message,
         max_tokens=8000,
-        thinking_tokens=3000,
     )
 
     errors = validate_analysis(result)
@@ -252,7 +251,6 @@ Return ONLY a JSON object with this exact schema (null for any missing field):
             system=SYSTEM_PROMPT,
             user=retry_message,
             max_tokens=8000,
-            thinking_tokens=5000,
         )
         remaining = validate_analysis(result)
         if remaining:

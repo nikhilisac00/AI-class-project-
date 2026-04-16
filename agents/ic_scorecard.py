@@ -124,5 +124,4 @@ Return ONLY a JSON object with this exact schema:
         system=SYSTEM_PROMPT,
         user=user_message,
         max_tokens=4000,
-        thinking_tokens=3000,
     )
