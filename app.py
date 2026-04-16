@@ -2669,6 +2669,18 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             _funds  = (_pr.get("analysis") or {}).get("funds_analysis", {}).get("funds", [])
             _news_flags = (_pr.get("news_report") or {}).get("news_flags", [])[:5]
 
+            _flags_json = _json.dumps(
+                [{"severity": f.get("severity"), "category": f.get("category"),
+                  "finding": f.get("finding"), "lp_action": f.get("lp_action")}
+                 for f in _flags[:8]], indent=2, default=str
+            )
+            _news_flags_json = _json.dumps(
+                [{"severity": n.get("severity"), "finding": n.get("finding")}
+                 for n in _news_flags], indent=2, default=str
+            )
+            _funds_json = _json.dumps([f.get("name") for f in _funds[:10]], default=str)
+            _gaps_json  = _json.dumps(_gaps[:5], default=str)
+
             _chat_system = f"""You are Alex, a senior LP due diligence analyst at an institutional investment office.
 {_role_ctx}
 
@@ -2684,13 +2696,13 @@ Overall Commentary: {_comm}
 Director Commentary: {_dir}
 
 Risk Flags ({len(_flags)} total):
-{_json.dumps([{{"severity": f.get("severity"), "category": f.get("category"), "finding": f.get("finding"), "lp_action": f.get("lp_action")}} for f in _flags[:8]], indent=2, default=str)}
+{_flags_json}
 
-Critical Data Gaps: {_json.dumps(_gaps[:5], default=str)}
+Critical Data Gaps: {_gaps_json}
 
-Funds Found ({len(_funds)}): {_json.dumps([f.get("name") for f in _funds[:10]], default=str)}
+Funds Found ({len(_funds)}): {_funds_json}
 
-News Flags: {_json.dumps([{{"severity": n.get("severity"), "finding": n.get("finding")}} for n in _news_flags], indent=2, default=str)}
+News Flags: {_news_flags_json}
 
 RULES:
 - When citing this SEC/EDGAR analysis data, prefix the sentence with [SEC Data]
@@ -2861,12 +2873,16 @@ if _mready:
     _mcomm   = (_mpr.get("risk_report") or {}).get("overall_commentary", "")
     _mdir    = (_mpr.get("director_review") or {}).get("director_commentary", "")
     _mov     = (_mpr.get("analysis") or {}).get("firm_overview", {})
+    _mflags_json = _mjson.dumps(
+        [{"s": f.get("severity"), "f": f.get("finding")} for f in _mflags[:6]],
+        default=str,
+    )
     _main_system = f"""You are Alex, a senior LP due diligence analyst. {_mrole_ctx}
 Firm: {_mfirm} | Risk Tier: {_mtier} | IC Recommendation: {_mrec}
 Firm Type: {_mov.get("firm_type","Unknown")} | AUM: {_mov.get("aum_regulatory","N/A")}
 Overall Commentary: {_mcomm}
 Director Commentary: {_mdir}
-Risk Flags ({len(_mflags)}): {_mjson.dumps([{{"s":f.get("severity"),"f":f.get("finding")}} for f in _mflags[:6]], default=str)}
+Risk Flags ({len(_mflags)}): {_mflags_json}
 Critical Gaps: {_mjson.dumps(_mgaps[:4], default=str)}
 Tag SEC analysis data with [SEC Data], general knowledge with [General]. Never fabricate."""
     _main_placeholder = f"Ask about {_mfirm} or the due diligence findings..."
