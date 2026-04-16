@@ -34,6 +34,7 @@ import agents.memo_generation as memo_agent
 import agents.ic_scorecard      as scorecard_agent
 import agents.research_director as director_agent
 import agents.comparables       as comparables_agent
+import agents.fact_checker       as fact_checker_agent
 from tools.llm_client    import make_client
 from tools.reconciliation import run_all as reconcile_sources
 
@@ -268,6 +269,57 @@ def main():
     if scorecard.get("recommendation_summary"):
         console.print(f"[dim]{scorecard['recommendation_summary']}[/]")
 
+    # ── Fact Checker ──────────────────────────────────────────────────────────
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
+                  console=console) as p:
+        task = p.add_task("Fact-checking memo (deterministic + narrative)...", total=None)
+        verification = fact_checker_agent.run(
+            analysis, risk_report, raw_data, scorecard, memo, client,
+        )
+        p.update(task, description="Fact check complete", completed=True)
+
+    # Auto-retry memo if FAIL-level issues found
+    if verification["summary"]["failures"] > 0:
+        console.print(
+            f"[yellow]Fact checker found {verification['summary']['failures']} "
+            f"failure(s) — re-generating memo...[/]"
+        )
+        memo = memo_agent.run(
+            analysis, risk_report, raw_data, client,
+            news_report=news_report,
+        )
+        re_verification = fact_checker_agent.run(
+            analysis, risk_report, raw_data, scorecard, memo, client,
+        )
+        fixed = [
+            c["check"] for c in verification["checks"]
+            if c["status"] == "FAIL"
+            and next(
+                (r for r in re_verification["checks"]
+                 if r["check"] == c["check"]),
+                {},
+            ).get("status") != "FAIL"
+        ]
+        re_verification["retry_triggered"] = True
+        re_verification["failures_fixed_on_retry"] = fixed
+        verification = re_verification
+
+    # Print trust score
+    ts_color = {"HIGH": "green", "MEDIUM": "yellow", "LOW": "red"}.get(
+        verification["trust_label"], "white"
+    )
+    console.print(
+        f"\n[bold {ts_color}]Trust Score: {verification['trust_score']}/100 "
+        f"({verification['trust_label']})[/] — "
+        f"{verification['summary']['passed']} passed, "
+        f"{verification['summary']['warnings']} warnings, "
+        f"{verification['summary']['failures']} failures"
+    )
+    if verification.get("retry_triggered"):
+        console.print(
+            f"[dim]Auto-retry fixed: {verification['failures_fixed_on_retry']}[/]"
+        )
+
     # ── Save outputs ──────────────────────────────────────────────────────────
     memo_path = save_outputs(
         firm_name, raw_data, analysis, risk_report, memo, args.output_dir,
@@ -279,6 +331,9 @@ def main():
         )
     (Path(args.output_dir) / f"{ts}_{safe_name}_ic_scorecard.json").write_text(
         json.dumps(scorecard, indent=2, default=str), encoding="utf-8"
+    )
+    (Path(args.output_dir) / f"{ts}_{safe_name}_verification.json").write_text(
+        json.dumps(verification, indent=2, default=str), encoding="utf-8"
     )
 
     # ── Agent 7: Comparables ────────────────────────────────────────────────
