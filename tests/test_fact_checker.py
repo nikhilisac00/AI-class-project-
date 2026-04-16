@@ -3,7 +3,9 @@ Tests for agents/fact_checker.py — deterministic raw-to-analysis checks.
 No live API calls; all data is constructed in-process.
 """
 
-from agents.fact_checker import run_deterministic_checks
+from unittest.mock import MagicMock
+
+from agents.fact_checker import run_deterministic_checks, run_narrative_check, compute_trust_score, run
 
 
 # ── Fixture helpers ────────────────────────────────────────────────────────────
@@ -435,3 +437,83 @@ class TestHoldingsCountConsistency:
         )
         check = _find_check(results, "holdings count")
         assert check["status"] == "FAIL"
+
+
+# ── TestNarrativeCheck ────────────────────────────────────────────────────────
+
+class TestNarrativeCheck:
+    def _mock_client(self, response=None):
+        client = MagicMock()
+        client.provider = "openai"
+        client.model = "gpt-4o"
+        client.complete_json.return_value = response or {
+            "findings": [{"status": "PASS", "detail": "Executive summary accurately reflects MEDIUM risk."}]
+        }
+        return client
+
+    def test_returns_check_list(self):
+        client = self._mock_client()
+        checks = run_narrative_check(_make_analysis(), _make_risk_report(), SAMPLE_MEMO, client)
+        assert isinstance(checks, list)
+        assert len(checks) >= 1
+        assert checks[0]["layer"] == "narrative"
+
+    def test_calls_llm(self):
+        client = self._mock_client()
+        run_narrative_check(_make_analysis(), _make_risk_report(), SAMPLE_MEMO, client)
+        assert client.complete_json.called
+
+
+# ── TestTrustScore ────────────────────────────────────────────────────────────
+
+class TestTrustScore:
+    def test_all_pass(self):
+        score, label = compute_trust_score([{"status": "PASS"}] * 10)
+        assert score == 100
+        assert label == "HIGH"
+
+    def test_all_fail(self):
+        score, label = compute_trust_score([{"status": "FAIL"}] * 10)
+        assert score == 0
+        assert label == "LOW"
+
+    def test_mixed(self):
+        checks = [{"status": "PASS"}] * 7 + [{"status": "WARN"}] * 2 + [{"status": "FAIL"}] * 1
+        score, label = compute_trust_score(checks)
+        assert score == 80
+        assert label == "MEDIUM"
+
+    def test_empty(self):
+        score, label = compute_trust_score([])
+        assert score == 0
+        assert label == "LOW"
+
+
+# ── TestRun ───────────────────────────────────────────────────────────────────
+
+class TestRun:
+    def _mock_client(self):
+        client = MagicMock()
+        client.provider = "openai"
+        client.model = "gpt-4o"
+        client.complete_json.return_value = {"findings": [{"status": "PASS", "detail": "Narrative is accurate."}]}
+        return client
+
+    def test_returns_full_report(self):
+        result = run(
+            _make_analysis(), _make_risk_report(), _make_raw_data(),
+            _make_scorecard(), SAMPLE_MEMO, self._mock_client()
+        )
+        assert "trust_score" in result
+        assert "trust_label" in result
+        assert "checks" in result
+        assert "summary" in result
+        assert result["summary"]["total"] >= 12
+
+    def test_trust_score_is_numeric(self):
+        result = run(
+            _make_analysis(), _make_risk_report(), _make_raw_data(),
+            _make_scorecard(), SAMPLE_MEMO, self._mock_client()
+        )
+        assert isinstance(result["trust_score"], (int, float))
+        assert 0 <= result["trust_score"] <= 100

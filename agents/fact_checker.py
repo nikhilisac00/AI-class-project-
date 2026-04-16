@@ -9,13 +9,31 @@ status PASS | WARN | FAIL.
 
 from __future__ import annotations
 
+import json
 import re
+
+from tools.llm_client import LLMClient
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
 _FILLER_WORDS: frozenset[str] = frozenset(
     {"llc", "inc", "ltd", "the", "and", "of", "group", "lp", "co", "corp", "company"}
 )
+
+NARRATIVE_SYSTEM_PROMPT = """You are a fact-checking editor at an institutional LP.
+You review due diligence memos for accuracy against the underlying structured data.
+
+Your job is to identify:
+1. Claims in the memo that contradict the data
+2. Material omissions (HIGH/MEDIUM flags not addressed)
+3. Tone mismatches (reassuring summary for a HIGH-risk firm)
+4. Invented facts not supported by any data field
+5. Null fields that should say "Not Disclosed" but are silently omitted
+
+For each finding, assess severity:
+- PASS: The memo accurately reflects this aspect of the data
+- WARN: Minor omission or imprecision, not materially misleading
+- FAIL: Material misstatement, omission of HIGH flag, or invented fact"""
 
 
 # ── Internal helpers ───────────────────────────────────────────────────────────
@@ -679,3 +697,176 @@ def run_deterministic_checks(
         _check_scorecard_vs_risk(risk_report, scorecard),
         _check_holdings_count(analysis, raw_data),
     ]
+
+
+def run_narrative_check(
+    analysis: dict,
+    risk_report: dict,
+    memo_text: str,
+    client: LLMClient,
+) -> list[dict]:
+    """
+    Call the LLM to review memo text for narrative accuracy against structured data.
+
+    Sends truncated memo text, risk report summary, and firm overview to the LLM
+    and parses findings with status PASS | WARN | FAIL.
+
+    Args:
+        analysis:    Structured output from the fund analysis agent.
+        risk_report: Structured output from the risk flagging agent.
+        memo_text:   Final rendered memo text (truncated to 8000 chars).
+        client:      LLMClient instance used to call the LLM.
+
+    Returns:
+        List of check result dicts with layer="narrative".
+    """
+    try:
+        truncated_memo = memo_text[:8000]
+        user_payload = {
+            "memo_text": truncated_memo,
+            "risk_tier": risk_report.get("overall_risk_tier"),
+            "risk_commentary": risk_report.get("overall_commentary"),
+            "flags": risk_report.get("flags") or [],
+            "firm_overview": analysis.get("firm_overview") or {},
+        }
+        user_message = (
+            "Review the following due diligence memo against the structured data below. "
+            "Return JSON with this exact schema: "
+            '{"findings": [{"status": "PASS|WARN|FAIL", "detail": "..."}]}\n\n'
+            + json.dumps(user_payload, indent=2)
+        )
+        response = client.complete_json(
+            system=NARRATIVE_SYSTEM_PROMPT,
+            user=user_message,
+            max_tokens=1024,
+        )
+        findings = (response or {}).get("findings") or []
+        checks = []
+        for finding in findings:
+            status = str(finding.get("status") or "WARN").upper()
+            if status not in {"PASS", "WARN", "FAIL"}:
+                status = "WARN"
+            checks.append(
+                _check(
+                    "Narrative Review",
+                    "narrative",
+                    status,
+                    str(finding.get("detail") or ""),
+                    {},
+                )
+            )
+        if not checks:
+            checks.append(
+                _check(
+                    "Narrative Review",
+                    "narrative",
+                    "WARN",
+                    "LLM returned no findings — narrative check inconclusive.",
+                    {},
+                )
+            )
+        return checks
+    except Exception as exc:
+        return [
+            _check(
+                "Narrative Review",
+                "narrative",
+                "WARN",
+                f"Narrative check failed: {exc}",
+                {},
+            )
+        ]
+
+
+def compute_trust_score(checks: list[dict]) -> tuple[int, str]:
+    """
+    Compute a trust score from a list of check result dicts.
+
+    Scoring weights: PASS=1.0, WARN=0.5, FAIL=0.0.
+    Score is rounded to nearest integer on a 0-100 scale.
+    Label: HIGH if >= 85, MEDIUM if >= 60, LOW otherwise.
+
+    Args:
+        checks: List of check result dicts, each with a 'status' key.
+
+    Returns:
+        Tuple of (score: int, label: str).
+    """
+    if not checks:
+        return (0, "LOW")
+
+    weight_map = {"PASS": 1.0, "WARN": 0.5, "FAIL": 0.0}
+    total_weight = sum(
+        weight_map.get(str(check.get("status") or "").upper(), 0.5)
+        for check in checks
+    )
+    score = round(total_weight / len(checks) * 100)
+
+    if score >= 85:
+        label = "HIGH"
+    elif score >= 60:
+        label = "MEDIUM"
+    else:
+        label = "LOW"
+
+    return (score, label)
+
+
+def run(
+    analysis: dict,
+    risk_report: dict,
+    raw_data: dict,
+    scorecard: dict,
+    memo_text: str,
+    client: LLMClient,
+) -> dict:
+    """
+    Orchestrate all fact checks and return a complete trust report.
+
+    Runs deterministic checks, narrative LLM check, combines results,
+    computes trust score, and returns a structured summary dict.
+
+    Args:
+        analysis:    Structured output from the fund analysis agent.
+        risk_report: Structured output from the risk flagging agent.
+        raw_data:    Raw data dict from the data ingestion agent.
+        scorecard:   IC scorecard dict from the scorecard agent.
+        memo_text:   Final rendered memo text.
+        client:      LLMClient instance used to call the LLM.
+
+    Returns:
+        Dict with trust_score, trust_label, checks, summary, retry_triggered,
+        and failures_fixed_on_retry.
+    """
+    print("[Fact Checker] Running deterministic checks...")
+    deterministic_checks = run_deterministic_checks(analysis, risk_report, raw_data, scorecard, memo_text)
+
+    print(f"[Fact Checker] Calling {client.provider} ({client.model}) for narrative check...")
+    narrative_checks = run_narrative_check(analysis, risk_report, memo_text, client)
+
+    all_checks = deterministic_checks + narrative_checks
+
+    trust_score, trust_label = compute_trust_score(all_checks)
+
+    passed = sum(1 for check in all_checks if str(check.get("status") or "").upper() == "PASS")
+    warnings = sum(1 for check in all_checks if str(check.get("status") or "").upper() == "WARN")
+    failures = sum(1 for check in all_checks if str(check.get("status") or "").upper() == "FAIL")
+
+    print(
+        f"[Fact Checker] Trust score: {trust_score} ({trust_label}) — "
+        f"{passed} passed, {warnings} warnings, {failures} failures"
+    )
+
+    return {
+        "trust_score": trust_score,
+        "trust_label": trust_label,
+        "checks": all_checks,
+        "summary": {
+            "total": len(all_checks),
+            "passed": passed,
+            "warnings": warnings,
+            "failures": failures,
+        },
+        "retry_triggered": False,
+        "failures_fixed_on_retry": [],
+    }
