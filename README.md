@@ -23,8 +23,12 @@ Given a fund name or CRD number, the system autonomously:
 
 1. **Ingests** real data from SEC EDGAR (13F XML), IAPD (ADV filings), and FRED API
 2. **Analyzes** the firm: 13F portfolio value, registration status, disclosures, macro context
-3. **Flags risks**: regulatory disclosures, key person concentration, data gaps, structural issues
-4. **Generates** a structured 11-section memo formatted for IC review
+3. **Researches** news, enforcement actions, and personnel changes via web search
+4. **Flags risks**: regulatory disclosures, key person concentration, data gaps, structural issues
+5. **Generates** a structured 11-section memo formatted for IC review
+6. **Scores** the manager on an IC scorecard with a PROCEED / REQUEST MORE INFO / PASS recommendation
+7. **Finds** comparable managers via IAPD peer search
+8. **Reviews** the full package through a Research Director quality gate
 
 No hallucination. Every fact in the memo traces to a real API response. Missing fields return `null`.
 
@@ -34,13 +38,14 @@ No hallucination. Every fact in the memo traces to a real API response. Missing 
 
 ```
 app.py / main.py
-├── Data Ingestion        → IAPD + EDGAR 13F XML + FRED (no LLM)
-├── Fund Analysis         → GPT-4o structured analysis
-├── Risk Flagging         → GPT-4o LP risk flags (supports LP scoring weights)
-├── Memo Generation       → GPT-4o IC-ready DD memo
-├── Comparison Agent      → GPT-4o side-by-side manager comparison
-├── Portfolio Fit Agent   → GPT-4o LP portfolio fit scoring
-└── Watch List            → Persistent JSON firm monitoring
+├── Agent 1: Data Ingestion      → IAPD + EDGAR 13F XML + FRED (no LLM)
+├── Agent 2: Fund Analysis       → OpenAI GPT-4o
+├── Agent 3: News Research       → OpenAI GPT-4o + web search tool loop
+├── Agent 4: Risk Flagging       → OpenAI GPT-4o
+├── Agent 5: Memo Generation     → OpenAI GPT-4o
+├── Agent 6: IC Scorecard        → OpenAI GPT-4o
+├── Agent 7: Comparables         → IAPD peer search (no LLM)
+└── Agent 8: Research Director   → OpenAI GPT-4o (final quality gate)
 ```
 
 See [`docs/research-brief.md`](docs/research-brief.md) for full architecture and data source mapping.
@@ -54,7 +59,8 @@ See [`docs/research-brief.md`](docs/research-brief.md) for full architecture and
 | [IAPD](https://adviserinfo.sec.gov) | Registration status, disclosure flags, brochure metadata | None |
 | [SEC EDGAR 13F](https://data.sec.gov) | Portfolio value (USD), holdings count — proxy AUM | None |
 | [FRED](https://fred.stlouisfed.org) | Fed funds rate, 10Y yield, HY spread, VIX | Free key |
-| OpenAI GPT-4o | Fund analysis, risk flagging, memo generation | API key |
+| OpenAI GPT-4o | Fund analysis, risk flagging, memo generation, IC scorecard | API key |
+| Tavily / DuckDuckGo | News, enforcement actions, personnel changes | Tavily optional |
 
 ---
 
@@ -73,6 +79,7 @@ cp .env.example .env
 # Edit .env and add:
 #   OPENAI_API_KEY=your_key
 #   FRED_API_KEY=your_fred_key  (optional — free at fred.stlouisfed.org)
+#   TAVILY_API_KEY=your_key     (optional — free tier at tavily.com; falls back to DuckDuckGo)
 ```
 
 ### 3. Run (Streamlit UI)
@@ -86,6 +93,8 @@ python main.py "AQR Capital Management"
 python main.py 149729                          # by CRD number
 python main.py "Bridgewater" --no-fred         # skip FRED
 python main.py "Two Sigma" --raw-only          # data only, skip LLM
+python main.py "Citadel" --no-news             # skip news research
+python main.py "KKR" --news-rounds 5           # deeper news research (default: 3)
 ```
 
 ---
@@ -101,27 +110,34 @@ pytest tests/ -v --cov=tools --cov=agents --cov-report=term-missing
 
 ## Output
 
-Each run saves four files to `./output/memos/`:
+Each full run saves eight files to `./output/memos/` (all share the same timestamp prefix):
 
 ```
 20260324_120000_AQR_Capital_Management_DD_MEMO.md
+20260324_120000_AQR_Capital_Management_raw_data.json
 20260324_120000_AQR_Capital_Management_analysis.json
 20260324_120000_AQR_Capital_Management_risk_report.json
-20260324_120000_AQR_Capital_Management_raw_data.json
+20260324_120000_AQR_Capital_Management_news_report.json
+20260324_120000_AQR_Capital_Management_ic_scorecard.json
+20260324_120000_AQR_Capital_Management_comparables.json
+20260324_120000_AQR_Capital_Management_director_review.json
 ```
 
+`news_report.json` is omitted when `--no-news` is passed.
+
 ### Memo Sections
-1. Header (firm, CRD, date, data sources)
-2. Executive Summary
-3. Firm Overview
-4. Investment Team
-5. Fee Structure
-6. Regulatory & Compliance
-7. Risk Flags Table (Category | Severity | Finding | Action)
-8. Macro Context
-9. Data Gaps & Limitations
-10. Next Steps
-11. Appendix: Data Quality Log
+1. Executive Summary
+2. Firm Overview
+3. Investment Team
+4. Fee Structure
+5. Regulatory & Compliance
+6. Private Funds Discovered
+7. News & Press Coverage
+8. Risk Flags Summary
+9. Macro Context
+10. Data Gaps & Limitations
+11. Next Steps
+12. Appendix: Data Quality Log
 
 ---
 
@@ -142,22 +158,9 @@ PRs from `feature/*` → `dev` → `main`. CI runs on every push.
 - All fields initialized to `null`; only populated if found in an API response
 - LLM system prompts explicitly forbid estimation of missing values
 - Risk flags require explicit evidence citations
+- News flags require a `source_url` — unsourced claims are not included
 - Data gaps surface as LP action items (e.g., "request audited financials")
 - Raw API responses saved alongside memo — every claim is auditable
-
----
-
-## What Makes This Different from Helix / CAIS / Allvue
-
-Platforms like Helix, CAIS, and Allvue serve advisors and GPs — they help distribute funds or manage existing portfolio operations. **This is the only tool built for the LP doing manager selection from public data.**
-
-| Feature | Helix / CAIS / Allvue | This Tool |
-|---------|----------------------|-----------|
-| **Manager Comparison** | Not available — LP must build own spreadsheets | GPT-4o side-by-side comparison across 6 dimensions with winner recommendation |
-| **Portfolio Fit Scoring** | GP-facing; no LP portfolio context | Scores a new manager against the LP's actual allocation (strategy, geography, vintage, size, risk budget) |
-| **Watch List** | Advisor subscription lists | Persistent firm monitoring with risk tier, IC recommendation, and re-analysis capability |
-| **Data Source** | Requires GP data submission | Autonomous ingestion from public SEC/EDGAR/FRED data |
-| **Output** | Fund marketing materials | IC-ready DD memo grounded in regulatory filings |
 
 ---
 
@@ -165,7 +168,6 @@ Platforms like Helix, CAIS, and Allvue serve advisors and GPs — they help dist
 
 - **Fund performance**: Private returns are not public. The system flags this and generates a standard GP ask.
 - **Proprietary databases**: No Preqin, PitchBook, Bloomberg (planned: financialdatasets.ai, LSEG)
-- **Real-time news**: News research agent included but relies on available public sources
 
 ---
 
@@ -175,6 +177,7 @@ Platforms like Helix, CAIS, and Allvue serve advisors and GPs — they help dist
 |----------|----------|-------------|
 | `OPENAI_API_KEY` | Yes | OpenAI API key for GPT-4o |
 | `FRED_API_KEY` | No | Free FRED key — adds macro context |
+| `TAVILY_API_KEY` | No | Tavily search key — better news quality; falls back to DuckDuckGo |
 
 ---
 
