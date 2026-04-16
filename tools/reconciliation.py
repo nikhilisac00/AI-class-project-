@@ -138,9 +138,6 @@ def check_fund_count_reconciliation(analysis: dict, raw_data: dict) -> dict:
     form_d_count   = len([f for f in form_d_funds
                           if "Form D" in str(f.get("source", ""))])
 
-    # Also count any funds from the analysis
-    analysis_funds = funds_analysis.get("funds") or []
-
     if adv_fund_count_raw is None and form_d_count == 0:
         return {
             "check": "Fund Count Reconciliation (Form D vs ADV)",

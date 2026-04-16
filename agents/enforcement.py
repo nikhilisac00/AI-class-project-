@@ -13,7 +13,6 @@ Tools:
 Output: severity, summary, key_findings, red_flags, sources
 """
 
-import json
 from tools.llm_client import LLMClient
 from tools.enforcement_client import fetch_enforcement_data
 from tools import web_search_client
@@ -134,7 +133,7 @@ def _exec_search_enforcement_web(inputs: dict, tavily_key: str = None) -> list[d
 
 
 def _exec_search_edgar_enforcement(inputs: dict) -> list[dict]:
-    import requests, time
+    import requests
     firm_name = inputs.get("firm_name", "").strip()
     if not firm_name:
         return []

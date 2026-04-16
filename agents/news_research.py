@@ -15,8 +15,6 @@ Output:
   findings, sources_consulted, queries_used, coverage_gaps, errors
 """
 
-import json
-
 from tools.llm_client import LLMClient
 from tools import web_search_client
 

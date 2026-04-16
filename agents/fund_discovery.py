@@ -16,8 +16,6 @@ Output: same shape as before so downstream agents need no changes:
   {funds, relying_advisors, total_found, sources_used, errors}
 """
 
-import json
-
 from tools.llm_client import LLMClient
 from tools.formd_client import search_funds_for_gp
 from tools import web_search_client
@@ -188,7 +186,6 @@ def _exec_search_web(inputs: dict, tavily_key: str = None) -> list[dict]:
 
 
 def _exec_get_relying_advisors(inputs: dict, iacontent: dict = None) -> list[dict]:
-    crd = inputs.get("crd", "")
     ra = (iacontent or {}).get("relyingAdvisors", [])
     return [
         {"name": r.get("name"), "crd": r.get("firmId"), "status": r.get("status")}
