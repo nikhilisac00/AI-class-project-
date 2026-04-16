@@ -2376,20 +2376,29 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
     # ─ DD Memo ───────────────────────────────────────────────────────────
     with tab_memo:
         if memo:
+            # ── Download bar ──────────────────────────────────────────────
+            st.markdown(
+                '<div style="background:#13151e;border:1px solid #2a2d3a;border-radius:8px;'
+                'padding:16px 20px;margin-bottom:18px">'
+                '<span style="color:#a0aec0;font-size:0.78rem;font-weight:600;'
+                'letter-spacing:0.08em;text-transform:uppercase">Export Memo</span>',
+                unsafe_allow_html=True,
+            )
             dl1, dl2, dl3 = st.columns(3)
             with dl1:
                 try:
-                    docx_bytes = to_docx(memo, "", firm_name)
+                    pdf_bytes = to_pdf(memo, "", firm_name)
                     st.download_button(
-                        "⬇ Download Word (.docx)",
-                        data=docx_bytes,
-                        file_name=f"{safe_name}_DD_MEMO.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "⬇  Download PDF",
+                        data=pdf_bytes,
+                        file_name=f"{safe_name}_DD_MEMO.pdf",
+                        mime="application/pdf",
                         use_container_width=True,
+                        type="primary",
                     )
-                except Exception as e:
+                except Exception:
                     st.download_button(
-                        "⬇ Download Memo (.md)",
+                        "⬇  Download Memo (.md)",
                         data=memo,
                         file_name=f"{safe_name}_DD_MEMO.md",
                         mime="text/markdown",
@@ -2397,16 +2406,22 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     )
             with dl2:
                 try:
-                    pdf_bytes = to_pdf(memo, "", firm_name)
+                    docx_bytes = to_docx(memo, "", firm_name)
                     st.download_button(
-                        "⬇ Download PDF",
-                        data=pdf_bytes,
-                        file_name=f"{safe_name}_DD_MEMO.pdf",
-                        mime="application/pdf",
+                        "⬇  Download Word (.docx)",
+                        data=docx_bytes,
+                        file_name=f"{safe_name}_DD_MEMO.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         use_container_width=True,
                     )
                 except Exception:
-                    st.empty()
+                    st.download_button(
+                        "⬇  Download Memo (.md)",
+                        data=memo,
+                        file_name=f"{safe_name}_DD_MEMO.md",
+                        mime="text/markdown",
+                        use_container_width=True,
+                    )
             with dl3:
                 if raw_data and analysis and risk_report:
                     bundle = json.dumps(
@@ -2414,14 +2429,22 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                         indent=2, default=str,
                     )
                     st.download_button(
-                        "⬇ Download JSON Bundle",
+                        "⬇  Download JSON Bundle",
                         data=bundle,
                         file_name=f"{safe_name}_bundle.json",
                         mime="application/json",
                         use_container_width=True,
                     )
-            st.divider()
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            # ── Memo preview ──────────────────────────────────────────────
+            st.markdown(
+                '<div style="background:#13151e;border:1px solid #2a2d3a;border-radius:8px;'
+                'padding:32px 40px;line-height:1.7;font-size:0.95rem">',
+                unsafe_allow_html=True,
+            )
             st.markdown(memo)
+            st.markdown("</div>", unsafe_allow_html=True)
         else:
             st.warning("Memo not generated.")
 
