@@ -2624,7 +2624,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             with st.expander("Ingestion Errors / Notes"):
                 st.json(raw_data.get("errors", []))
         if analysis:
-            with st.expander("Structured Analysis (Claude output)"):
+            with st.expander("Structured Analysis (GPT-4o output)"):
                 st.json(analysis)
 
     # ─ AI Assistant ──────────────────────────────────────────────────────
@@ -2904,7 +2904,7 @@ Be direct and concise."""
 
 # ── Persistent AI Chat (main page) ──────────────────────────────────────────
 
-import json as _mjson
+import json as _mjson  # noqa: E402
 
 _mpr    = st.session_state.pipeline_result or {}
 _mfirm  = _mpr.get("firm_name", "")
