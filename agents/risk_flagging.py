@@ -77,6 +77,17 @@ CRITICAL RULES:
 def run(analysis: dict, raw_data: dict, client: LLMClient,
         news_report: dict = None, scoring_weights: dict = None) -> dict:
 
+    recon_block = ""
+    recon = raw_data.get("reconciliation", [])
+    recon_flags = [r for r in recon if r.get("status") in ("WARN", "FAIL")]
+    if recon_flags:
+        recon_block = f"""
+<data_reconciliation>
+Cross-source reconciliation flagged {len(recon_flags)} issue(s):
+{json.dumps(recon_flags, indent=2, default=str)}
+Consider these when assessing data quality and risk.
+</data_reconciliation>"""
+
     news_block = ""
     if news_report and (news_report.get("news_flags") or news_report.get("news_summary")):
         news_block = f"""
@@ -135,6 +146,7 @@ Ingestion errors: {raw_data.get("errors", [])}
 {fund_block}
 {enforcement_block}
 {news_block}
+{recon_block}
 {f"""
 <lp_scoring_weights>
 The LP has specified custom importance weights (1=low, 10=high).

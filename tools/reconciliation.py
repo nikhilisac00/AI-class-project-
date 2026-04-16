@@ -187,9 +187,87 @@ def check_fund_count_reconciliation(analysis: dict, raw_data: dict) -> dict:
     }
 
 
+def check_personnel_reconciliation(analysis: dict, raw_data: dict) -> dict:
+    """
+    Compare key personnel count against employee headcount from analysis and ADV.
+
+    Flags data inconsistencies between the number of identified key personnel
+    and the total reported employee base. A firm with many employees but zero
+    identified key personnel warrants scrutiny; more key personnel than total
+    employees indicates a data extraction error.
+    """
+    firm_overview = analysis.get("firm_overview") or {}
+    num_employees_analysis = firm_overview.get("num_employees")
+    key_personnel_count = len(analysis.get("key_personnel") or [])
+    adv_summary = raw_data.get("adv_summary") or {}
+    num_employees_adv = adv_summary.get("num_employees")
+
+    # Coerce employee counts to int where possible
+    def _to_int(value: object) -> int | None:
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    employees_analysis = _to_int(num_employees_analysis)
+    employees_adv = _to_int(num_employees_adv)
+
+    # Prefer analysis-derived count; fall back to ADV raw field
+    num_employees = employees_analysis if employees_analysis is not None else employees_adv
+
+    if num_employees is None and key_personnel_count == 0:
+        return {
+            "check": "Personnel Reconciliation",
+            "status": "SKIP",
+            "detail": "No employee count or key personnel data available.",
+            "sources": ["ADV (IAPD)", "Analysis"],
+        }
+
+    if key_personnel_count == 0 and num_employees is not None and num_employees > 10:
+        return {
+            "check": "Personnel Reconciliation",
+            "status": "WARN",
+            "detail": (
+                f"No key personnel identified despite sizable employee base "
+                f"({num_employees} employees). Key person extraction may have failed "
+                "or ADV Part 2 brochure was unavailable."
+            ),
+            "sources": ["ADV (IAPD)", "Analysis"],
+        }
+
+    if (
+        num_employees is not None
+        and key_personnel_count > 0
+        and key_personnel_count > num_employees
+    ):
+        return {
+            "check": "Personnel Reconciliation",
+            "status": "WARN",
+            "detail": (
+                f"More key personnel identified ({key_personnel_count}) than total reported "
+                f"employees ({num_employees}) — data inconsistency. Possible duplicate "
+                "extraction or stale employee count in ADV."
+            ),
+            "sources": ["ADV (IAPD)", "Analysis"],
+        }
+
+    return {
+        "check": "Personnel Reconciliation",
+        "status": "PASS",
+        "detail": (
+            f"Key personnel count ({key_personnel_count}) is consistent with reported "
+            f"employee base ({num_employees if num_employees is not None else 'unknown'})."
+        ),
+        "sources": ["ADV (IAPD)", "Analysis"],
+    }
+
+
 def run_all(analysis: dict, raw_data: dict) -> list[dict]:
     """Run all reconciliation checks and return results list."""
     return [
         check_aum_reconciliation(analysis, raw_data),
         check_fund_count_reconciliation(analysis, raw_data),
+        check_personnel_reconciliation(analysis, raw_data),
     ]
