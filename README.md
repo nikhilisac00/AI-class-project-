@@ -34,10 +34,13 @@ No hallucination. Every fact in the memo traces to a real API response. Missing 
 
 ```
 app.py / main.py
-├── Agent 1: Data Ingestion   → IAPD + EDGAR 13F XML + FRED (no LLM)
-├── Agent 2: Fund Analysis    → OpenAI GPT-4o
-├── Agent 3: Risk Flagging    → OpenAI GPT-4o
-└── Agent 4: Memo Generation  → OpenAI GPT-4o
+├── Data Ingestion        → IAPD + EDGAR 13F XML + FRED (no LLM)
+├── Fund Analysis         → GPT-4o structured analysis
+├── Risk Flagging         → GPT-4o LP risk flags (supports LP scoring weights)
+├── Memo Generation       → GPT-4o IC-ready DD memo
+├── Comparison Agent      → GPT-4o side-by-side manager comparison
+├── Portfolio Fit Agent   → GPT-4o LP portfolio fit scoring
+└── Watch List            → Persistent JSON firm monitoring
 ```
 
 See [`docs/research-brief.md`](docs/research-brief.md) for full architecture and data source mapping.
@@ -144,11 +147,25 @@ PRs from `feature/*` → `dev` → `main`. CI runs on every push.
 
 ---
 
+## What Makes This Different from Helix / CAIS / Allvue
+
+Platforms like Helix, CAIS, and Allvue serve advisors and GPs — they help distribute funds or manage existing portfolio operations. **This is the only tool built for the LP doing manager selection from public data.**
+
+| Feature | Helix / CAIS / Allvue | This Tool |
+|---------|----------------------|-----------|
+| **Manager Comparison** | Not available — LP must build own spreadsheets | GPT-4o side-by-side comparison across 6 dimensions with winner recommendation |
+| **Portfolio Fit Scoring** | GP-facing; no LP portfolio context | Scores a new manager against the LP's actual allocation (strategy, geography, vintage, size, risk budget) |
+| **Watch List** | Advisor subscription lists | Persistent firm monitoring with risk tier, IC recommendation, and re-analysis capability |
+| **Data Source** | Requires GP data submission | Autonomous ingestion from public SEC/EDGAR/FRED data |
+| **Output** | Fund marketing materials | IC-ready DD memo grounded in regulatory filings |
+
+---
+
 ## What This Does Not Do
 
 - **Fund performance**: Private returns are not public. The system flags this and generates a standard GP ask.
 - **Proprietary databases**: No Preqin, PitchBook, Bloomberg (planned: financialdatasets.ai, LSEG)
-- **Real-time news**: No news scraping in current version
+- **Real-time news**: News research agent included but relies on available public sources
 
 ---
 

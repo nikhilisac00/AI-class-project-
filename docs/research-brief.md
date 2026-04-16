@@ -82,27 +82,72 @@ Input: Fund name or CRD number
                      │ raw_data dict
                      ▼
 ┌─────────────────────────────────────────────┐
-│  Agent 2: Fund Analysis (Claude)            │
+│  Agent 2: Fund Analysis (GPT-4o)            │
 │  Structured JSON: firm overview, fees,      │
 │  personnel, 13F data, macro context         │
 └────────────────────┬────────────────────────┘
                      │ analysis dict
                      ▼
 ┌─────────────────────────────────────────────┐
-│  Agent 3: Risk Flagging (Claude)            │
+│  Agent 3: Risk Flagging (GPT-4o)            │
 │  LP DD risk flags: regulatory, key person,  │
 │  fee/structure, data gaps                   │
+│  Supports LP-defined scoring weights        │
 └────────────────────┬────────────────────────┘
                      │ risk_report dict
                      ▼
 ┌─────────────────────────────────────────────┐
-│  Agent 4: Memo Generation (Claude)          │
+│  Agent 4: Memo Generation (GPT-4o)          │
 │  11-section IC-ready DD memo in Markdown    │
 └────────────────────┬────────────────────────┘
                      │
                      ▼
         Output: DD Memo (.md) + JSON bundle
+
+        ─── Optional LP Workflow Agents ───
+
+┌─────────────────────────────────────────────┐
+│  Comparison Agent (GPT-4o)                  │
+│  Side-by-side manager comparison across     │
+│  6 dimensions with winner recommendation    │
+└─────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────┐
+│  Portfolio Fit Agent (GPT-4o)               │
+│  Scores manager fit against LP portfolio:   │
+│  strategy, geography, vintage, size, risk   │
+└─────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────┐
+│  Watch List (persistent JSON)               │
+│  Track firms for ongoing monitoring with    │
+│  risk tier, IC recommendation, added date   │
+└─────────────────────────────────────────────┘
 ```
+
+### Agent Roster
+
+| Agent | Type | Description |
+|-------|------|-------------|
+| Data Ingestion | Deterministic | Pulls IAPD, EDGAR 13F XML, FRED macro data |
+| Firm Resolver | Deterministic | Resolves firm name → CRD number via IAPD |
+| Fund Discovery | Deterministic | Discovers funds via Form D and EDGAR |
+| Enforcement | Deterministic | Checks SEC enforcement actions |
+| Fund Analysis | GPT-4o | Structured analysis of firm, fees, team, portfolio |
+| Risk Flagging | GPT-4o | LP risk flags with severity; supports LP scoring weights |
+| News Research | GPT-4o | News sentiment and reputation flags |
+| IC Scorecard | GPT-4o | Investment committee scoring and recommendation |
+| Memo Generation | GPT-4o | 11-section IC-ready DD memo |
+| Comparables | GPT-4o | Peer group identification |
+| Research Director | GPT-4o | Orchestrates multi-agent pipeline |
+| **Comparison** | **GPT-4o** | **Side-by-side manager comparison across 6 dimensions** |
+| **Portfolio Fit** | **GPT-4o** | **Scores manager fit against LP's existing portfolio** |
+
+### Persistent Features
+
+| Feature | Storage | Description |
+|---------|---------|-------------|
+| **Watch List** | `output/watchlist.json` | Track firms with risk tier, IC recommendation, and added date |
 
 ---
 
