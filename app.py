@@ -484,6 +484,7 @@ import agents.research_director as director_agent    # noqa: E402
 import agents.comparables       as comparables_agent  # noqa: E402
 import agents.comparison        as comparison_agent   # noqa: E402
 import agents.portfolio_fit     as portfolio_fit_agent # noqa: E402
+import agents.fact_checker      as fact_checker_agent  # noqa: E402
 from tools.llm_client    import make_client              # noqa: E402
 from tools.pal_client    import is_available as pal_available, call_consensus  # noqa: E402
 from tools.reconciliation import run_all as reconcile_sources  # noqa: E402
@@ -1089,7 +1090,39 @@ if run_button:
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Memo complete")
 
-        fact_check = None
+        status_box.info("⏳ Step 5b — Fact-checking memo (deterministic + narrative)...")
+        fact_check = fact_checker_agent.run(
+            analysis, risk_report, raw_data,
+            {},
+            memo, client,
+        )
+        if fact_check["summary"]["failures"] > 0:
+            status_box.warning(
+                f"Fact checker found {fact_check['summary']['failures']} "
+                f"issue(s) — re-generating memo..."
+            )
+            memo = memo_agent.run(analysis, risk_report, raw_data, client,
+                                  news_report=news_report)
+            re_check = fact_checker_agent.run(
+                analysis, risk_report, raw_data, {}, memo, client,
+            )
+            fixed = [
+                c["check"] for c in fact_check["checks"]
+                if c["status"] == "FAIL"
+                and next(
+                    (r for r in re_check["checks"]
+                     if r["check"] == c["check"]),
+                    {},
+                ).get("status") != "FAIL"
+            ]
+            re_check["retry_triggered"] = True
+            re_check["failures_fixed_on_retry"] = fixed
+            fact_check = re_check
+        step[0] += 1
+        progress_bar.progress(_pct(step[0]), text=(
+            f"Fact check: {fact_check['trust_score']}/100 "
+            f"({fact_check['trust_label']})"
+        ))
 
         status_box.info("⏳ Step 6 — Scoring investment dimensions · building IC recommendation...")
         scorecard = scorecard_agent.run(analysis, risk_report, raw_data, client,
@@ -1569,8 +1602,11 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
     _rec_badge    = f" {_rec_icons.get(_rec,'')}" if _rec else ""
     _enf_badge    = f" {enf_icon}" if enf_sev != "CLEAN" else " ✅"
 
-    _fc_verdict   = (fact_check or {}).get("verdict", "")
-    _fc_badge     = " ✅" if _fc_verdict == "PASS" else (" ⚠️" if _fc_verdict == "PASS_WITH_FLAGS" else (" 🔴" if _fc_verdict == "FAIL" else ""))
+    _fc_score     = (fact_check or {}).get("trust_score", 0)
+    _fc_label     = (fact_check or {}).get("trust_label", "")
+    _fc_badge     = (" ✅" if _fc_label == "HIGH"
+                     else (" ⚠️" if _fc_label == "MEDIUM"
+                           else (" 🔴" if _fc_label == "LOW" else "")))
 
     (
         tab_memo, tab_scorecard, tab_risk, tab_director,
@@ -2439,6 +2475,36 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     )
             st.markdown("</div>", unsafe_allow_html=True)
 
+            # ── Trust badge ──────────────────────────────────────────────
+            if fact_check and fact_check.get("trust_score") is not None:
+                _ts = fact_check["trust_score"]
+                _tl = fact_check.get("trust_label", "")
+                _tc = ("#27ae60" if _ts >= 85
+                       else ("#e67e22" if _ts >= 60 else "#c0392b"))
+                _s = fact_check.get("summary", {})
+                st.markdown(
+                    f'<div style="background:{_tc}18;border:1px solid {_tc}40;'
+                    f'border-radius:8px;padding:10px 16px;margin-bottom:14px;'
+                    f'display:flex;align-items:center;gap:14px">'
+                    f'<span style="background:{_tc};color:#fff;font-weight:800;'
+                    f'font-size:1.1rem;padding:6px 14px;border-radius:20px">'
+                    f'{_ts}</span>'
+                    f'<span style="color:{_tc};font-weight:700;'
+                    f'font-size:0.95rem">Trust: {_tl}</span>'
+                    f'<span style="color:#8fa3bb;font-size:0.82rem">'
+                    f'{_s.get("passed", 0)}/{_s.get("total", 0)} checks passed'
+                    f' · {_s.get("warnings", 0)} warnings'
+                    f' · {_s.get("failures", 0)} failures</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                if fact_check.get("retry_triggered"):
+                    fixed = fact_check.get("failures_fixed_on_retry", [])
+                    st.caption(
+                        f"Auto-retry corrected {len(fixed)} issue(s): "
+                        + ", ".join(fixed)
+                    )
+
             # ── Memo preview ──────────────────────────────────────────────
             st.markdown(
                 '<div style="background:#13151e;border:1px solid #2a2d3a;border-radius:8px;'
@@ -2452,50 +2518,77 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
 
     # ─ Fact Checker ──────────────────────────────────────────────────────
     with tab_fact_check:
-        if fact_check and fact_check.get("verdict") != "SKIP":
-            verdict    = fact_check.get("verdict", "—")
-            confidence = fact_check.get("confidence", "—")
-            hal_risk   = fact_check.get("hallucination_risk", "—")
-            summary    = fact_check.get("summary", "")
-            verified   = fact_check.get("verified_claims", [])
-            flagged    = fact_check.get("flagged_claims", [])
-            high_flags = [f for f in flagged if f.get("severity") == "HIGH"]
+        if fact_check and fact_check.get("checks"):
+            _ts = fact_check["trust_score"]
+            _tl = fact_check["trust_label"]
+            _tc = ("#27ae60" if _ts >= 85
+                   else ("#e67e22" if _ts >= 60 else "#c0392b"))
+            _s = fact_check["summary"]
 
-            verdict_color = {"PASS": "#28a745", "PASS_WITH_FLAGS": "#fd7e14", "FAIL": "#dc3545"}.get(verdict, "#6c757d")
             st.markdown(
-                f'<div style="padding:12px;border-radius:6px;background:{verdict_color}20;'
-                f'border-left:4px solid {verdict_color};margin-bottom:12px">'
-                f'<b style="color:{verdict_color};font-size:1.1rem">{verdict}</b> &nbsp;·&nbsp; '
-                f'Confidence: {confidence} &nbsp;·&nbsp; Hallucination Risk: {hal_risk}<br>'
-                f'<span style="font-size:0.9rem">{summary}</span></div>',
+                f'<div style="background:{_tc}18;border:1px solid {_tc}40;'
+                f'border-radius:10px;padding:18px 24px;margin-bottom:16px">'
+                f'<div style="display:flex;align-items:center;gap:16px">'
+                f'<span style="background:{_tc};color:#fff;font-weight:900;'
+                f'font-size:1.5rem;padding:10px 22px;border-radius:24px">'
+                f'{_ts}</span>'
+                f'<div><div style="color:{_tc};font-weight:700;'
+                f'font-size:1.1rem">Trust: {_tl}</div>'
+                f'<div style="color:#8fa3bb;font-size:0.85rem">'
+                f'{_s["passed"]} passed · {_s["warnings"]} warnings · '
+                f'{_s["failures"]} failures '
+                f'(out of {_s["total"]} checks)</div>'
+                f'</div></div></div>',
                 unsafe_allow_html=True,
             )
 
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Verified Claims", len(verified))
-            m2.metric("Flagged Claims", len(flagged))
-            m3.metric("HIGH Severity", len(high_flags))
+            if fact_check.get("retry_triggered"):
+                fixed = fact_check.get("failures_fixed_on_retry", [])
+                st.info(
+                    f"Auto-retry corrected {len(fixed)} issue(s): "
+                    + ", ".join(fixed)
+                )
 
-            if flagged:
-                st.subheader("Flagged Claims")
-                for f in flagged:
-                    sev = f.get("severity", "LOW")
-                    color = {"HIGH": "#dc3545", "MEDIUM": "#fd7e14", "LOW": "#6c757d"}.get(sev, "#6c757d")
-                    st.markdown(
-                        f'<div style="padding:8px;border-left:3px solid {color};margin-bottom:6px">'
-                        f'<b style="color:{color}">{sev}</b> &nbsp;'
-                        f'<i>"{f.get("claim","")}"</i><br>'
-                        f'<span style="font-size:0.85rem">⚠ {f.get("issue","")}</span></div>',
-                        unsafe_allow_html=True,
-                    )
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Total Checks", _s["total"])
+            m2.metric("Passed", _s["passed"])
+            m3.metric("Warnings", _s["warnings"])
+            m4.metric("Failures", _s["failures"])
 
-            if verified:
-                with st.expander(f"Verified Claims ({len(verified)})", expanded=False):
-                    for v in verified:
-                        st.markdown(
-                            f'✅ **"{v.get("claim","")}"** — '
-                            f'Source: `{v.get("source","")}` = `{v.get("value","")}`'
-                        )
+            import pandas as pd
+            layer_order = [
+                "raw_to_analysis", "analysis_to_memo",
+                "cross_agent", "narrative",
+            ]
+            layer_labels = {
+                "raw_to_analysis": "Raw Data → Analysis",
+                "analysis_to_memo": "Analysis → Memo",
+                "cross_agent": "Cross-Agent Consistency",
+                "narrative": "Narrative Accuracy (LLM)",
+            }
+            status_icon = {"PASS": "✅", "WARN": "⚠️", "FAIL": "❌"}
+
+            for layer in layer_order:
+                layer_checks = [
+                    c for c in fact_check["checks"]
+                    if c.get("layer") == layer
+                ]
+                if not layer_checks:
+                    continue
+                st.markdown(
+                    f"**{layer_labels.get(layer, layer)}**"
+                )
+                df = pd.DataFrame([{
+                    "Status": status_icon.get(c["status"], c["status"]),
+                    "Check": c["check"],
+                    "Detail": c["detail"],
+                } for c in layer_checks])
+                st.dataframe(
+                    df, use_container_width=True, hide_index=True,
+                )
+
+            with st.expander("Raw Check Evidence", expanded=False):
+                st.json(fact_check["checks"])
         else:
             st.info("Fact check not available for this analysis.")
 
