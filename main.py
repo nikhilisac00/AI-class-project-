@@ -42,18 +42,17 @@ console = Console()
 
 
 def validate_env() -> str:
-    key = os.getenv("ANTHROPIC_API_KEY")
+    key = os.getenv("OPENAI_API_KEY")
     if not key:
-        console.print("[bold red]Error:[/] ANTHROPIC_API_KEY not set. Add it to .env")
+        console.print("[bold red]Error:[/] OPENAI_API_KEY not set. Add it to .env")
         sys.exit(1)
     return key
 
 
 def save_outputs(firm_name: str, raw_data: dict, analysis: dict,
-                 risk_report: dict, memo: str, output_dir: str):
-    """Save all agent outputs to timestamped files."""
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    safe_name = "".join(c if c.isalnum() or c in "_ -" else "_" for c in firm_name)[:40]
+                 risk_report: dict, memo: str, output_dir: str,
+                 ts: str, safe_name: str):
+    """Save core agent outputs to timestamped files."""
     base = Path(output_dir) / f"{ts}_{safe_name}"
     base.parent.mkdir(parents=True, exist_ok=True)
 
@@ -125,7 +124,7 @@ def main():
     parser.add_argument(
         "--raw-only",
         action="store_true",
-        help="Only run data ingestion, skip Claude analysis",
+        help="Only run data ingestion, skip LLM analysis",
     )
     parser.add_argument(
         "--no-news",
@@ -140,23 +139,22 @@ def main():
     )
     args = parser.parse_args()
 
-    api_key = validate_env()
-    client  = make_client(api_key)
+    api_key  = validate_env()
+    client   = make_client(api_key)
     fred_key = None if args.no_fred else os.getenv("FRED_API_KEY")
-
     tavily_key = os.getenv("TAVILY_API_KEY")
 
     console.print(Panel(
         f"[bold]AI Alternatives Research Associate[/]\n"
         f"Target: [cyan]{args.firm}[/]\n"
-        f"Model: OpenAI GPT-4o\n"
+        f"Model: {client.model}\n"
         f"Sources: IAPD · SEC EDGAR · {'FRED' if not args.no_fred else 'FRED skipped'}"
         f" · {'News (' + ('Tavily' if tavily_key else 'DuckDuckGo') + ')' if not args.no_news else 'News skipped'}",
         title="Starting Analysis",
         expand=False,
     ))
 
-    # ── Agent 1: Data Ingestion ───────────────────────────────────────────────
+    # ── Agent 1: Data Ingestion ────────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Ingesting data from EDGAR / IAPD / FRED...", total=None)
@@ -180,8 +178,7 @@ def main():
         console.print(f"\nRaw data saved to: {out}")
         return
 
-    # ── Agent 2: Fund Analysis ────────────────────────────────────────────────
-
+    # ── Agent 2: Fund Analysis ────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Running fund analysis (GPT-4o reasoning)...", total=None)
@@ -197,7 +194,7 @@ def main():
                       if len(r["detail"]) > 80 else
                       f"  [dim]{icon} {r['check']}: {r['status']} — {r['detail']}[/dim]")
 
-    # ── Agent 3: News Research (Karpathy autoresearch) ────────────────────────
+    # ── Agent 3: News Research ────────────────────────────────────────────
     news_report = None
     if not args.no_news:
         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
@@ -233,7 +230,7 @@ def main():
             f"{news_report.get('total_sources', 0)} sources"
         )
 
-    # ── Agent 4: Risk Flagging ────────────────────────────────────────────────
+    # ── Agent 4: Risk Flagging ────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Running risk flagging (GPT-4o reasoning)...", total=None)
@@ -242,7 +239,7 @@ def main():
 
     print_risk_summary(risk_report)
 
-    # ── Agent 5: Memo Generation ──────────────────────────────────────────────
+    # ── Agent 5: Memo Generation ────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Generating DD memo (GPT-4o reasoning)...", total=None)
@@ -250,7 +247,11 @@ def main():
                               news_report=news_report)
         p.update(task, description="Memo generation complete", completed=True)
 
-    # ── Agent 6: IC Scorecard ─────────────────────────────────────────────────
+    # ── Shared timestamp for all output files ────────────────────────────────────
+    ts        = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_name = "".join(c if c.isalnum() or c in "_ -" else "_" for c in firm_name)[:40]
+
+    # ── Agent 6: IC Scorecard ──────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Generating IC Scorecard (GPT-4o reasoning)...", total=None)
@@ -269,17 +270,18 @@ def main():
 
     # ── Save outputs ──────────────────────────────────────────────────────────
     memo_path = save_outputs(
-        firm_name, raw_data, analysis, risk_report, memo, args.output_dir
+        firm_name, raw_data, analysis, risk_report, memo, args.output_dir,
+        ts=ts, safe_name=safe_name,
     )
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    safe_name = "".join(c if c.isalnum() or c in "_ -" else "_" for c in firm_name)[:40]
     if news_report:
-        news_path = Path(args.output_dir) / f"{ts}_{safe_name}_news_report.json"
-        news_path.write_text(json.dumps(news_report, indent=2, default=str), encoding="utf-8")
-    scorecard_path = Path(args.output_dir) / f"{ts}_{safe_name}_ic_scorecard.json"
-    scorecard_path.write_text(json.dumps(scorecard, indent=2, default=str), encoding="utf-8")
+        (Path(args.output_dir) / f"{ts}_{safe_name}_news_report.json").write_text(
+            json.dumps(news_report, indent=2, default=str), encoding="utf-8"
+        )
+    (Path(args.output_dir) / f"{ts}_{safe_name}_ic_scorecard.json").write_text(
+        json.dumps(scorecard, indent=2, default=str), encoding="utf-8"
+    )
 
-    # ── Agent 7: Comparables ──────────────────────────────────────────────────
+    # ── Agent 7: Comparables ────────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Finding comparable managers (IAPD)...", total=None)

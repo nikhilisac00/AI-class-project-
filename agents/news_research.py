@@ -19,7 +19,7 @@ from tools.llm_client import LLMClient
 from tools import web_search_client
 
 
-# ── Tool definition ───────────────────────────────────────────────────────────
+# ── Tool definition ───────────────────────────────────────────────────────────────────
 
 TOOLS = [
     {
@@ -107,7 +107,7 @@ RULES:
 """
 
 
-# ── Tool executor ─────────────────────────────────────────────────────────────
+# ── Tool executor ───────────────────────────────────────────────────────────────────
 
 def _exec_web_search(inputs: dict, tavily_key: str = None) -> list[dict]:
     query = inputs.get("query", "").strip()
@@ -128,13 +128,14 @@ def _exec_web_search(inputs: dict, tavily_key: str = None) -> list[dict]:
         return [{"error": str(e)}]
 
 
-# ── Main entry point ──────────────────────────────────────────────────────────
+# ── Main entry point ──────────────────────────────────────────────────────────────────
 
 def run(
     firm_name: str,
     analysis: dict = None,
     client: LLMClient = None,
     tavily_api_key: str = None,
+    max_rounds: int = 3,
     **_,
 ) -> dict:
     """Run the news research agent.
@@ -144,6 +145,7 @@ def run(
         analysis:       fund_analysis output (provides context — fund names, personnel).
         client:         LLMClient instance.
         tavily_api_key: Tavily API key.
+        max_rounds:     Max research rounds (each round ≈ 3 queries).
 
     Returns:
         news_report dict.
@@ -199,7 +201,11 @@ def run(
         "web_search": lambda inp: _exec_web_search(inp, tavily_key=tavily_api_key),
     }
 
-    print(f"[News Research Agent] Starting agent loop for '{firm_name}'...")
+    # Each round is ~3 queries; add buffer iterations for reasoning steps
+    max_iterations = max(max_rounds * 4, 10)
+
+    print(f"[News Research Agent] Starting agent loop for '{firm_name}' "
+          f"(max_rounds={max_rounds}, max_iterations={max_iterations})...")
     try:
         result = client.agent_loop_json(
             system=SYSTEM_PROMPT,
@@ -207,7 +213,7 @@ def run(
             tools=TOOLS,
             tool_executor=tool_executor,
             max_tokens=4096,
-            max_iterations=20,
+            max_iterations=max_iterations,
         )
     except Exception as e:
         news_report["errors"].append(f"Agent loop failed: {e}")
