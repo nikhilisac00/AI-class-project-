@@ -2888,6 +2888,12 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
             placeholder='e.g. "Two Sigma Investments" or "149729"',
             key="firm_b_input",
         )
+        _include_news_b = st.checkbox(
+            "Include News Research for Firm B",
+            value=False,
+            help="Run news research agent for Firm B before comparison (slower)",
+            key="include_news_b",
+        )
         _run_b = st.button(
             "Analyze Second Firm", type="primary",
             disabled=not (openai_key and _b_name_input.strip()),
@@ -2913,8 +2919,21 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                         tavily_key=tavily_key or None,
                     )
                     _b_analysis = analysis_agent.run(_b_raw, _client_b)
+                    _b_news = None
+                    if _include_news_b:
+                        _b_firm_name_tmp = (
+                            (_b_analysis or {}).get("firm_overview", {}).get("name")
+                            or (_b_firm or {}).get("firm_name", _b_name_input.strip())
+                        )
+                        _b_news = news_agent.run(
+                            firm_name=_b_firm_name_tmp,
+                            analysis=_b_analysis,
+                            client=_client_b,
+                            tavily_api_key=tavily_key or None,
+                        )
                     _b_risk = risk_agent.run(
                         _b_analysis, _b_raw, _client_b,
+                        news_report=_b_news,
                         scoring_weights=scoring_weights,
                     )
                     _b_scorecard = scorecard_agent.run(
@@ -3006,6 +3025,14 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     "Rationale": d.get("rationale", ""),
                 } for d in _dims])
                 st.dataframe(_df_comp, use_container_width=True, hide_index=True)
+                _csv_data = _df_comp.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    "Download Comparison as CSV",
+                    data=_csv_data,
+                    file_name=f"comparison_{_ca[:20]}_{_cb[:20]}.csv",
+                    mime="text/csv",
+                    key="download_comparison_csv",
+                )
 
             _diffs = _comp_res.get("key_differentiators", [])
             if _diffs:
@@ -3038,7 +3065,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     "HIGH": "#c0392b", "MEDIUM": "#e67e22", "LOW": "#27ae60"
                 }.get(_w_tier, "#8fa3bb")
                 with st.container(border=True):
-                    _wc1, _wc2 = st.columns([5, 1])
+                    _wc1, _wc2, _wc3 = st.columns([5, 1, 1])
                     with _wc1:
                         st.markdown(f"*{_w_name}*")
                         _wmeta = []
@@ -3057,6 +3084,43 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                             "  ·  ".join(_wmeta), unsafe_allow_html=True
                         )
                     with _wc2:
+                        if st.button(
+                            "Re-run", key=f"wl_rerun_{_wi}",
+                            use_container_width=True,
+                            disabled=not openai_key,
+                        ):
+                            with st.spinner(f"Re-analyzing {_w_name}..."):
+                                try:
+                                    _rc = make_client(openai_key)
+                                    _r_crd = _w_crd or _w_name
+                                    _r_raw = ingestion_agent.run(
+                                        _r_crd,
+                                        fred_api_key=fred_key or None,
+                                        website=None,
+                                        client=_rc,
+                                        tavily_key=tavily_key or None,
+                                    )
+                                    _r_analysis = analysis_agent.run(
+                                        _r_raw, _rc,
+                                    )
+                                    _r_risk = risk_agent.run(
+                                        _r_analysis, _r_raw, _rc,
+                                        scoring_weights=scoring_weights,
+                                    )
+                                    _r_scorecard = scorecard_agent.run(
+                                        _r_analysis, _r_risk, _r_raw, _rc,
+                                    )
+                                    _wl_items[_wi]["risk_tier"] = (
+                                        (_r_risk or {}).get("overall_risk_tier", _w_tier)
+                                    )
+                                    _wl_items[_wi]["recommendation"] = (
+                                        (_r_scorecard or {}).get("recommendation", _w_rec)
+                                    )
+                                    _save_watchlist(_wl_items)
+                                    st.rerun()
+                                except Exception as _re_err:
+                                    st.error(f"Re-run failed: {_re_err}")
+                    with _wc3:
                         if st.button("Remove", key=f"wl_rm_{_wi}",
                                      use_container_width=True):
                             _wl_items.pop(_wi)
