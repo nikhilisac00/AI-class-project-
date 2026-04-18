@@ -9,15 +9,19 @@ Provides three interaction modes:
 
 import json
 import re
+import time
 
 import openai
+
+# Default timeout for all OpenAI API calls (seconds). Bug #20.
+_API_TIMEOUT = 90
 
 
 class LLMClient:
     """Thin wrapper around the OpenAI API for the agent pipeline."""
 
     def __init__(self, api_key: str):
-        self._client = openai.OpenAI(api_key=api_key)
+        self._client = openai.OpenAI(api_key=api_key, timeout=_API_TIMEOUT)
         self.provider = "openai"
         self.model = "gpt-4o"
 
@@ -26,14 +30,32 @@ class LLMClient:
     def complete(self, system: str, user: str,
                  max_tokens: int = 8000, **_) -> str:
         """Return a plain-text completion."""
-        response = self._client.chat.completions.create(
-            model=self.model,
-            max_tokens=max_tokens,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-        )
+        # Bug #3: catch auth/rate-limit errors explicitly so mid-run failures
+        # surface clearly rather than propagating as opaque KeyError/AttributeError.
+        try:
+            response = self._client.chat.completions.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            )
+        except openai.AuthenticationError as e:
+            raise RuntimeError(
+                f"[LLMClient] OpenAI API key is invalid or revoked: {e}"
+            ) from e
+        except openai.RateLimitError as e:
+            print(f"[LLMClient] Rate limit hit — waiting 60s before retry: {e}")
+            time.sleep(60)
+            response = self._client.chat.completions.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            )
         return (response.choices[0].message.content or "").strip()
 
     def complete_json(self, system: str, user: str,
@@ -44,11 +66,24 @@ class LLMClient:
 
     def chat(self, messages: list[dict], max_tokens: int = 2000) -> str:
         """Fast conversational completion using gpt-4o-mini."""
-        response = self._client.chat.completions.create(
-            model="gpt-4o-mini",
-            max_tokens=max_tokens,
-            messages=messages,
-        )
+        try:
+            response = self._client.chat.completions.create(
+                model="gpt-4o-mini",
+                max_tokens=max_tokens,
+                messages=messages,
+            )
+        except openai.AuthenticationError as e:
+            raise RuntimeError(
+                f"[LLMClient] OpenAI API key is invalid or revoked: {e}"
+            ) from e
+        except openai.RateLimitError as e:
+            print(f"[LLMClient] Rate limit hit — waiting 60s before retry: {e}")
+            time.sleep(60)
+            response = self._client.chat.completions.create(
+                model="gpt-4o-mini",
+                max_tokens=max_tokens,
+                messages=messages,
+            )
         return (response.choices[0].message.content or "").strip()
 
     def chat_stream(self, messages: list[dict], max_tokens: int = 2000):
@@ -97,12 +132,21 @@ class LLMClient:
         ]
 
         for iteration in range(max_iterations):
-            response = self._client.chat.completions.create(
-                model=self.model,
-                max_tokens=max_tokens,
-                messages=messages,
-                tools=openai_tools if openai_tools else None,
-            )
+            try:
+                response = self._client.chat.completions.create(
+                    model=self.model,
+                    max_tokens=max_tokens,
+                    messages=messages,
+                    tools=openai_tools if openai_tools else None,
+                )
+            except openai.AuthenticationError as e:
+                raise RuntimeError(
+                    f"[LLMClient] OpenAI API key is invalid or revoked: {e}"
+                ) from e
+            except openai.RateLimitError as e:
+                print(f"[LLMClient] Rate limit hit in agent loop — waiting 60s: {e}")
+                time.sleep(60)
+                continue
 
             choice = response.choices[0]
             message = choice.message

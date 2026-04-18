@@ -33,10 +33,17 @@ def _get(url: str, params: dict = None, retries: int = 3) -> dict | None:
             return r.json()
         except requests.exceptions.HTTPError:
             if r.status_code == 429:
-                time.sleep(2 ** attempt)
+                wait = 2 ** attempt
+                print(f"[EDGAR] Rate limited (429) — retrying in {wait}s")
+                time.sleep(wait)
             else:
                 print(f"[EDGAR] HTTP {r.status_code} → {url}")
                 return None
+        except requests.exceptions.Timeout:
+            # Bug #9: explicit Timeout handling with retry backoff
+            wait = 2 ** attempt
+            print(f"[EDGAR] Request timed out (attempt {attempt + 1}/{retries}) — retrying in {wait}s")
+            time.sleep(wait)
         except requests.exceptions.RequestException as e:
             print(f"[EDGAR] Request error: {e}")
             time.sleep(1)

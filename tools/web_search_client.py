@@ -44,17 +44,27 @@ class _TextExtractor(HTMLParser):
 
 def _fetch_page_text(url: str, timeout: int = 8, max_chars: int = 3000) -> str:
     """Fetch a URL and return plain text (best-effort; returns '' on failure)."""
+    # Bug #12: validate URL scheme before fetching to avoid non-HTTP URIs hanging
+    if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+        return ""
     try:
         r = requests.get(
             url,
             timeout=timeout,
             headers={"User-Agent": "Mozilla/5.0 (compatible; DD-research-bot/1.0)"},
+            stream=True,
         )
         r.raise_for_status()
-        if "html" not in r.headers.get("content-type", ""):
-            return r.text[:max_chars]
+        # Bug #12: check content-length before reading to avoid huge downloads
+        content_length = int(r.headers.get("content-length", 0))
+        if content_length > 5_000_000:  # skip files >5 MB
+            return ""
+        content_type = r.headers.get("content-type", "")
+        if "html" not in content_type and "text" not in content_type:
+            return ""
+        raw = r.content[:max_chars * 4].decode("utf-8", errors="ignore")
         extractor = _TextExtractor()
-        extractor.feed(r.text)
+        extractor.feed(raw)
         return extractor.get_text()[:max_chars]
     except Exception:
         return ""

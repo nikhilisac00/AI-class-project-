@@ -10,7 +10,12 @@ Each check returns a dict with keys:
 """
 
 from __future__ import annotations
+import os
 import re
+
+# Bug #23: allow LP-specific tolerance to be configured via env var.
+# Default remains 50% for backwards compatibility.
+_DEFAULT_AUM_TOLERANCE = float(os.getenv("AUM_RECONCILIATION_TOLERANCE", "0.50"))
 
 
 def _parse_usd(value: str | None) -> float | None:
@@ -45,7 +50,7 @@ def _parse_usd(value: str | None) -> float | None:
 
 
 def check_aum_reconciliation(analysis: dict, raw_data: dict,
-                              tolerance: float = 0.50) -> dict:
+                              tolerance: float = _DEFAULT_AUM_TOLERANCE) -> dict:
     """
     Compare 13F portfolio value (proxy AUM) against ADV regulatory AUM.
 

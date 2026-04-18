@@ -48,6 +48,10 @@ def _fetch_series(series_id: str, api_key: str,
             for o in obs
             if o["value"] != "."  # FRED uses "." for missing
         ]
+    except requests.exceptions.Timeout:
+        # Bug #9 (same pattern as edgar_client): explicit Timeout handling
+        print(f"[FRED] Request timed out for series {series_id}")
+        return []
     except requests.exceptions.RequestException as e:
         print(f"[FRED] Error fetching {series_id}: {e}")
         return []

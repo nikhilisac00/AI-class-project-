@@ -11,7 +11,9 @@ Step 5b runs after the parallel block — upgrades the 13F filing list using
 the CIK resolved by ADV enrichment (more accurate than name-based search).
 """
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, wait as futures_wait, FIRST_EXCEPTION
 
 from tools.edgar_client import (
     search_adviser_by_name,
@@ -78,12 +80,12 @@ def run(firm_input: str, fred_api_key: str = None,
             print(f"[Ingestion] Resolved to CRD {crd}: {results[0]['firm_name']}")
 
     # ── Step 2: Pull IAPD/ADV detail ─────────────────────────────────
-    _iacontent = None
+    iacontent = None  # renamed from _iacontent (Bug #28)
     if crd:
         print(f"[Ingestion] Fetching IAPD detail for CRD {crd}")
         detail = get_adviser_detail(str(crd))
         if detail:
-            _iacontent = detail
+            iacontent = detail
             search_hit = raw_data["search_results"][0] if raw_data["search_results"] else None
             raw_data["adv_summary"] = extract_adv_summary(detail, search_hit=search_hit)
         else:
@@ -98,6 +100,17 @@ def run(firm_input: str, fred_api_key: str = None,
 
     # ── Steps 3-7: Run in parallel ─────────────────────────────────────
     # All depend only on firm_name/CRD from steps 1-2, not on each other.
+    # Bug #1: semaphore limits concurrent outbound API calls to avoid triggering
+    # SEC/IAPD rate limits when multiple sessions run simultaneously.
+    _api_semaphore = threading.Semaphore(3)
+
+    def _with_semaphore(fn):
+        """Wrap a task so it acquires the shared semaphore before running."""
+        def wrapper():
+            with _api_semaphore:
+                return fn()
+        wrapper.__name__ = fn.__name__
+        return wrapper
 
     def _fetch_13f():
         if not search_name:
@@ -129,8 +142,9 @@ def run(firm_input: str, fred_api_key: str = None,
         print(f"[Ingestion] Running ADV enrichment for '{firm_name}'")
         try:
             from tools.adv_parser import fetch_adv_data
-            return "adv_xml_data", fetch_adv_data(firm_name, iacontent=_iacontent), None
-        except Exception as e:
+            return "adv_xml_data", fetch_adv_data(firm_name, iacontent=iacontent), None
+        except (ValueError, KeyError, TypeError, OSError) as e:
+            # Bug #29: catch specific recoverable errors rather than bare Exception
             return "adv_xml_data", {}, f"ADV enrichment failed: {e}"
 
     def _fetch_funds():
@@ -142,12 +156,12 @@ def run(firm_input: str, fred_api_key: str = None,
             return "fund_discovery", _fd.run(
                 firm_name=firm_name,
                 crd=raw_data.get("crd"),
-                iacontent=_iacontent,
+                iacontent=iacontent,
                 website=website,
                 client=client,
                 tavily_key=tavily_key,
             ), None
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, RuntimeError, OSError) as e:
             return "fund_discovery", {}, f"Fund discovery failed: {e}"
 
     def _fetch_enforcement():
@@ -156,33 +170,48 @@ def run(firm_input: str, fred_api_key: str = None,
         print(f"[Ingestion] Running enforcement check for '{firm_name}'")
         try:
             from agents import enforcement as _enf
-            # Note: cik is not read here to avoid a race condition with _fetch_adv
-            # (both run in parallel). The enforcement agent works without cik.
+            # cik intentionally omitted here — avoid race condition with _fetch_adv
+            # (both run in parallel). enforcement agent works without cik.
             return "enforcement", _enf.run(
                 firm_name=firm_name,
                 crd=raw_data.get("crd"),
                 cik=None,
-                iacontent=_iacontent,
+                iacontent=iacontent,
                 has_disclosure_flag=bool(raw_data["adv_summary"].get("has_disclosures")),
                 tavily_key=tavily_key,
                 client=client,
             ), None
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, RuntimeError, OSError) as e:
             return "enforcement", {}, f"Enforcement check failed: {e}"
 
     tasks = [_fetch_13f, _fetch_fred, _fetch_adv, _fetch_funds, _fetch_enforcement]
     print(f"[Ingestion] Running {len(tasks)} data pulls in parallel...")
 
+    # Bug #11: use futures_wait with timeout so a hung API call doesn't block forever.
+    _PARALLEL_TIMEOUT = 120  # seconds
     with ThreadPoolExecutor(max_workers=len(tasks)) as pool:
-        futures = {pool.submit(t): t.__name__ for t in tasks}
-        for future in as_completed(futures):
+        futures = {pool.submit(_with_semaphore(t)): t.__name__ for t in tasks}
+        done, not_done = futures_wait(futures, timeout=_PARALLEL_TIMEOUT)
+
+        # Handle tasks that finished (done)
+        for future in done:
+            task_name = futures[future]
             try:
                 key, value, err = future.result()
                 raw_data[key] = value
                 if err:
                     raw_data["errors"].append(err)
             except Exception as e:
-                raw_data["errors"].append(f"Parallel task failed: {e}")
+                raw_data["errors"].append(f"Task {task_name} failed: {e}")
+
+        # Handle tasks that timed out (not_done) — Bug #11
+        for future in not_done:
+            task_name = futures[future]
+            future.cancel()
+            raw_data["errors"].append(
+                f"Task {task_name} timed out after {_PARALLEL_TIMEOUT}s — data unavailable"
+            )
+            print(f"[Ingestion] WARNING: {task_name} timed out")
 
     # ── Step 5b: Upgrade 13F list using resolved CIK (post-parallel) ────────
     # ADV enrichment resolves the CIK via EFTS — more accurate than name search.

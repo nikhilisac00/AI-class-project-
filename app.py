@@ -856,11 +856,19 @@ else:
     with col_find:
         find_btn = st.button("Search", type="primary", use_container_width=True)
 
+def _sanitize_firm_input(raw: str) -> str:
+    """Bug #15: strip control chars, collapse whitespace, cap length."""
+    import re as _re
+    cleaned = _re.sub(r"[\x00-\x1f\x7f]", "", raw)  # strip control chars
+    cleaned = _re.sub(r"\s+", " ", cleaned).strip()   # collapse whitespace
+    return cleaned[:200]                               # cap at 200 chars
+
+
 # Trigger search (manual button OR chip auto-search)
 _do_search = find_btn or st.session_state.get("_auto_search", False)
 if _do_search:
     st.session_state._auto_search = False
-    _q = query_input.strip() or st.session_state.search_query
+    _q = _sanitize_firm_input(query_input.strip() or st.session_state.search_query)
     if not _q:
         st.error("Enter a firm name or CRD to search.")
     else:

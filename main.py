@@ -15,7 +15,9 @@ Model: OpenAI GPT-4o
 
 import argparse
 import json
+import logging
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -37,9 +39,32 @@ import agents.comparables       as comparables_agent
 import agents.fact_checker       as fact_checker_agent
 from tools.llm_client    import make_client
 from tools.reconciliation import run_all as reconcile_sources
+from tools.schemas        import validate_analysis
 
 load_dotenv()
 console = Console()
+
+
+def _setup_file_logging(output_dir: str, safe_name: str, ts: str) -> None:
+    """Bug #24: write diagnostic output to a persistent log file."""
+    log_dir = Path(output_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / f"{ts}_{safe_name}.log"
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        handlers=[
+            logging.FileHandler(log_path, encoding="utf-8"),
+            logging.StreamHandler(sys.stdout),
+        ],
+        force=True,
+    )
+    print(f"[Logging] Writing session log to: {log_path}")
+
+
+def _normalize_check_name(name: str) -> str:
+    """Bug #8: normalize check names before comparison to handle LLM non-determinism."""
+    return re.sub(r"[^\w]", "", (name or "").lower())
 
 
 def validate_env() -> str:
@@ -145,6 +170,11 @@ def main():
     fred_key = None if args.no_fred else os.getenv("FRED_API_KEY")
     tavily_key = os.getenv("TAVILY_API_KEY")
 
+    # Bug #24: set up file logging early so all print/log output is persisted
+    _ts_early   = datetime.now().strftime("%Y%m%d_%H%M%S")
+    _safe_early = "".join(c if c.isalnum() or c in "_ -" else "_" for c in args.firm)[:40]
+    _setup_file_logging(args.output_dir, _safe_early, _ts_early)
+
     console.print(Panel(
         f"[bold]AI Alternatives Research Associate[/]\n"
         f"Target: [cyan]{args.firm}[/]\n"
@@ -186,14 +216,26 @@ def main():
         analysis = analysis_agent.run(raw_data, client)
         p.update(task, description="Fund analysis complete", completed=True)
 
+    # Bug #7: re-validate analysis schema before passing to downstream agents.
+    # analysis_agent retries internally but never re-validates the final result.
+    _analysis_errors = validate_analysis(analysis)
+    if _analysis_errors:
+        console.print(
+            f"[yellow]Warning: fund analysis output has {len(_analysis_errors)} schema "
+            f"issue(s) after retry — downstream agents may produce incomplete output.[/]"
+        )
+        console.print(f"[dim]Schema errors: {_analysis_errors}[/dim]")
+
     # Cross-source reconciliation
     recon_results = reconcile_sources(analysis, raw_data)
     raw_data["reconciliation"] = recon_results
     for r in recon_results:
         icon = {"PASS": "✓", "WARN": "⚠", "FAIL": "✗", "SKIP": "–"}.get(r["status"], "?")
-        console.print(f"  [dim]{icon} {r['check']}: {r['status']} — {r['detail'][:80]}...[/dim]"
-                      if len(r["detail"]) > 80 else
-                      f"  [dim]{icon} {r['check']}: {r['status']} — {r['detail']}[/dim]")
+        # Bug #13: detail may be None if upstream agent omitted the field
+        detail = r.get("detail") or ""
+        console.print(f"  [dim]{icon} {r['check']}: {r['status']} — {detail[:80]}...[/dim]"
+                      if len(detail) > 80 else
+                      f"  [dim]{icon} {r['check']}: {r['status']} — {detail}[/dim]")
 
     # ── Agent 3: News Research ────────────────────────────────────────────
     news_report = None
@@ -291,12 +333,14 @@ def main():
         re_verification = fact_checker_agent.run(
             analysis, risk_report, raw_data, scorecard, memo, client,
         )
+        # Bug #8: normalize check names before comparing — LLM may rephrase
+        # names between runs ("AUM Consistency Check" vs "AUM Cross-Check").
         fixed = [
             c["check"] for c in verification["checks"]
             if c["status"] == "FAIL"
             and next(
                 (r for r in re_verification["checks"]
-                 if r["check"] == c["check"]),
+                 if _normalize_check_name(r["check"]) == _normalize_check_name(c["check"])),
                 {},
             ).get("status") != "FAIL"
         ]
