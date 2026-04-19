@@ -158,12 +158,15 @@ def extract_adv_summary(iacontent: dict, search_hit: dict = None) -> dict:
         "adv_last_filing_date": basic.get("advFilingDate"),
         "has_pdf": basic.get("hasPdf") == "Y",
 
-        # Original registration date — available in some IAPD responses
+        # Original registration date — try basicInformation fields first,
+        # then fall back to registrationStatus[0].effectiveDate which is
+        # reliably present in all IAPD responses (e.g. "1/31/2005" for Ares).
         "firm_registration_date": (
             basic.get("registrationDate")
             or basic.get("orgEstablishedDate")
             or basic.get("incorporationDate")
             or basic.get("firmRegistrationDate")
+            or (iacontent.get("registrationStatus") or [{}])[0].get("effectiveDate")
         ),
 
         # Website — try several field names used across different IAPD response versions
