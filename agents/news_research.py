@@ -105,6 +105,8 @@ After all searches, output ONLY a JSON object:
   "sources_consulted": [
     {"title": "...", "url": "...", "published_date": "..."}
   ],
+  // REQUIRED: list EVERY URL your web_search tool returned, even if you found nothing material.
+  // An empty sources_consulted when searches were run means the output is incomplete.
   "queries_used": ["list of all queries run"],
   "coverage_gaps": ["topics where no news was found"]
 }
@@ -258,11 +260,24 @@ def run(
 
     sources = result.get("sources_consulted", [])
     queries = result.get("queries_used", [])
+    findings = result.get("findings", [])
+
+    # Derive sources from findings if LLM omitted sources_consulted (Bug: LLM
+    # sometimes populates findings but forgets sources_consulted)
+    if not sources and findings:
+        seen = set()
+        for f in findings:
+            url = f.get("source_url") or ""
+            title = f.get("fact", "")[:60]
+            if url and url not in seen:
+                seen.add(url)
+                sources.append({"title": title, "url": url,
+                                "published_date": f.get("published_date")})
 
     news_report["news_flags"]        = result.get("news_flags", [])
     news_report["news_summary"]      = result.get("news_summary")
     news_report["overall_news_risk"] = result.get("overall_news_risk", "UNKNOWN")
-    news_report["findings"]          = result.get("findings", [])
+    news_report["findings"]          = findings
     news_report["sources_consulted"] = sources
     news_report["queries_used"]      = queries
     news_report["coverage_gaps"]     = result.get("coverage_gaps", [])

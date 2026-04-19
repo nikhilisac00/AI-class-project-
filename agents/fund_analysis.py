@@ -13,11 +13,14 @@ The reasoning step works through:
 """
 
 import json
+from datetime import date
 from tools.llm_client import LLMClient
 from tools.schemas import validate_analysis, format_validation_errors
 
+_TODAY = date.today().isoformat()
 
-SYSTEM_PROMPT = """You are a senior alternatives research analyst at a large institutional LP
+SYSTEM_PROMPT = f"""You are a senior alternatives research analyst at a large institutional LP
+TODAY'S DATE: {_TODAY} — use this for all date recency assessments.
 (university endowment, $10B+ AUM). You have 15+ years of experience evaluating hedge funds,
 private equity, and credit managers for institutional investment.
 

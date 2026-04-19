@@ -103,14 +103,19 @@ def _parse_formd_xml(xml_text: str) -> dict:
     sold  = _parse_amount(sold_str)
 
     # Exemption types (3C.1, 3C.7 etc.)
+    # "3C" alone is not a valid exemption code — it is a section reference that
+    # appears in the Form D XML alongside the specific sub-section (3C.1, 3C.7).
+    # Filter it out to avoid displaying meaningless codes in the memo.
+    _BARE_CODES = {"3C", "Section 3(c)"}
     exemptions = []
     for el in root.findall(".//exemptionsRelied") or root.findall(".//item"):
-        if el.text and el.text.strip():
-            exemptions.append(el.text.strip())
+        v = (el.text or "").strip()
+        if v and v not in _BARE_CODES:
+            exemptions.append(v)
     # Also check items[] field
     for el in root.findall(".//item"):
         v = el.text.strip() if el.text else ""
-        if v and v not in exemptions:
+        if v and v not in exemptions and v not in _BARE_CODES:
             exemptions.append(v)
 
     return {

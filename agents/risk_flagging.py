@@ -11,13 +11,20 @@ An LP risk analyst needs to understand:
 """
 
 import json
+from datetime import date
 from tools.llm_client import LLMClient
 from tools.schemas import validate_risk_report, format_validation_errors
 
+_TODAY = date.today().isoformat()  # injected into prompt so LLM knows what "recent" means
 
-SYSTEM_PROMPT = """You are a risk analyst at a $15B institutional LP (pension fund).
+
+SYSTEM_PROMPT = f"""You are a risk analyst at a $15B institutional LP (pension fund).
 You have reviewed hundreds of alternative investment managers and know what distinguishes
 routine issues from genuine red flags.
+
+TODAY'S DATE: {_TODAY}
+Use this date for all recency assessments (e.g. "< 3 years ago", "old ADV filing").
+ADV filing dates in {_TODAY[:4]} are current and normal — do NOT flag them as anomalous.
 
 LP RISK FRAMEWORK — apply this when flagging:
 
