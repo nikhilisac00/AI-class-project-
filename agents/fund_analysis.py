@@ -272,7 +272,7 @@ Return ONLY a JSON object with this exact schema (null for any missing field):
     result = client.complete_json(
         system=SYSTEM_PROMPT,
         user=user_message,
-        max_tokens=8000,
+        max_tokens=16000,
     )
 
     errors = validate_analysis(result)
@@ -282,7 +282,7 @@ Return ONLY a JSON object with this exact schema (null for any missing field):
         result = client.complete_json(
             system=SYSTEM_PROMPT,
             user=retry_message,
-            max_tokens=8000,
+            max_tokens=16000,
         )
         remaining = validate_analysis(result)
         if remaining:

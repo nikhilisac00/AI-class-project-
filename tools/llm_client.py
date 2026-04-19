@@ -205,6 +205,32 @@ class LLMClient:
         return openai_tools
 
     @staticmethod
+    def _repair_truncated_json(text: str) -> str:
+        """Close unclosed JSON braces/brackets left by a truncated response."""
+        stack = []
+        in_string = False
+        escape_next = False
+        for ch in text:
+            if escape_next:
+                escape_next = False
+                continue
+            if ch == "\\" and in_string:
+                escape_next = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch in "{[":
+                stack.append("}" if ch == "{" else "]")
+            elif ch in "}]" and stack and stack[-1] == ch:
+                stack.pop()
+        # Strip trailing comma/whitespace before closing
+        repaired = text.rstrip().rstrip(",")
+        return repaired + "".join(reversed(stack))
+
+    @staticmethod
     def _parse_json(text: str) -> dict:
         """Extract and parse JSON from model output, stripping markdown fences."""
         if text.startswith("```"):
@@ -215,12 +241,21 @@ class LLMClient:
         try:
             return json.loads(text)
         except json.JSONDecodeError:
+            # Try regex extraction first
             match = re.search(r'(\{.*\}|\[.*\])', text, re.DOTALL)
             if match:
                 try:
                     return json.loads(match.group(1))
                 except json.JSONDecodeError:
                     pass
+            # Try repairing truncated JSON (response hit max_tokens)
+            try:
+                repaired = LLMClient._repair_truncated_json(text)
+                result = json.loads(repaired)
+                print("[LLMClient] Warning: response was truncated — repaired JSON by closing open structures")
+                return result
+            except (json.JSONDecodeError, Exception):
+                pass
             raise ValueError(
                 f"LLM returned non-JSON response. "
                 f"First 200 chars: {text[:200]!r}"

@@ -193,7 +193,7 @@ Return ONLY a JSON object:
     result = client.complete_json(
         system=SYSTEM_PROMPT,
         user=user_message,
-        max_tokens=8000,
+        max_tokens=12000,
     )
 
     errors = validate_risk_report(result)
@@ -203,7 +203,7 @@ Return ONLY a JSON object:
         result = client.complete_json(
             system=SYSTEM_PROMPT,
             user=retry_message,
-            max_tokens=6000,
+            max_tokens=12000,
         )
         remaining = validate_risk_report(result)
         if remaining:
