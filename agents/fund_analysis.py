@@ -15,7 +15,10 @@ The reasoning step works through:
 import json
 from datetime import date
 from tools.llm_client import LLMClient
-from tools.schemas import validate_analysis, format_validation_errors
+from tools.schemas import (
+    AnalysisOutput, RawData,
+    validate_analysis, format_validation_errors, coerce_analysis,
+)
 
 _TODAY = date.today().isoformat()
 
