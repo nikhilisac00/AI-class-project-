@@ -18,6 +18,17 @@ Output:
 from tools.llm_client import LLMClient
 from tools import web_search_client
 
+# Domains that are not financial news sources — filter before sending to LLM
+_NON_FINANCIAL_DOMAINS = frozenset({
+    "stackoverflow.com", "stackexchange.com", "superuser.com", "askubuntu.com",
+    "reddit.com", "quora.com", "wikipedia.org", "wikimedia.org",
+    "youtube.com", "twitter.com", "x.com", "facebook.com", "instagram.com",
+    "tiktok.com", "linkedin.com", "github.com", "gitlab.com",
+    "medium.com", "substack.com",  # exclude unless known finance publisher
+    "amazon.com", "ebay.com", "etsy.com",
+    "w3schools.com", "geeksforgeeks.org", "tutorialspoint.com",
+})
+
 
 # ── Tool definition ───────────────────────────────────────────────────────────────────
 
@@ -104,18 +115,38 @@ RULES:
 - If no material news found for a category, note it in coverage_gaps.
 - Severity guide: HIGH = enforcement/bar/fraud/litigation, MEDIUM = fundraising/personnel,
   LOW = general press, INFO = background context.
+- ONLY include sources from financial news outlets, regulatory sites, or industry publications
+  (e.g. Bloomberg, Reuters, WSJ, FT, SEC.gov, FINRA, PE Hub, Axios, Institutional Investor).
+- NEVER include results from Q&A sites (StackExchange, Quora), social media, Wikipedia,
+  developer forums, or any site unrelated to finance or investment management.
+  If a search returns only irrelevant results, note that topic in coverage_gaps instead.
 """
 
 
 # ── Tool executor ───────────────────────────────────────────────────────────────────
+
+def _is_relevant_source(url: str) -> bool:
+    """Return False if URL is from a non-financial domain that should be excluded."""
+    try:
+        from urllib.parse import urlparse
+        host = urlparse(url).netloc.lower().lstrip("www.")
+        # Check exact match and parent domain (e.g. english.stackexchange.com → stackexchange.com)
+        parts = host.split(".")
+        for i in range(len(parts) - 1):
+            if ".".join(parts[i:]) in _NON_FINANCIAL_DOMAINS:
+                return False
+    except Exception:
+        pass
+    return True
+
 
 def _exec_web_search(inputs: dict, tavily_key: str = None) -> list[dict]:
     query = inputs.get("query", "").strip()
     if not query:
         return []
     try:
-        results = web_search_client.search(query, api_key=tavily_key, max_results=5)
-        return [
+        results = web_search_client.search(query, api_key=tavily_key, max_results=8)
+        filtered = [
             {
                 "title":          r.get("title", ""),
                 "url":            r.get("url", ""),
@@ -123,7 +154,9 @@ def _exec_web_search(inputs: dict, tavily_key: str = None) -> list[dict]:
                 "content":        (r.get("content") or "")[:500],
             }
             for r in results
+            if _is_relevant_source(r.get("url", ""))
         ]
+        return filtered[:5]  # cap at 5 after filtering
     except Exception as e:
         return [{"error": str(e)}]
 

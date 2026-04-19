@@ -139,7 +139,7 @@ Think carefully about context and severity before flagging anything.
 <raw_data_summary>
 Registration status: {raw_data.get("adv_summary", {}).get("registration_status")}
 Has disclosures (IAPD flag): {raw_data.get("adv_summary", {}).get("has_disclosures")}
-ADV filing date: {raw_data.get("adv_summary", {}).get("adv_filing_date")}
+ADV filing date: {raw_data.get("adv_summary", {}).get("adv_last_filing_date")}
 13F portfolio value: {(raw_data.get("adv_xml_data", {}).get("thirteenf") or {}).get("portfolio_value_fmt")}
 Ingestion errors: {raw_data.get("errors", [])}
 </raw_data_summary>

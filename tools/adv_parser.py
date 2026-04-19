@@ -291,16 +291,55 @@ def _parse_13f_holdings(
 
 # ── 13F portfolio value (proxy AUM for public equity managers) ─────────────────
 
+def _13f_name_variants(firm_name: str) -> list[str]:
+    """
+    Generate search variants for a firm name to improve 13F CIK resolution.
+
+    Many firms file 13F under a slightly different legal entity name than their
+    IAPD registration. E.g. "Ares Management LLC" may file as "ARES MANAGEMENT LLC",
+    "Ares Capital Management LLC", or under a sub-adviser entity.
+    """
+    import re as _re
+    # Strip common legal suffixes
+    suffix_pattern = _re.compile(
+        r"\b(LLC|LP|L\.P\.|LLP|L\.L\.C\.|Inc\.?|Corp\.?|Co\.?|Ltd\.?|"
+        r"Limited|Associates|Group|Holdings|Partners)\b", _re.I
+    )
+    stripped = suffix_pattern.sub("", firm_name).strip().strip(",").strip()
+
+    variants = [firm_name]  # always try original first
+    if stripped and stripped.lower() != firm_name.lower():
+        variants.append(stripped)
+
+    # Try first two meaningful words (handles "Ares Management LLC" → "Ares Management")
+    words = [w for w in firm_name.split() if len(w) > 2]
+    if len(words) >= 2:
+        two_word = " ".join(words[:2])
+        if two_word not in variants:
+            variants.append(two_word)
+
+    # Try just first meaningful word for very long names
+    if words and words[0] not in variants:
+        variants.append(words[0])
+
+    return variants
+
+
 def _find_cik_for_13f(firm_name: str) -> Optional[str]:
-    """Find EDGAR CIK for a firm by searching 13F-HR filings on EFTS."""
-    for query in [f'"{firm_name}"', firm_name]:
-        data = _json(EFTS_URL, {"q": query, "forms": "13F-HR"})
-        if data:
-            hits = data.get("hits", {}).get("hits", [])
-            if hits:
-                ciks = hits[0]["_source"].get("ciks", [])
-                if ciks:
-                    return str(int(ciks[0]))  # strip leading zeros
+    """
+    Find EDGAR CIK for a firm by searching 13F-HR filings on EFTS.
+    Tries multiple name variants to handle entity name mismatches.
+    """
+    for variant in _13f_name_variants(firm_name):
+        for query in [f'"{variant}"', variant]:
+            data = _json(EFTS_URL, {"q": query, "forms": "13F-HR"})
+            if data:
+                hits = data.get("hits", {}).get("hits", [])
+                if hits:
+                    ciks = hits[0]["_source"].get("ciks", [])
+                    if ciks:
+                        return str(int(ciks[0]))  # strip leading zeros
+            time.sleep(0.2)  # avoid hammering EFTS
     return None
 
 

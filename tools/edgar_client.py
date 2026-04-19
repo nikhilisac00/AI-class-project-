@@ -153,8 +153,27 @@ def extract_adv_summary(iacontent: dict, search_hit: dict = None) -> dict:
         "crd_number": basic.get("firmId"),
         "sec_number": f"{basic.get('iaSECNumberType','')}-{basic.get('iaSECNumber','')}".strip("-"),
         "registration_status": basic.get("iaScope"),
-        "adv_filing_date": basic.get("advFilingDate"),
+        # adv_last_filing_date = date of the most recent ADV amendment filed.
+        # This is NOT the firm's original registration/incorporation date.
+        "adv_last_filing_date": basic.get("advFilingDate"),
         "has_pdf": basic.get("hasPdf") == "Y",
+
+        # Original registration date — available in some IAPD responses
+        "firm_registration_date": (
+            basic.get("registrationDate")
+            or basic.get("orgEstablishedDate")
+            or basic.get("incorporationDate")
+            or basic.get("firmRegistrationDate")
+        ),
+
+        # Website — try several field names used across different IAPD response versions
+        "website": (
+            basic.get("firmWebsite")
+            or basic.get("website")
+            or basic.get("webAddress")
+            or iacontent.get("website")
+            or iacontent.get("webAddress")
+        ),
 
         # Registration flags
         "is_sec_registered": scope_flags.get("isSECRegistered") == "Y",

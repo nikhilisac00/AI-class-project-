@@ -60,6 +60,11 @@ WHAT YOU SHOULD UNDERSTAND AND APPLY:
 - No Form D funds doesn't mean no private activity — could use offshore vehicles
 - Old ADV filing date (>6 months) = potential compliance issue
 
+**CRITICAL — Date fields:**
+- adv_last_filing_date = date the firm last updated its ADV filing (e.g. annual amendment). This is NOT the firm's original registration date.
+- firm_registration_date = when the firm first registered (may be null if not in public data).
+- Use null for registration_date in your output UNLESS firm_registration_date is explicitly present in the data. NEVER substitute adv_last_filing_date as registration_date.
+
 CRITICAL RULES:
 1. Use null for any missing field — never invent or estimate
 2. Your analysis informs real investment decisions

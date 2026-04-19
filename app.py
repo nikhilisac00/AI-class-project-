@@ -1228,7 +1228,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
     sec_str    = adv.get("sec_number") or ov.get("sec_number")
     city       = adv.get("city")
     state_str  = adv.get("state")
-    adv_date   = adv.get("adv_filing_date")
+    adv_date   = adv.get("adv_last_filing_date")
 
     badges_html = ""
     if reg_status:
@@ -2123,7 +2123,7 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     "Holdings":      str(r.get("holdings_count")) if r.get("holdings_count") else "—",
                     "Disclosures":   "Yes" if r.get("has_disclosures") else "No" if r.get("has_disclosures") is False else "—",
                     "Location":      f"{r.get('city','')}, {r.get('state','')}" if r.get("city") else r.get("state") or "—",
-                    "ADV Filed":     r.get("adv_filing_date") or "—",
+                    "ADV Filed":     r.get("adv_last_filing_date") or "—",
                 })
 
             df = pd.DataFrame(rows)
