@@ -2306,10 +2306,10 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                 st.subheader(f"IAPD Relying Advisors ({len(ra_list)})")
                 import pandas as pd
                 df_ra = pd.DataFrame([{
-                    "Name":   r.get("name", ""),
-                    "CRD":    r.get("crd", ""),
-                    "Status": r.get("status", ""),
-                } for r in ra_list])
+                    "Name":   r.get("name", "") if isinstance(r, dict) else str(r),
+                    "CRD":    r.get("crd", "")  if isinstance(r, dict) else "",
+                    "Status": r.get("status", "") if isinstance(r, dict) else "",
+                } for r in ra_list if r is not None])
                 st.dataframe(df_ra, use_container_width=True, hide_index=True)
 
         else:
