@@ -560,10 +560,17 @@ def _fetch_13f_quarters(cik: str, n_quarters: int = 8) -> list[dict]:
     Each item: {period, filing_date, accession, portfolio_value_usd,
                 portfolio_value_fmt, holdings_count, qoq_change_pct}
     Returns list sorted ascending by period.
+    Hard deadline: stop after 90 seconds total to prevent pipeline hangs.
     """
+    import time as _time
+    deadline = _time.monotonic() + 90  # 90s total budget for all quarters
+
     filings = _all_13f_from_submissions(cik, max_quarters=n_quarters)
     history = []
     for filing in filings:
+        if _time.monotonic() > deadline:
+            print(f"[13F history] Time budget exceeded — returning {len(history)} quarters fetched so far")
+            break
         acc    = filing["accession"]
         period = filing["period_of_report"]
         xml_file = _xml_file_from_filing(cik, acc)

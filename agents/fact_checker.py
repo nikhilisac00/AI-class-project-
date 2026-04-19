@@ -591,7 +591,16 @@ def _check_holdings_count(analysis: dict, raw_data: dict) -> dict:
             evidence,
         )
 
-    if int(raw_count) == int(analysis_count):
+    try:
+        raw_int, ana_int = int(raw_count), int(analysis_count)
+    except (TypeError, ValueError):
+        return _check(
+            "Holdings Count", "cross_agent", "WARN",
+            f"Holdings count values are non-numeric — raw='{raw_count}', analysis='{analysis_count}'.",
+            evidence,
+        )
+
+    if raw_int == ana_int:
         return _check(
             "Holdings Count",
             "cross_agent",

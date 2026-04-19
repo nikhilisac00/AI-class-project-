@@ -56,7 +56,10 @@ def _fetch_page_text(url: str, timeout: int = 8, max_chars: int = 3000) -> str:
         )
         r.raise_for_status()
         # Bug #12: check content-length before reading to avoid huge downloads
-        content_length = int(r.headers.get("content-length", 0))
+        try:
+            content_length = int(r.headers.get("content-length", 0))
+        except (TypeError, ValueError):
+            content_length = 0
         if content_length > 5_000_000:  # skip files >5 MB
             return ""
         content_type = r.headers.get("content-type", "")
