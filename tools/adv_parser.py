@@ -291,55 +291,121 @@ def _parse_13f_holdings(
 
 # ── 13F portfolio value (proxy AUM for public equity managers) ─────────────────
 
+import re as _re
+
+_SUFFIX_RE = _re.compile(
+    r"\b(LLC|LP|L\.P\.|LLP|L\.L\.C\.|Inc\.?|Corp\.?|Co\.?|Ltd\.?|"
+    r"Limited|Associates|Group|Holdings|Partners)\b", _re.I
+)
+_GENERIC_WORDS = frozenset({
+    "management", "capital", "advisors", "advisers", "asset", "investments",
+    "investment", "financial", "services", "wealth", "global", "fund",
+})
+
+
 def _13f_name_variants(firm_name: str) -> list[str]:
     """
-    Generate search variants for a firm name to improve 13F CIK resolution.
-
-    Many firms file 13F under a slightly different legal entity name than their
-    IAPD registration. E.g. "Ares Management LLC" may file as "ARES MANAGEMENT LLC",
-    "Ares Capital Management LLC", or under a sub-adviser entity.
+    Generate search query variants for a firm name to improve 13F CIK resolution.
+    Ordered from most-specific (lowest false-match risk) to least-specific.
     """
-    import re as _re
-    # Strip common legal suffixes
-    suffix_pattern = _re.compile(
-        r"\b(LLC|LP|L\.P\.|LLP|L\.L\.C\.|Inc\.?|Corp\.?|Co\.?|Ltd\.?|"
-        r"Limited|Associates|Group|Holdings|Partners)\b", _re.I
-    )
-    stripped = suffix_pattern.sub("", firm_name).strip().strip(",").strip()
+    stripped = _SUFFIX_RE.sub("", firm_name).strip().strip(",").strip()
+    words = [w for w in firm_name.split() if len(w) > 2]
 
-    variants = [firm_name]  # always try original first
+    variants: list[str] = [firm_name]  # exact match always first
+
     if stripped and stripped.lower() != firm_name.lower():
         variants.append(stripped)
 
-    # Try first two meaningful words (handles "Ares Management LLC" → "Ares Management")
-    words = [w for w in firm_name.split() if len(w) > 2]
+    # Two meaningful words (e.g. "Ares Management")
     if len(words) >= 2:
-        two_word = " ".join(words[:2])
-        if two_word not in variants:
-            variants.append(two_word)
+        two = " ".join(words[:2])
+        if two not in variants:
+            variants.append(two)
 
-    # Try just first meaningful word for very long names
-    if words and words[0] not in variants:
+    # Single first word only if it's distinctive (not a generic like "Capital")
+    if words and words[0].lower() not in _GENERIC_WORDS and words[0] not in variants:
         variants.append(words[0])
 
     return variants
 
 
+def _entity_name_matches(edgar_name: str, firm_name: str) -> bool:
+    """
+    Cross-validate that the EDGAR entity name plausibly belongs to the searched firm.
+
+    Strips only hard legal suffixes (LLC/LP/Inc/Corp/Ltd) but keeps words like
+    "management" and "capital" — these DO distinguish firms.
+    E.g. "Ares Management" ≠ "Ares Capital": overlap on "ares" alone = 1/2 = 0.5,
+    which falls below the 0.6 threshold, so the false match is rejected.
+    """
+    if not edgar_name or not firm_name:
+        return False
+
+    _LEGAL_SUFFIXES = frozenset({
+        "llc", "lp", "llp", "inc", "corp", "ltd", "limited", "plc", "co",
+    })
+
+    def _norm(s: str) -> set[str]:
+        tokens = _re.sub(r"[^\w\s]", " ", s.lower()).split()
+        # Keep meaningful words — only drop hard legal suffixes, NOT "management"/"capital"
+        return {t for t in tokens if len(t) > 2 and t not in _LEGAL_SUFFIXES}
+
+    query_words = _norm(firm_name)
+    edgar_words = _norm(edgar_name)
+
+    if not query_words:
+        return True
+
+    overlap = query_words & edgar_words
+    # Threshold 0.6: requires majority overlap, not just a single shared first word
+    return len(overlap) / len(query_words) >= 0.6
+
+
 def _find_cik_for_13f(firm_name: str) -> Optional[str]:
     """
     Find EDGAR CIK for a firm by searching 13F-HR filings on EFTS.
-    Tries multiple name variants to handle entity name mismatches.
+
+    For each name variant (most → least specific), fetches the top EDGAR hit
+    and cross-validates the entity name before accepting the CIK. This prevents
+    a short variant like "Ares" from resolving to "Ares Capital Corporation"
+    instead of "Ares Management LLC".
     """
     for variant in _13f_name_variants(firm_name):
         for query in [f'"{variant}"', variant]:
             data = _json(EFTS_URL, {"q": query, "forms": "13F-HR"})
-            if data:
-                hits = data.get("hits", {}).get("hits", [])
-                if hits:
-                    ciks = hits[0]["_source"].get("ciks", [])
-                    if ciks:
-                        return str(int(ciks[0]))  # strip leading zeros
-            time.sleep(0.2)  # avoid hammering EFTS
+            if not data:
+                time.sleep(0.2)
+                continue
+
+            hits = data.get("hits", {}).get("hits", [])
+            for hit in hits[:3]:  # check top 3 results, not just the first
+                src = hit.get("_source", {})
+                ciks = src.get("ciks", [])
+                # display_names is the filer name on the 13F filing
+                display_names = src.get("display_names", [])
+                edgar_name = display_names[0] if display_names else ""
+
+                if not ciks:
+                    continue
+
+                cik = str(int(ciks[0]))
+
+                # Cross-validate: entity name must plausibly match the searched firm
+                if _entity_name_matches(edgar_name, firm_name):
+                    print(
+                        f"[ADV Enrichment] 13F CIK resolved: '{edgar_name}' "
+                        f"(CIK={cik}) matched via query='{variant}'"
+                    )
+                    return cik
+                else:
+                    print(
+                        f"[ADV Enrichment] 13F hit rejected: '{edgar_name}' "
+                        f"does not match '{firm_name}' (query='{variant}')"
+                    )
+
+            time.sleep(0.2)
+
+    print(f"[ADV Enrichment] No validated 13F CIK found for '{firm_name}'")
     return None
 
 
