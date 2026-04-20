@@ -226,5 +226,19 @@ def run(firm_input: str, fred_api_key: str = None,
                 if "No 13F filings found" not in e
             ]
 
+    # Bug #5: distinguish critical data source failures from supplementary ones.
+    # ADV enrichment is critical — without it, downstream agents produce unreliable output.
+    _CRITICAL_TASKS = {"_fetch_adv", "_fetch_13f"}
+    critical_failures = [
+        e for e in raw_data["errors"]
+        if any(tag in e for tag in ("ADV enrichment", "Task _fetch_adv", "Task _fetch_13f"))
+    ]
+    if critical_failures:
+        raw_data["critical_data_failure"] = True
+        raw_data["critical_failure_detail"] = critical_failures
+        print(f"[Ingestion] CRITICAL: core data source(s) failed: {critical_failures}")
+    else:
+        raw_data["critical_data_failure"] = False
+
     print(f"[Ingestion] Done. Errors: {raw_data['errors'] or 'none'}")
     return raw_data

@@ -78,6 +78,15 @@ def run(firm_name: str, adv_summary: dict, raw_data: dict,
       - table:       flat list of all rows (target + peers) for display
       - note:        data quality / methodology note
     """
+    # Bug #14: guard against None firm_name from failed name resolution
+    if not firm_name:
+        print("[Comparables] WARNING: firm_name is None — skipping peer search")
+        return {
+            "target": {}, "peers": [], "table": [],
+            "size_rank": None, "total_in_comparison": 0,
+            "note": "Peer search skipped — firm name could not be resolved.",
+        }
+
     print(f"[Comparables] Finding peers for '{firm_name}'...")
 
     target_state = adv_summary.get("state")

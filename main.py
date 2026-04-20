@@ -202,6 +202,18 @@ def main():
     if raw_data["errors"]:
         console.print(f"\n[yellow]Ingestion warnings:[/] {raw_data['errors']}")
 
+    # Bug #5: halt on critical data source failures rather than silently continuing
+    if raw_data.get("critical_data_failure"):
+        console.print(
+            "\n[bold red]Critical data source(s) failed:[/]\n"
+            + "\n".join(f"  • {e}" for e in raw_data.get("critical_failure_detail", []))
+        )
+        console.print(
+            "[yellow]Downstream analysis would be unreliable. "
+            "Use --raw-only to inspect partial data, or retry.[/]"
+        )
+        sys.exit(1)
+
     if args.raw_only:
         out = Path(args.output_dir) / f"raw_{firm_name}.json"
         out.parent.mkdir(parents=True, exist_ok=True)
