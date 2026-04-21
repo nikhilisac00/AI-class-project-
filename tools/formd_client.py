@@ -37,6 +37,46 @@ HEADERS = {
 # Exemption codes that indicate private fund structures
 FUND_EXEMPTIONS = {"3C.1", "3C.7", "06B"}
 
+_SUFFIX_RE = re.compile(
+    r"\b(LLC|LP|L\.P\.|LLP|L\.L\.C\.|Inc\.?|Corp\.?|Co\.?|Ltd\.?|"
+    r"Limited|Associates|Group|Holdings|Partners)\b",
+    re.I,
+)
+_GENERIC_WORDS = frozenset({
+    "management", "capital", "advisors", "advisers", "asset", "investments",
+    "investment", "financial", "services", "wealth", "global", "fund",
+})
+
+
+def _formd_name_variants(gp_name: str) -> list[str]:
+    """
+    Generate Form D EFTS search query variants for a GP name.
+    Ordered most-specific → least-specific to minimise false matches.
+
+    Form D full-text search looks inside the XML, so the GP's name may
+    appear as "Ares Management" even when the filing was made by a fund
+    sub-entity like "ACOF Operating Manager IV, LLC".
+    """
+    stripped = _SUFFIX_RE.sub("", gp_name).strip().strip(",").strip()
+    words = [w for w in gp_name.split() if len(w) > 2]
+
+    variants: list[str] = [gp_name]  # exact name always first
+
+    if stripped and stripped.lower() != gp_name.lower():
+        variants.append(stripped)
+
+    # Two meaningful words: "Ares Management", "KKR Capital"
+    if len(words) >= 2:
+        two = " ".join(words[:2])
+        if two not in variants:
+            variants.append(two)
+
+    # Single brand word (only if distinctive, not a generic like "Capital")
+    if words and words[0].lower() not in _GENERIC_WORDS and words[0] not in variants:
+        variants.append(words[0])
+
+    return variants
+
 
 def _get(url: str, params: dict = None) -> Optional[dict]:
     for attempt in range(3):
@@ -106,15 +146,15 @@ def _parse_formd_xml(xml_text: str) -> dict:
     # "3C" alone is not a valid exemption code — it is a section reference that
     # appears in the Form D XML alongside the specific sub-section (3C.1, 3C.7).
     # Filter it out to avoid displaying meaningless codes in the memo.
-    _BARE_CODES = {"3C", "Section 3(c)"}
+    _BARE_CODES = {"3C", "SECTION 3(C)"}
     exemptions = []
     for el in root.findall(".//exemptionsRelied") or root.findall(".//item"):
-        v = (el.text or "").strip()
+        v = (el.text or "").strip().upper()  # normalise to upper so "06b"→"06B"
         if v and v not in _BARE_CODES:
             exemptions.append(v)
     # Also check items[] field
     for el in root.findall(".//item"):
-        v = el.text.strip() if el.text else ""
+        v = (el.text or "").strip().upper()
         if v and v not in exemptions and v not in _BARE_CODES:
             exemptions.append(v)
 
@@ -151,22 +191,36 @@ def search_funds_for_gp(
     Returns:
         List of fund dicts sorted by date_of_first_sale desc.
     """
-    # Step 1: EFTS search
-    params = {
-        "q":     f'"{gp_name}"',
-        "forms": "D,D/A",
-    }
-    data = _get(EFTS_URL, params=params)
-    if not data:
-        # Try without quotes for looser match
-        params["q"] = gp_name
-        data = _get(EFTS_URL, params=params)
-    if not data:
+    # Step 1: EFTS search — try name variants from most- to least-specific.
+    # Large GPs file Form D under subsidiary/operating manager names, so the
+    # exact firm name often yields 0 hits while a shorter variant finds them.
+    variants = _formd_name_variants(gp_name)
+    all_hits: list[dict] = []
+    tried: set[str] = set()
+
+    for variant in variants:
+        # Try quoted (exact phrase) first, then unquoted if empty
+        for q in (f'"{variant}"', variant):
+            if q in tried:
+                continue
+            tried.add(q)
+            data = _get(EFTS_URL, params={"q": q, "forms": "D,D/A"})
+            if data:
+                batch = data.get("hits", {}).get("hits", [])
+                if batch:
+                    print(f"[FormD] '{q}' → {len(batch)} hits")
+                    all_hits.extend(batch)
+                    break  # found results with this variant; try next variant
+            time.sleep(0.1)
+
+        # Once we have enough raw hits to satisfy max_funds after dedup, stop early
+        if len(all_hits) >= max_funds * 6:
+            break
+
+    if not all_hits:
         return []
 
-    hits = data.get("hits", {}).get("hits", [])
-    if not hits:
-        return []
+    hits = all_hits
 
     # Step 2: Deduplicate — keep most recent filing per entity name
     seen: dict[str, dict] = {}   # entity_name → best hit
