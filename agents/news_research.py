@@ -148,6 +148,10 @@ def _exec_web_search(inputs: dict, tavily_key: str = None) -> list[dict]:
         return []
     try:
         results = web_search_client.search(query, api_key=tavily_key, max_results=8)
+        # Check for search engine failure sentinel
+        if results and results[0].get("_search_error"):
+            print(f"[News Research] Web search unavailable: {results[0].get('error')}")
+            return [{"error": f"Web search unavailable: {results[0].get('error')}"}]
         filtered = [
             {
                 "title":          r.get("title", ""),
@@ -156,7 +160,7 @@ def _exec_web_search(inputs: dict, tavily_key: str = None) -> list[dict]:
                 "content":        (r.get("content") or "")[:500],
             }
             for r in results
-            if _is_relevant_source(r.get("url", ""))
+            if _is_relevant_source(r.get("url", "")) and not r.get("_search_error")
         ]
         return filtered[:5]  # cap at 5 after filtering
     except Exception as e:

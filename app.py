@@ -1034,6 +1034,14 @@ if run_button:
         if raw_data.get("errors"):
             st.warning("Ingestion notes: " + " | ".join(raw_data["errors"]))
 
+        if raw_data.get("critical_data_failure"):
+            details = " | ".join(raw_data.get("critical_failure_detail", []))
+            st.error(
+                f"⛔ Critical data source(s) failed — downstream analysis would be unreliable.\n\n"
+                f"{details}\n\nCheck your API keys and network, then retry."
+            )
+            st.stop()
+
         status_box.info(f"⏳ Step 2 — Analyzing firm structure · {_ingest_summary} · Running GPT-4o reasoning...")
         analysis = analysis_agent.run(raw_data, client)
         step[0] += 1

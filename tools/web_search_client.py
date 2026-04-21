@@ -152,4 +152,5 @@ def search(query: str, api_key: str = None, max_results: int = 5) -> list:
         return _search_duckduckgo(query, max_results)
     except Exception as e:
         print(f"[WebSearch] DuckDuckGo also failed: {e}")
-        return []
+        # Return a sentinel so callers can distinguish "search error" from "no results"
+        return [{"_search_error": True, "error": str(e)}]
