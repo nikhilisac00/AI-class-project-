@@ -151,7 +151,10 @@ def check_fund_count_reconciliation(analysis: dict, raw_data: dict) -> dict:
             "sources": ["ADV (IAPD)", "SEC EDGAR Form D"],
         }
 
-    adv_count = int(adv_fund_count_raw) if adv_fund_count_raw is not None else None
+    try:
+        adv_count = int(adv_fund_count_raw) if adv_fund_count_raw is not None else None
+    except (TypeError, ValueError):
+        adv_count = None
 
     if adv_count is None:
         return {
