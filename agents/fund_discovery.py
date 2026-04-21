@@ -172,6 +172,8 @@ def _exec_search_web(inputs: dict, tavily_key: str = None) -> list[dict]:
         return []
     try:
         results = web_search_client.search(query, api_key=tavily_key, max_results=5)
+        if results and results[0].get("_search_error"):
+            return [{"error": f"Web search unavailable: {results[0].get('error')}"}]
         return [
             {
                 "title":   r.get("title", ""),
@@ -180,6 +182,7 @@ def _exec_search_web(inputs: dict, tavily_key: str = None) -> list[dict]:
                 "snippet": (r.get("content") or "")[:400],
             }
             for r in results
+            if not r.get("_search_error")
         ]
     except Exception as e:
         return [{"error": str(e)}]
@@ -207,6 +210,7 @@ def _fetch_fund_news(fund_name: str, firm_name: str, tavily_key: str = None) -> 
                 "snippet": (r.get("content") or "")[:300],
             }
             for r in results
+            if not r.get("_search_error")
         ]
     except Exception:
         return []

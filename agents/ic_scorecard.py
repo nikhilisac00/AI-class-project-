@@ -123,5 +123,5 @@ Return ONLY a JSON object with this exact schema:
     return client.complete_json(
         system=SYSTEM_PROMPT,
         user=user_message,
-        max_tokens=4000,
+        max_tokens=8000,
     )

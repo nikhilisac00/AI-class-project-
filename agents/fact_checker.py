@@ -640,7 +640,14 @@ def _check_fund_count(analysis: dict, raw_data: dict, max_diff: int = 2) -> dict
             evidence,
         )
 
-    analysis_count = int(analysis_count_raw)
+    try:
+        analysis_count = int(analysis_count_raw)
+    except (TypeError, ValueError):
+        return _check(
+            "Fund Count (Raw → Analysis)", "raw_to_analysis", "WARN",
+            f"Analysis fund count is non-numeric ('{analysis_count_raw}'); raw found {raw_count}.",
+            evidence,
+        )
     diff = abs(raw_count - analysis_count)
 
     if diff <= max_diff:

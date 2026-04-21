@@ -69,7 +69,7 @@ Funds discovered: {len((raw_data.get("fund_discovery") or {}).get("funds", []))}
 Disclosure events: {len((raw_data.get("adv_xml_data", {}).get("disclosures")) or [])}
 Has disclosures flag: {raw_data.get("adv_summary", {}).get("has_disclosures")}
 Registration status: {raw_data.get("adv_summary", {}).get("registration_status")}
-ADV filing date: {raw_data.get("adv_summary", {}).get("adv_filing_date")}
+ADV filing date: {raw_data.get("adv_summary", {}).get("adv_last_filing_date")}
 Ingestion errors: {raw_data.get("errors", [])}
 </data_signals>
 {news_block}
@@ -110,5 +110,5 @@ Return ONLY a JSON object:
     return client.complete_json(
         system=SYSTEM_PROMPT,
         user=user_message,
-        max_tokens=3000,
+        max_tokens=6000,
     )
