@@ -148,6 +148,19 @@ def extract_adv_summary(iacontent: dict, search_hit: dict = None) -> dict:
             if isinstance(b, dict) and b.get("fileId"):
                 brochure_urls.append(b.get("fileId"))
 
+    # Disclosures: count events across all disclosure categories
+    _disc_raw = iacontent.get("disclosures") or {}
+    _disc_count = sum(
+        len(v) if isinstance(v, list) else (1 if v else 0)
+        for v in _disc_raw.values()
+        if v
+    )
+    # Fall back to search_hit flag when iacontent has no disclosure block
+    if _disc_count == 0 and search_hit and search_hit.get("has_disclosures"):
+        _disc_has = True
+    else:
+        _disc_has = _disc_count > 0
+
     summary = {
         "firm_name": basic.get("firmName"),
         "crd_number": basic.get("firmId"),
@@ -198,8 +211,9 @@ def extract_adv_summary(iacontent: dict, search_hit: dict = None) -> dict:
         # Brochures
         "brochure_file_ids": brochure_urls,
 
-        # From search results (if provided)
-        "has_disclosures": search_hit.get("has_disclosures") if search_hit else None,
+        # Disclosures — read directly from iacontent (more reliable than search_hit flag)
+        "has_disclosures": _disc_has,
+        "num_disclosures": _disc_count,
 
         # Fields not available in this API — must be obtained from ADV Part 1 PDF/XML
         "aum_regulatory": None,     # Not in IAPD API — in ADV Part 1 Item 5

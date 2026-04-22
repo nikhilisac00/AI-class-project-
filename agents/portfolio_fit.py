@@ -125,5 +125,5 @@ Score the fit across these dimensions and return ONLY a JSON object:
     return client.complete_json(
         system=SYSTEM_PROMPT,
         user=user_message,
-        max_tokens=4000,
+        max_tokens=8000,
     )

@@ -533,6 +533,7 @@ for _k, _v in [
     ("firm_b_result",          {}),
     ("comparison_result",      {}),
     ("portfolio_fit_result",   {}),
+    ("_pipeline_cache",        {}),
 ]:
     if _k not in st.session_state:
         st.session_state[_k] = _v
@@ -1171,6 +1172,11 @@ if run_button:
             fact_check=fact_check,
         )
         st.session_state.pipeline_done = True
+        _cache_key = str(firm_input).strip().lower()
+        st.session_state._pipeline_cache[_cache_key] = {
+            "raw_data": raw_data, "analysis": analysis,
+            "risk_report": risk_report, "scorecard": scorecard,
+        }
 
     except Exception as e:
         st.error(f"Pipeline error: {e}")
@@ -1706,7 +1712,10 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     rat = dim.get("rationale", "")
                     if s is None:
                         continue
-                    s = int(s)
+                    try:
+                        s = int(s)
+                    except (TypeError, ValueError):
+                        continue
                     bar_color = "#1a7a4a" if s >= 7 else "#b06010" if s >= 5 else "#b03030"
                     bar_pct   = s * 10
 
@@ -3273,34 +3282,54 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     )
                     _b_firm = _b_candidates[0] if _b_candidates else None
                     _b_crd = (_b_firm or {}).get("crd", _b_name_input.strip())
-                    _b_raw = ingestion_agent.run(
-                        _b_crd,
-                        fred_api_key=fred_key or None,
-                        website=None,
-                        client=_client_b,
-                        tavily_key=tavily_key or None,
-                    )
-                    _b_analysis = analysis_agent.run(_b_raw, _client_b)
-                    _b_news = None
-                    if _include_news_b:
-                        _b_firm_name_tmp = (
-                            (_b_analysis or {}).get("firm_overview", {}).get("name")
-                            or (_b_firm or {}).get("firm_name", _b_name_input.strip())
-                        )
-                        _b_news = news_agent.run(
-                            firm_name=_b_firm_name_tmp,
-                            analysis=_b_analysis,
+                    _b_cache_key = str(_b_crd).strip().lower()
+                    _b_cached = st.session_state._pipeline_cache.get(_b_cache_key)
+                    if _b_cached:
+                        st.info("Using cached analysis for Firm B (already analyzed this session).")
+                        _b_raw      = _b_cached["raw_data"]
+                        _b_analysis = _b_cached["analysis"]
+                        _b_risk     = _b_cached["risk_report"]
+                        _b_scorecard = _b_cached["scorecard"]
+                    else:
+                        _b_raw = ingestion_agent.run(
+                            _b_crd,
+                            fred_api_key=fred_key or None,
+                            website=None,
                             client=_client_b,
-                            tavily_api_key=tavily_key or None,
+                            tavily_key=tavily_key or None,
                         )
-                    _b_risk = risk_agent.run(
-                        _b_analysis, _b_raw, _client_b,
-                        news_report=_b_news,
-                        scoring_weights=scoring_weights,
-                    )
-                    _b_scorecard = scorecard_agent.run(
-                        _b_analysis, _b_risk, _b_raw, _client_b,
-                    )
+                        if _b_raw.get("critical_data_failure"):
+                            _b_details = " | ".join(_b_raw.get("critical_failure_detail", []))
+                            st.error(
+                                f"⛔ Critical data source(s) failed for Firm B — analysis would be unreliable.\n\n"
+                                f"{_b_details}\n\nCheck the firm name and retry."
+                            )
+                            raise RuntimeError("critical_data_failure for Firm B")
+                        _b_analysis = analysis_agent.run(_b_raw, _client_b)
+                        _b_news = None
+                        if _include_news_b:
+                            _b_firm_name_tmp = (
+                                (_b_analysis or {}).get("firm_overview", {}).get("name")
+                                or (_b_firm or {}).get("firm_name", _b_name_input.strip())
+                            )
+                            _b_news = news_agent.run(
+                                firm_name=_b_firm_name_tmp,
+                                analysis=_b_analysis,
+                                client=_client_b,
+                                tavily_api_key=tavily_key or None,
+                            )
+                        _b_risk = risk_agent.run(
+                            _b_analysis, _b_raw, _client_b,
+                            news_report=_b_news,
+                            scoring_weights=scoring_weights,
+                        )
+                        _b_scorecard = scorecard_agent.run(
+                            _b_analysis, _b_risk, _b_raw, _client_b,
+                        )
+                        st.session_state._pipeline_cache[_b_cache_key] = {
+                            "raw_data": _b_raw, "analysis": _b_analysis,
+                            "risk_report": _b_risk, "scorecard": _b_scorecard,
+                        }
                     _b_firm_name = (
                         (_b_analysis or {}).get("firm_overview", {}).get("name")
                         or (_b_firm or {}).get("firm_name", _b_name_input.strip())
@@ -3462,24 +3491,30 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                                         client=_rc,
                                         tavily_key=tavily_key or None,
                                     )
-                                    _r_analysis = analysis_agent.run(
-                                        _r_raw, _rc,
-                                    )
-                                    _r_risk = risk_agent.run(
-                                        _r_analysis, _r_raw, _rc,
-                                        scoring_weights=scoring_weights,
-                                    )
-                                    _r_scorecard = scorecard_agent.run(
-                                        _r_analysis, _r_risk, _r_raw, _rc,
-                                    )
-                                    _wl_items[_wi]["risk_tier"] = (
-                                        (_r_risk or {}).get("overall_risk_tier", _w_tier)
-                                    )
-                                    _wl_items[_wi]["recommendation"] = (
-                                        (_r_scorecard or {}).get("recommendation", _w_rec)
-                                    )
-                                    _save_watchlist(_wl_items)
-                                    st.rerun()
+                                    if _r_raw.get("critical_data_failure"):
+                                        _r_details = " | ".join(_r_raw.get("critical_failure_detail", []))
+                                        st.error(
+                                            f"⛔ Critical data failure for {_w_name} — re-run aborted.\n\n{_r_details}"
+                                        )
+                                    else:
+                                        _r_analysis = analysis_agent.run(
+                                            _r_raw, _rc,
+                                        )
+                                        _r_risk = risk_agent.run(
+                                            _r_analysis, _r_raw, _rc,
+                                            scoring_weights=scoring_weights,
+                                        )
+                                        _r_scorecard = scorecard_agent.run(
+                                            _r_analysis, _r_risk, _r_raw, _rc,
+                                        )
+                                        _wl_items[_wi]["risk_tier"] = (
+                                            (_r_risk or {}).get("overall_risk_tier", _w_tier)
+                                        )
+                                        _wl_items[_wi]["recommendation"] = (
+                                            (_r_scorecard or {}).get("recommendation", _w_rec)
+                                        )
+                                        _save_watchlist(_wl_items)
+                                        st.rerun()
                                 except Exception as _re_err:
                                     st.error(f"Re-run failed: {_re_err}")
                     with _wc3:

@@ -25,7 +25,7 @@ jobs:
         run: ruff check . --output-format=github --exclude=.devcontainer
 
       - name: Run tests with coverage
-        run: pytest tests/ -v --cov=tools --cov=agents --cov-report=xml --cov-report=term-missing
+        run: pytest tests/ -v -m "not slow" --cov=tools --cov=agents --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage report
         uses: codecov/codecov-action@v4

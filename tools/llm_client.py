@@ -56,7 +56,11 @@ class LLMClient:
                     {"role": "user", "content": user},
                 ],
             )
-        return (response.choices[0].message.content or "").strip()
+        content = (response.choices[0].message.content or "").strip()
+        finish_reason = response.choices[0].finish_reason
+        if finish_reason == "length":
+            print(f"[LLMClient] WARNING: response hit max_tokens={max_tokens} — will attempt JSON repair")
+        return content
 
     def complete_json(self, system: str, user: str,
                       max_tokens: int = 8000, **_) -> dict:
@@ -206,29 +210,78 @@ class LLMClient:
 
     @staticmethod
     def _repair_truncated_json(text: str) -> str:
-        """Close unclosed JSON braces/brackets left by a truncated response."""
-        stack = []
-        in_string = False
-        escape_next = False
-        for ch in text:
-            if escape_next:
-                escape_next = False
-                continue
-            if ch == "\\" and in_string:
-                escape_next = True
-                continue
-            if ch == '"':
-                in_string = not in_string
-                continue
-            if in_string:
-                continue
-            if ch in "{[":
-                stack.append("}" if ch == "{" else "]")
-            elif ch in "}]" and stack and stack[-1] == ch:
-                stack.pop()
-        # Strip trailing comma/whitespace before closing
-        repaired = text.rstrip().rstrip(",")
-        return repaired + "".join(reversed(stack))
+        """Close unclosed JSON braces/brackets left by a truncated response.
+
+        Handles two truncation cases:
+        1. Between values — unclosed { or [ with no mid-string truncation
+        2. Inside a string value — must find the last safe rollback point
+        """
+        def _scan(s: str):
+            """Return (stack, in_string, last_safe_outside_string_idx)."""
+            stack = []
+            in_str = False
+            esc = False
+            last_safe = 0
+            for i, ch in enumerate(s):
+                if esc:
+                    esc = False
+                    continue
+                if ch == "\\" and in_str:
+                    esc = True
+                    continue
+                if ch == '"':
+                    in_str = not in_str
+                    continue
+                if in_str:
+                    continue
+                # Outside string: track last safe rollback positions
+                if ch in ',':
+                    last_safe = i          # just after last complete value
+                elif ch in '{[':
+                    stack.append("}" if ch == "{" else "]")
+                    last_safe = i          # opening bracket is a safe point
+                elif ch in '}]' and stack and stack[-1] == ch:
+                    stack.pop()
+                    last_safe = i
+            return stack, in_str, last_safe
+
+        stack, in_string, last_safe = _scan(text)
+
+        if not in_string:
+            # Case 1: clean truncation between values
+            repaired = text.rstrip().rstrip(",")
+            return repaired + "".join(reversed(stack))
+
+        # Case 2: truncated inside a string
+        # Strategy A: close the string, close structures, see if it parses
+        closing = "".join(reversed(stack))
+        candidate_a = text + '"' + closing
+        try:
+            json.loads(candidate_a)
+            print("[LLMClient] Repaired: closed unclosed string + structures")
+            return candidate_a
+        except json.JSONDecodeError:
+            pass
+
+        # Strategy B: roll back to last safe boundary outside any string,
+        # strip trailing comma/colon, close structures
+        truncated = text[:last_safe].rstrip().rstrip(",")
+        stack2, in_str2, _ = _scan(truncated)
+        if not in_str2:
+            closing2 = "".join(reversed(stack2))
+            candidate_b = truncated + closing2
+            try:
+                json.loads(candidate_b)
+                print("[LLMClient] Repaired: rolled back to last safe boundary")
+                return candidate_b
+            except json.JSONDecodeError:
+                pass
+
+        # Strategy C: strip back to the outermost { and return minimal valid object
+        first_brace = text.find('{')
+        if first_brace != -1:
+            return text[first_brace:last_safe].rstrip().rstrip(",") + "}"
+        return text.rstrip().rstrip(",") + "".join(reversed(stack))
 
     @staticmethod
     def _parse_json(text: str) -> dict:

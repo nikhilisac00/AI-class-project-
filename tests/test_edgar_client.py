@@ -86,9 +86,10 @@ class TestExtractAdvSummary:
         result = extract_adv_summary(self._make_detail())
         assert result["key_personnel"] == []
 
-    def test_has_disclosures_none_without_search_hit(self):
+    def test_has_disclosures_false_without_disclosures(self):
+        # No disclosures in iacontent + no search_hit → has_disclosures=False
         result = extract_adv_summary(self._make_detail())
-        assert result["has_disclosures"] is None
+        assert result["has_disclosures"] is False
 
     def test_has_disclosures_from_search_hit(self):
         result = extract_adv_summary(

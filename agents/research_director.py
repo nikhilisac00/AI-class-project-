@@ -110,5 +110,5 @@ Return ONLY a JSON object:
     return client.complete_json(
         system=SYSTEM_PROMPT,
         user=user_message,
-        max_tokens=6000,
+        max_tokens=8000,
     )
