@@ -42,6 +42,7 @@ from tools.llm_client    import make_client
 from tools.reconciliation import run_all as reconcile_sources
 from tools.schemas        import validate_analysis
 from tools.trace          import set_current_firm, set_run_id
+from tools.validation     import validate_firm_input
 
 load_dotenv()
 console = Console()
@@ -185,6 +186,12 @@ def main():
         help="Bypass cached raw data and re-fetch from all sources",
     )
     args = parser.parse_args()
+
+    try:
+        args.firm = validate_firm_input(args.firm)
+    except ValueError as exc:
+        console.print(f"[bold red]Input error:[/] {exc}")
+        sys.exit(1)
 
     api_key  = validate_env()
 
