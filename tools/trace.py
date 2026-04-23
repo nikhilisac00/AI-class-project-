@@ -125,6 +125,10 @@ def trace_llm_call(
         success:       Whether the call returned a usable response.
         retry_count:   Number of schema-validation retries (from caller).
         firm_id:       Override for the firm identifier (uses context var if omitted).
+        role_atom:     Semantic role label for the agent (e.g. ``"data_analyst"``).
+        principal:     Who this agent serves (e.g. ``"IC_committee"``).
+        agent_input:   Input data dict (summarized before storage).
+        agent_output:  Output data dict (summarized before storage).
     """
     # Resolve step_id from the per-run counter (auto-create if needed)
     try:
