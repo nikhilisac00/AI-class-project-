@@ -613,3 +613,111 @@ def format_validation_errors(errors: list[str]) -> str:
     lines.append("")
     lines.append("Return the corrected JSON now, fixing every issue listed above.")
     return "\n".join(lines)
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# ic_scorecard output
+# ════════════════════════════════════════════════════════════════════════════════
+
+class ScoreDimension(TypedDict, total=False):
+    """A single scored dimension with rationale."""
+    score: int
+    rationale: str
+
+
+class ScorecardScores(TypedDict, total=False):
+    """All scored dimensions for the IC scorecard."""
+    regulatory_compliance: ScoreDimension
+    data_availability: ScoreDimension
+    key_person_risk: ScoreDimension
+    fund_structure: ScoreDimension
+    news_reputation: ScoreDimension
+    operational_maturity: ScoreDimension
+
+
+class DiligenceItem(TypedDict, total=False):
+    """A single minimum diligence checklist item."""
+    item: str
+    priority: str
+    why: str
+
+
+class ScorecardOutput(TypedDict, total=False):
+    """Output of agents/ic_scorecard.py — the IC verdict."""
+    recommendation: str
+    confidence: str
+    confidence_rationale: str
+    recommendation_summary: str
+    scores: ScorecardScores
+    overall_score: float
+    reasons_to_proceed: List[str]
+    reasons_to_pause: List[str]
+    minimum_diligence_items: List[DiligenceItem]
+    standard_lp_asks: List[str]
+    data_coverage_assessment: str
+    data_coverage_note: str
+
+
+def coerce_scorecard(data: Any) -> ScorecardOutput:
+    """Normalise raw ic_scorecard LLM output into ScorecardOutput."""
+    if not isinstance(data, dict):
+        data = {}
+
+    def _ensure_list(val: Any) -> list:
+        return val if isinstance(val, list) else []
+
+    data.setdefault("recommendation", "REQUEST MORE INFO")
+    data.setdefault("confidence", "LOW")
+    data.setdefault("confidence_rationale", "")
+    data.setdefault("recommendation_summary", "")
+    data.setdefault("scores", {})
+    data.setdefault("overall_score", 0)
+    data.setdefault("reasons_to_proceed", _ensure_list(data.get("reasons_to_proceed")))
+    data.setdefault("reasons_to_pause", _ensure_list(data.get("reasons_to_pause")))
+    data.setdefault("minimum_diligence_items", _ensure_list(data.get("minimum_diligence_items")))
+    data.setdefault("standard_lp_asks", _ensure_list(data.get("standard_lp_asks")))
+    data.setdefault("data_coverage_assessment", "LOW")
+    data.setdefault("data_coverage_note", "")
+    return data  # type: ignore[return-value]
+
+
+_VALID_RECOMMENDATIONS = {"PROCEED", "REQUEST MORE INFO", "PASS"}
+_VALID_CONFIDENCES = {"HIGH", "MEDIUM", "LOW"}
+_VALID_DATA_COVERAGE = {"HIGH", "MEDIUM", "LOW"}
+
+
+def validate_scorecard(data: Any) -> list[str]:
+    """
+    Validate ic_scorecard agent output.
+    Returns a list of error strings; empty = valid.
+    """
+    errors: list[str] = []
+    if not isinstance(data, dict):
+        return [f"Expected dict, got {type(data).__name__}"]
+    for key in ("recommendation", "confidence"):
+        if key not in data:
+            errors.append(f"Missing required key: '{key}'")
+    rec = data.get("recommendation")
+    if rec is not None and rec not in _VALID_RECOMMENDATIONS:
+        errors.append(
+            f"recommendation must be one of {sorted(_VALID_RECOMMENDATIONS)}, got: '{rec}'"
+        )
+    conf = data.get("confidence")
+    if conf is not None and conf not in _VALID_CONFIDENCES:
+        errors.append(
+            f"confidence must be one of {sorted(_VALID_CONFIDENCES)}, got: '{conf}'"
+        )
+    scores = data.get("scores")
+    if scores is not None and not isinstance(scores, dict):
+        errors.append("scores must be a dict")
+    for key in ("reasons_to_proceed", "reasons_to_pause",
+                "minimum_diligence_items", "standard_lp_asks"):
+        val = data.get(key)
+        if val is not None and not isinstance(val, list):
+            errors.append(f"{key} must be a list")
+    dc = data.get("data_coverage_assessment")
+    if dc is not None and dc not in _VALID_DATA_COVERAGE:
+        errors.append(
+            f"data_coverage_assessment must be one of {sorted(_VALID_DATA_COVERAGE)}, got: '{dc}'"
+        )
+    return errors
