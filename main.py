@@ -19,6 +19,7 @@ import logging
 import os
 import re
 import sys
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -40,10 +41,24 @@ import agents.fact_checker       as fact_checker_agent
 from tools.llm_client    import make_client
 from tools.reconciliation import run_all as reconcile_sources
 from tools.schemas        import validate_analysis
-from tools.trace          import set_current_firm
+from tools.trace          import set_current_firm, set_run_id
 
 load_dotenv()
 console = Console()
+
+# Harness seam map — which role atom and principal each agent serves
+AGENT_ROLES = {
+    "data_ingestion":    {"role_atom": "data_analyst",         "principal": "system_integrity"},
+    "fund_analysis":     {"role_atom": "data_analyst",         "principal": "IC_committee"},
+    "reconciliation":    {"role_atom": "compliance_checker",   "principal": "system_integrity"},
+    "news_research":     {"role_atom": "research_synthesizer", "principal": "IC_committee"},
+    "risk_flagging":     {"role_atom": "risk_assessor",        "principal": "LP_investor"},
+    "memo_generation":   {"role_atom": "investment_advisor",   "principal": "IC_committee"},
+    "ic_scorecard":      {"role_atom": "investment_advisor",   "principal": "IC_committee"},
+    "fact_checker":      {"role_atom": "fact_verifier",        "principal": "compliance"},
+    "comparables":       {"role_atom": "data_analyst",         "principal": "IC_committee"},
+    "research_director": {"role_atom": "risk_assessor",        "principal": "LP_investor"},
+}
 
 
 def _setup_file_logging(output_dir: str, safe_name: str, ts: str) -> None:
@@ -172,6 +187,11 @@ def main():
     args = parser.parse_args()
 
     api_key  = validate_env()
+
+    # Generate run-level correlation ID for trace
+    run_id = str(uuid.uuid4())
+    set_run_id(run_id)
+
     client   = make_client(api_key)
     fred_key = None if args.no_fred else os.getenv("FRED_API_KEY")
     tavily_key = os.getenv("TAVILY_API_KEY")
