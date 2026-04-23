@@ -867,3 +867,26 @@ def validate_comparables(data: Any) -> list[str]:
         if val is not None and not isinstance(val, list):
             errors.append(f"{key} must be a list")
     return errors
+
+
+_VALID_NEWS_RISK = {"HIGH", "MEDIUM", "LOW", "CLEAN", "UNKNOWN"}
+
+
+def validate_news_report(data: Any) -> list[str]:
+    """Validate news_research agent output. Returns error strings; empty = valid."""
+    errors: list[str] = []
+    if not isinstance(data, dict):
+        return [f"Expected dict, got {type(data).__name__}"]
+    if "firm_name" not in data:
+        errors.append("Missing required key: 'firm_name'")
+    risk = data.get("overall_news_risk")
+    if risk is not None and risk not in _VALID_NEWS_RISK:
+        errors.append(
+            f"overall_news_risk must be one of {sorted(_VALID_NEWS_RISK)}, got: '{risk}'"
+        )
+    for key in ("news_flags", "findings", "sources_consulted",
+                "queries_used", "coverage_gaps", "errors"):
+        val = data.get(key)
+        if val is not None and not isinstance(val, list):
+            errors.append(f"{key} must be a list")
+    return errors

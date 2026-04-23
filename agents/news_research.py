@@ -288,6 +288,15 @@ def run(
     news_report["total_sources"]     = len(sources)
     news_report["research_rounds"]   = max(1, len(queries) // 3) if queries else 0
 
+    from tools.schemas import validate_news_report
+
+    schema_errors = validate_news_report(news_report)
+    if schema_errors:
+        print(f"[News Research Agent] WARNING: output has {len(schema_errors)} schema issues: {schema_errors}")
+        news_report["errors"].extend(
+            f"Schema: {e}" for e in schema_errors
+        )
+
     print(
         f"[News Research Agent] Done — "
         f"{len(queries)} queries, {len(sources)} sources, "
