@@ -84,6 +84,23 @@ def _normalize_check_name(name: str) -> str:
     return re.sub(r"[^\w]", "", (name or "").lower())
 
 
+def _is_trust_low(verification: dict) -> bool:
+    """Return True if the fact checker rated trust as LOW."""
+    return verification.get("trust_label") == "LOW"
+
+
+def _build_draft_header(score: int, timestamp: str) -> str:
+    """Build the warning header prepended to DRAFT memos."""
+    return (
+        "> **DRAFT — DO NOT DISTRIBUTE**\n"
+        f"> This memo failed automated fact-checking "
+        f"(trust score: {score}/100, label: LOW).\n"
+        "> It requires manual review before IC submission.\n"
+        f"> Generated: {timestamp}\n"
+        "---\n\n"
+    )
+
+
 def validate_env() -> str:
     key = os.getenv("OPENAI_API_KEY")
     if not key:
@@ -413,6 +430,49 @@ def main():
         console.print(
             f"[dim]Auto-retry fixed: {verification['failures_fixed_on_retry']}[/]"
         )
+
+    # ── DRAFT gate: refuse to serve LOW-trust memos as IC-ready ──────────
+    if _is_trust_low(verification):
+        console.print(
+            "\n[bold red]DRAFT GATE:[/] Trust score is LOW — memo will be saved as DRAFT.\n"
+            "IC Scorecard, Research Director, and Comparables will be skipped."
+        )
+        draft_ts = datetime.now().isoformat()
+        memo = _build_draft_header(verification["trust_score"], draft_ts) + memo
+
+        # Save as DRAFT
+        base = Path(args.output_dir)
+        base.mkdir(parents=True, exist_ok=True)
+        draft_path = base / f"DRAFT_{ts}_{safe_name}_DD_MEMO.md"
+        draft_path.write_text(memo, encoding="utf-8")
+
+        # Still save raw data, analysis, risk report for review
+        (base / f"{ts}_{safe_name}_raw_data.json").write_text(
+            json.dumps(raw_data, indent=2, default=str), encoding="utf-8"
+        )
+        (base / f"{ts}_{safe_name}_analysis.json").write_text(
+            json.dumps(analysis, indent=2, default=str), encoding="utf-8"
+        )
+        (base / f"{ts}_{safe_name}_risk_report.json").write_text(
+            json.dumps(risk_report, indent=2, default=str), encoding="utf-8"
+        )
+        (base / f"{ts}_{safe_name}_verification.json").write_text(
+            json.dumps(verification, indent=2, default=str), encoding="utf-8"
+        )
+        if news_report:
+            (base / f"{ts}_{safe_name}_news_report.json").write_text(
+                json.dumps(news_report, indent=2, default=str), encoding="utf-8"
+            )
+
+        console.print(Panel(
+            f"[bold yellow]DRAFT memo saved.[/]\n"
+            f"Path: [cyan]{draft_path}[/]\n"
+            f"Trust: {verification['trust_score']}/100 (LOW)\n"
+            f"Action: Manual review required before IC submission.",
+            title="Draft — Not IC-Ready",
+            expand=False,
+        ))
+        return  # Exit pipeline — do not run scorecard, director, comparables
 
     # ── Save outputs ──────────────────────────────────────────────────────────
     memo_path = save_outputs(
