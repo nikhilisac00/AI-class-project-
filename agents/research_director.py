@@ -106,9 +106,26 @@ Return ONLY a JSON object:
 }}
 """
 
+    from tools.schemas import validate_director_review, format_validation_errors
+
     print(f"[Research Director] Calling {client.provider} ({client.model})...")
-    return client.complete_json(
+    result = client.complete_json(
         system=SYSTEM_PROMPT,
         user=user_message,
         max_tokens=8000,
     )
+
+    errors = validate_director_review(result)
+    if errors:
+        print(f"[Research Director] Schema validation failed ({len(errors)} errors) — retrying...")
+        retry_message = user_message + format_validation_errors(errors)
+        result = client.complete_json(
+            system=SYSTEM_PROMPT,
+            user=retry_message,
+            max_tokens=8000,
+        )
+        remaining = validate_director_review(result)
+        if remaining:
+            print(f"[Research Director] Retry still has {len(remaining)} schema errors: {remaining}")
+
+    return result

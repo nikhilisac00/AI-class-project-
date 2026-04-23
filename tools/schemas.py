@@ -721,3 +721,85 @@ def validate_scorecard(data: Any) -> list[str]:
             f"data_coverage_assessment must be one of {sorted(_VALID_DATA_COVERAGE)}, got: '{dc}'"
         )
     return errors
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# research_director output
+# ════════════════════════════════════════════════════════════════════════════════
+
+class Inconsistency(TypedDict, total=False):
+    """A single inconsistency found between data sources."""
+    finding: str
+    field_a: str
+    field_b: str
+    implication: str
+
+
+class MissedSignal(TypedDict, total=False):
+    """A signal the junior analysts underweighted or missed."""
+    signal: str
+    severity: Severity
+    why_it_matters: str
+
+
+class DirectorReviewOutput(TypedDict, total=False):
+    """Output of agents/research_director.py — the director's final review."""
+    verdict: str
+    original_recommendation: str
+    revised_recommendation: str
+    director_commentary: str
+    inconsistencies: List[Inconsistency]
+    missed_signals: List[MissedSignal]
+    questions_for_gp: List[str]
+    cleared_for_ic: bool
+
+
+def coerce_director_review(data: Any) -> DirectorReviewOutput:
+    """Normalise raw research_director LLM output into DirectorReviewOutput."""
+    if not isinstance(data, dict):
+        data = {}
+
+    def _ensure_list(val: Any) -> list:
+        return val if isinstance(val, list) else []
+
+    data.setdefault("verdict", "INCONCLUSIVE")
+    data.setdefault("original_recommendation", "")
+    data.setdefault("revised_recommendation", "REQUEST MORE INFO")
+    data.setdefault("director_commentary", "")
+    data.setdefault("inconsistencies", _ensure_list(data.get("inconsistencies")))
+    data.setdefault("missed_signals", _ensure_list(data.get("missed_signals")))
+    data.setdefault("questions_for_gp", _ensure_list(data.get("questions_for_gp")))
+    data.setdefault("cleared_for_ic", False)
+    return data  # type: ignore[return-value]
+
+
+_VALID_VERDICTS = {"CONFIRMED", "DOWNGRADED", "UPGRADED", "INCONCLUSIVE"}
+
+
+def validate_director_review(data: Any) -> list[str]:
+    """
+    Validate research_director agent output.
+    Returns a list of error strings; empty = valid.
+    """
+    errors: list[str] = []
+    if not isinstance(data, dict):
+        return [f"Expected dict, got {type(data).__name__}"]
+    for key in ("verdict", "revised_recommendation"):
+        if key not in data:
+            errors.append(f"Missing required key: '{key}'")
+    verdict = data.get("verdict")
+    if verdict is not None and verdict not in _VALID_VERDICTS:
+        errors.append(
+            f"verdict must be one of {sorted(_VALID_VERDICTS)}, got: '{verdict}'"
+        )
+    rev_rec = data.get("revised_recommendation")
+    if rev_rec is not None and rev_rec not in _VALID_RECOMMENDATIONS:
+        errors.append(
+            f"revised_recommendation must be one of "
+            f"{sorted(_VALID_RECOMMENDATIONS)}, got: '{rev_rec}'"
+        )
+    for key in ("inconsistencies", "missed_signals", "questions_for_gp"):
+        val = data.get(key)
+        if val is not None and not isinstance(val, list):
+            errors.append(f"{key} must be a list")
+    return errors
