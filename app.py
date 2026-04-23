@@ -1021,7 +1021,18 @@ if run_button:
 
         status_box.info("⏳ Step 1 — Fetching IAPD registration · EDGAR 13F filings · FRED macro rates · Form D fund records...")
         progress_bar.progress(5, text="Fetching data sources...")
-        from tools.trace import set_current_firm
+        from tools.trace import set_current_firm, set_run_id
+        from tools.validation import validate_firm_input
+        import uuid
+
+        try:
+            firm_input = validate_firm_input(firm_input)
+        except ValueError as exc:
+            st.error(f"Input error: {exc}")
+            st.stop()
+
+        run_id = str(uuid.uuid4())
+        set_run_id(run_id)
         set_current_firm(firm_input)
         raw_data = ingestion_agent.run(
             firm_input,
@@ -1151,6 +1162,34 @@ if run_button:
             f"Fact check: {fact_check['trust_score']}/100 "
             f"({fact_check['trust_label']})"
         ))
+
+        # DRAFT gate: refuse to serve LOW-trust memos as IC-ready
+        if fact_check.get("trust_label") == "LOW":
+            status_box.error(
+                "DRAFT GATE: Trust score is LOW — memo saved as DRAFT. "
+                "IC Scorecard, Research Director, and Comparables skipped."
+            )
+            draft_ts = datetime.now().isoformat()
+            draft_header = (
+                "> **DRAFT — DO NOT DISTRIBUTE**\n"
+                f"> This memo failed automated fact-checking "
+                f"(trust score: {fact_check['trust_score']}/100, label: LOW).\n"
+                "> It requires manual review before IC submission.\n"
+                f"> Generated: {draft_ts}\n"
+                "---\n\n"
+            )
+            memo = draft_header + memo
+
+            st.session_state.pipeline_result = dict(
+                raw_data=raw_data, analysis=analysis, risk_report=risk_report,
+                memo=memo, scorecard={}, comparables={},
+                director_review={}, pal_review=pal_review,
+                news_report=news_report, firm_name=firm_name_resolved,
+                fact_check=fact_check, is_draft=True,
+            )
+            st.session_state.pipeline_done = True
+            progress_bar.progress(100, text="Done (DRAFT)")
+            st.stop()
 
         status_box.info("⏳ Step 6 — Scoring investment dimensions · building IC recommendation...")
         scorecard = scorecard_agent.run(analysis, risk_report, raw_data, client,
