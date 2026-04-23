@@ -35,6 +35,8 @@ def log_step(
     retry_count: int = 0,
     agent_input: dict | None = None,   # NEW
     agent_output: dict | None = None,  # NEW
+    role_atom: str | None = None,      # NEW
+    principal: str | None = None,      # NEW
 ) -> None:
 ```
 
@@ -43,11 +45,30 @@ def log_step(
 - `step_id`: int (sequential per run)
 - `agent_input`: dict or null — truncated summary of what was passed to the agent (keys only for large dicts, first 500 chars for strings)
 - `agent_output`: dict or null — truncated summary of agent return value (same truncation rules)
+- `role_atom`: str — which atomic role this agent plays (one of: "data_analyst", "risk_assessor", "compliance_checker", "investment_advisor", "fact_verifier", "research_synthesizer")
+- `principal`: str — who this agent serves (one of: "LP_investor", "IC_committee", "compliance", "system_integrity")
 
 **Truncation helper:** `_summarize(obj, max_str_len=500) -> dict | str | None` — recursively walks dicts, truncates string values, replaces lists with `"[list of N items]"`. Prevents trace bloat from large raw_data payloads.
 
+**Agent-to-atom mapping (hardcoded in `main.py`):**
+
+| Agent | `role_atom` | `principal` |
+|-------|-------------|-------------|
+| `data_ingestion` | `data_analyst` | `system_integrity` |
+| `fund_analysis` | `data_analyst` | `IC_committee` |
+| `reconciliation` | `compliance_checker` | `system_integrity` |
+| `news_research` | `research_synthesizer` | `IC_committee` |
+| `risk_flagging` | `risk_assessor` | `LP_investor` |
+| `memo_generation` | `investment_advisor` | `IC_committee` |
+| `ic_scorecard` | `investment_advisor` | `IC_committee` |
+| `fact_checker` | `fact_verifier` | `compliance` |
+| `comparables` | `data_analyst` | `IC_committee` |
+| `research_director` | `risk_assessor` | `LP_investor` |
+
+This mapping is the "seam map" — it makes explicit where principals diverge. The fact_checker serves compliance while the memo_generation serves the IC committee; this is the seam where the DRAFT gate (Item 2) activates.
+
 **Integration points:**
-- `main.py`: Generate `run_id` at top of `run_pipeline()`, set context var. Pass `agent_input`/`agent_output` to `log_step()` after each agent call.
+- `main.py`: Generate `run_id` at top of `run_pipeline()`, set context var. Pass `agent_input`/`agent_output` plus `role_atom`/`principal` to `log_step()` after each agent call.
 - `app.py`: Same — generate `run_id` at top of Streamlit run.
 - `tools/trace.py`: Add `run_id` and `step_counter` ContextVars. Update `log_step()` and `_build_record()`.
 
@@ -190,11 +211,18 @@ def validate_firm_input(value: str) -> str:
 
 ---
 
-## Out of Scope
+## Out of Scope (Documented Future Work)
 
 - Agent prompt changes
 - Data flow restructuring between steps
 - Output file format changes (beyond DRAFT prefix)
 - Firm history store (future session)
-- Seam documentation / information barriers (future session)
 - Container isolation
+
+### Identified gaps from topic.md / finance-examples.md (future sessions)
+
+1. **Harness change log** — record when the system itself changes (guardrail thresholds, schema updates, prompt modifications) with eval metric impact. Required by model risk management frameworks (topic.md).
+2. **Labeled benchmark suite** — a set of known-good/known-bad cases to regression-test the full pipeline. Finance-examples.md identifies this as the primary reason finance AI pilots stall before production.
+3. **Active human-in-the-loop gate** — the DRAFT gate (Item 2) is passive (labels a file). A true IC gate would block progression until a human approves, matching the CreditMind pattern (finance-examples.md).
+4. **Source citation as structural guardrail** — require a `source_field` in agent output schemas so agents cannot return a fact they cannot cite, rather than checking citations post-hoc in the fact checker (finance-examples.md, CRE platform pattern).
+5. **Cost/latency budget enforcement** — per-step max cost ceilings and latency kill switches, not just logging (finance-examples.md).
