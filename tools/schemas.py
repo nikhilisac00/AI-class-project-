@@ -803,3 +803,67 @@ def validate_director_review(data: Any) -> list[str]:
         if val is not None and not isinstance(val, list):
             errors.append(f"{key} must be a list")
     return errors
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# comparables output
+# ════════════════════════════════════════════════════════════════════════════════
+
+class ComparablePeerRow(TypedDict, total=False):
+    """A single row in the comparables table (target or peer)."""
+    firm_name: str
+    is_target: bool
+    crd: Optional[str]
+    registration_status: Optional[str]
+    is_sec_registered: Optional[bool]
+    has_disclosures: Optional[bool]
+    city: Optional[str]
+    state: Optional[str]
+    adv_filing_date: Optional[str]
+    portfolio_value_fmt: Optional[str]
+    portfolio_value_usd: Optional[float]
+    holdings_count: Optional[int]
+
+
+class ComparablesOutput(TypedDict, total=False):
+    """Output of agents/comparables.py — peer benchmarking table."""
+    target: ComparablePeerRow
+    peers: List[ComparablePeerRow]
+    table: List[ComparablePeerRow]
+    size_rank: Optional[int]
+    total_in_comparison: int
+    note: str
+
+
+def coerce_comparables(data: Any) -> ComparablesOutput:
+    """Normalise raw comparables output into ComparablesOutput."""
+    if not isinstance(data, dict):
+        data = {}
+
+    def _ensure_list(val: Any) -> list:
+        return val if isinstance(val, list) else []
+
+    data.setdefault("target", data.get("target") or {})
+    data.setdefault("peers", _ensure_list(data.get("peers")))
+    data.setdefault("table", _ensure_list(data.get("table")))
+    data.setdefault("size_rank", None)
+    data.setdefault("total_in_comparison", len(data.get("table", [])))
+    data.setdefault("note", "")
+    return data  # type: ignore[return-value]
+
+
+def validate_comparables(data: Any) -> list[str]:
+    """
+    Validate comparables agent output.
+    Returns a list of error strings; empty = valid.
+    """
+    errors: list[str] = []
+    if not isinstance(data, dict):
+        return [f"Expected dict, got {type(data).__name__}"]
+    if "target" not in data:
+        errors.append("Missing required key: 'target'")
+    for key in ("peers", "table"):
+        val = data.get(key)
+        if val is not None and not isinstance(val, list):
+            errors.append(f"{key} must be a list")
+    return errors

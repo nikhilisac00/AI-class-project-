@@ -179,8 +179,11 @@ def run(firm_name: str, adv_summary: dict, raw_data: dict,
         all_pvs_sorted = sorted(all_pvs, reverse=True)
         size_rank = all_pvs_sorted.index(target_pv) + 1
 
+    from tools.schemas import validate_comparables
+
     print(f"[Comparables] Done — {len(peers)} peers found.")
-    return {
+
+    result = {
         "target":     target_row,
         "peers":      peers,
         "table":      table,
@@ -192,3 +195,9 @@ def run(firm_name: str, adv_summary: dict, raw_data: dict,
             "This is a screening comparison — not a definitive peer set."
         ),
     }
+
+    schema_errors = validate_comparables(result)
+    if schema_errors:
+        print(f"[Comparables] WARNING: output has {len(schema_errors)} schema issues: {schema_errors}")
+
+    return result
