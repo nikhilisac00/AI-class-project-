@@ -13,6 +13,8 @@ import time
 
 import openai
 
+from tools.trace import trace_llm_call
+
 # Default timeout for all OpenAI API calls (seconds). Bug #20.
 _API_TIMEOUT = 90
 
@@ -28,10 +30,13 @@ class LLMClient:
     # ── Single-turn completions ──────────────────────────────────────────────
 
     def complete(self, system: str, user: str,
-                 max_tokens: int = 8000, **_) -> str:
+                 max_tokens: int = 8000, step_name: str = "", **_) -> str:
         """Return a plain-text completion."""
         # Bug #3: catch auth/rate-limit errors explicitly so mid-run failures
         # surface clearly rather than propagating as opaque KeyError/AttributeError.
+        t0 = time.perf_counter()
+        success = True
+        response = None
         try:
             response = self._client.chat.completions.create(
                 model=self.model,
@@ -42,6 +47,8 @@ class LLMClient:
                 ],
             )
         except openai.AuthenticationError as e:
+            success = False
+            self._emit_trace(step_name, t0, response, success)
             raise RuntimeError(
                 f"[LLMClient] OpenAI API key is invalid or revoked: {e}"
             ) from e
@@ -56,6 +63,7 @@ class LLMClient:
                     {"role": "user", "content": user},
                 ],
             )
+        self._emit_trace(step_name, t0, response, success)
         content = (response.choices[0].message.content or "").strip()
         finish_reason = response.choices[0].finish_reason
         if finish_reason == "length":
@@ -63,9 +71,9 @@ class LLMClient:
         return content
 
     def complete_json(self, system: str, user: str,
-                      max_tokens: int = 8000, **_) -> dict:
+                      max_tokens: int = 8000, step_name: str = "", **_) -> dict:
         """Return a completion parsed as a JSON dict."""
-        text = self.complete(system, user, max_tokens)
+        text = self.complete(system, user, max_tokens, step_name=step_name)
         return self._parse_json(text)
 
     def chat(self, messages: list[dict], max_tokens: int = 2000) -> str:
@@ -113,6 +121,7 @@ class LLMClient:
         tool_executor: dict,
         max_tokens: int = 4096,
         max_iterations: int = 15,
+        step_name: str = "",
     ) -> dict:
         """Run a multi-turn tool-use loop until the model produces a final JSON answer.
 
@@ -136,6 +145,7 @@ class LLMClient:
         ]
 
         for iteration in range(max_iterations):
+            t0 = time.perf_counter()
             try:
                 response = self._client.chat.completions.create(
                     model=self.model,
@@ -144,6 +154,7 @@ class LLMClient:
                     tools=openai_tools if openai_tools else None,
                 )
             except openai.AuthenticationError as e:
+                self._emit_trace(step_name, t0, None, False)
                 raise RuntimeError(
                     f"[LLMClient] OpenAI API key is invalid or revoked: {e}"
                 ) from e
@@ -151,6 +162,7 @@ class LLMClient:
                 print(f"[LLMClient] Rate limit hit in agent loop — waiting 60s: {e}")
                 time.sleep(60)
                 continue
+            self._emit_trace(step_name, t0, response, True)
 
             choice = response.choices[0]
             message = choice.message
@@ -192,6 +204,23 @@ class LLMClient:
         return {"parse_error": f"Agent loop hit max iterations ({max_iterations})"}
 
     # ── Internal helpers ─────────────────────────────────────────────────────
+
+    def _emit_trace(self, step_name: str, t0: float,
+                    response, success: bool) -> None:
+        """Log one trace record for an API call."""
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+        input_tokens = output_tokens = 0
+        if response and hasattr(response, "usage") and response.usage:
+            input_tokens = response.usage.prompt_tokens or 0
+            output_tokens = response.usage.completion_tokens or 0
+        trace_llm_call(
+            step=step_name or "unknown",
+            model=self.model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            latency_ms=latency_ms,
+            success=success,
+        )
 
     @staticmethod
     def _to_openai_tools(tools: list[dict]) -> list[dict]:

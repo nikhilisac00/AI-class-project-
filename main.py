@@ -40,6 +40,7 @@ import agents.fact_checker       as fact_checker_agent
 from tools.llm_client    import make_client
 from tools.reconciliation import run_all as reconcile_sources
 from tools.schemas        import validate_analysis
+from tools.trace          import set_current_firm
 
 load_dotenv()
 console = Console()
@@ -163,6 +164,11 @@ def main():
         default=3,
         help="Max research rounds for news agent (default: 3)",
     )
+    parser.add_argument(
+        "--force-refresh",
+        action="store_true",
+        help="Bypass cached raw data and re-fetch from all sources",
+    )
     args = parser.parse_args()
 
     api_key  = validate_env()
@@ -186,10 +192,12 @@ def main():
     ))
 
     # ── Agent 1: Data Ingestion ────────────────────────────────────────────────
+    set_current_firm(args.firm)
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Ingesting data from EDGAR / IAPD / FRED...", total=None)
-        raw_data = ingestion_agent.run(args.firm, fred_api_key=fred_key)
+        raw_data = ingestion_agent.run(args.firm, fred_api_key=fred_key,
+                                       force_refresh=args.force_refresh)
         p.update(task, description="Data ingestion complete", completed=True)
 
     firm_name = (
@@ -198,6 +206,9 @@ def main():
         if raw_data.get("search_results")
         else args.firm
     )
+    # Update trace context with resolved CRD for downstream LLM calls
+    if raw_data.get("crd"):
+        set_current_firm(raw_data["crd"])
 
     if raw_data["errors"]:
         console.print(f"\n[yellow]Ingestion warnings:[/] {raw_data['errors']}")

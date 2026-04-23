@@ -23,16 +23,19 @@ from tools.edgar_client import (
     search_13f_by_cik,
 )
 from tools.fred_client import get_market_context, latest_value
+from tools.raw_data_cache import load_raw_data, save_raw_data
 
 
 def run(firm_input: str, fred_api_key: str = None,
-        website: str = None, client=None, tavily_key: str = None) -> dict:
+        website: str = None, client=None, tavily_key: str = None,
+        force_refresh: bool = False) -> dict:
     """
     Pull all available data for a firm.
 
     Args:
-        firm_input: Either a firm name (str) or CRD number (str of digits).
-        fred_api_key: Optional FRED key; falls back to env var.
+        firm_input:     Either a firm name (str) or CRD number (str of digits).
+        fred_api_key:   Optional FRED key; falls back to env var.
+        force_refresh:  If True, bypass cache and re-fetch all data.
 
     Returns:
         raw_data dict with keys:
@@ -46,6 +49,13 @@ def run(firm_input: str, fred_api_key: str = None,
           - enforcement      : SEC enforcement deep-dive
           - errors           : list of any non-fatal errors encountered
     """
+    # ── Cache check ────────────────────────────────────────────────────
+    if not force_refresh:
+        cached = load_raw_data(firm_input)
+        if cached is not None:
+            print(f"[Ingestion] Loaded from cache for '{firm_input}'")
+            return cached
+
     raw_data = {
         "input":          firm_input,
         "search_results": [],
@@ -241,4 +251,5 @@ def run(firm_input: str, fred_api_key: str = None,
         raw_data["critical_data_failure"] = False
 
     print(f"[Ingestion] Done. Errors: {raw_data['errors'] or 'none'}")
+    save_raw_data(firm_input, raw_data)
     return raw_data

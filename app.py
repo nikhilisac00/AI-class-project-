@@ -637,6 +637,11 @@ with st.sidebar:
 
     st.divider()
     st.markdown('<div class="section-label">Advanced</div>', unsafe_allow_html=True)
+    force_refresh = st.toggle(
+        "Force Refresh Data",
+        value=False,
+        help="Bypass cached raw data and re-fetch from all sources.",
+    )
     use_pal    = False
     pal_status = pal_available()
     if pal_status:
@@ -1016,12 +1021,15 @@ if run_button:
 
         status_box.info("⏳ Step 1 — Fetching IAPD registration · EDGAR 13F filings · FRED macro rates · Form D fund records...")
         progress_bar.progress(5, text="Fetching data sources...")
+        from tools.trace import set_current_firm
+        set_current_firm(firm_input)
         raw_data = ingestion_agent.run(
             firm_input,
             fred_api_key=fred_key or None,
             website=user_website,
             client=client,
             tavily_key=tavily_key or None,
+            force_refresh=force_refresh,
         )
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Data ingestion complete")
@@ -1034,6 +1042,9 @@ if run_button:
             _ingest_summary += f" · {errs_count} notes"
         if raw_data.get("errors"):
             st.warning("Ingestion notes: " + " | ".join(raw_data["errors"]))
+
+        if raw_data.get("crd"):
+            set_current_firm(raw_data["crd"])
 
         if raw_data.get("critical_data_failure"):
             details = " | ".join(raw_data.get("critical_failure_detail", []))
