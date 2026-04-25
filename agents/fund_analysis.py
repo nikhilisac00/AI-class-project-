@@ -174,39 +174,29 @@ def _slim_raw_data(raw_data: dict) -> dict:
     return d
 
 
+def _data_preamble(slimmed: dict) -> str:
+    return (
+        "Analyze this investment adviser data. Think carefully before responding.\n\n"
+        f"<data>\n{json.dumps(slimmed, indent=2, default=str)}\n</data>\n\n"
+        "Context questions:\n"
+        "1. Firm type? (PE/hedge fund/VC/credit/multi-strat/long-only) — reason from 13F, Form D, name.\n"
+        "2. What does 13F tell us about strategy and scale? Gap vs likely AUM?\n"
+        "3. What do Form D funds tell us? Exemption types, fundraising cadence?\n"
+        "4. IAPD disclosures — what do they mean for an LP?\n"
+        "5. Any internal inconsistencies worth flagging?\n\n"
+        "Return ONLY valid JSON. null for any missing field. Keep all narrative fields to 1-2 sentences.\n\n"
+    )
+
+
 def run(raw_data: dict, client: LLMClient) -> dict:
+    """Two-pass analysis: each pass targets ≤8000 output tokens to avoid truncation."""
     slimmed = _slim_raw_data(raw_data)
+    preamble = _data_preamble(slimmed)
 
-    user_message = f"""
-Analyze this investment adviser data. Think carefully about what it means before responding.
-
-<data>
-{json.dumps(slimmed, indent=2, default=str)}
-</data>
-
-Work through the following in your analysis:
-
-1. What TYPE of firm is this? (PE, hedge fund, VC, credit, multi-strat, long-only public equity?)
-   Reason from: 13F presence, Form D exemptions, firm name, registration details.
-
-2. What does the 13F data tell us about strategy and scale?
-   Is there a gap between 13F portfolio value and likely AUM that suggests significant private AUM?
-
-3. What do the Form D funds tell us? What exemption types? What fundraising cadence?
-   Are the fund sizes consistent with the firm's apparent scale?
-
-4. What do the IAPD disclosures (if any) actually mean in LP context?
-
-5. Are there any internal inconsistencies in the data that warrant flagging?
-
-Return ONLY a JSON object with this exact schema (null for any missing field).
-IMPORTANT output size limits to stay within token budget:
-- key_personnel: include at most 5 most senior individuals
-- funds_analysis.funds: include at most 8 most recent/significant funds
-- All narrative string fields: 1-3 sentences maximum, be concise
-
-{{
-  "firm_overview": {{
+    # ── Pass 1: firm identity, personnel, regulatory, 13F, macro ──────────────
+    pass1_schema = """\
+{
+  "firm_overview": {
     "name": "string or null",
     "crd": "string or null",
     "sec_number": "string or null",
@@ -215,95 +205,109 @@ IMPORTANT output size limits to stay within token budget:
     "headquarters": "string or null",
     "website": "string or null",
     "aum_regulatory": "string or null",
-    "aum_note": "your interpretation of AUM picture given 13F + Form D data",
-    "firm_type": "your assessment: PE | Hedge Fund | VC | Credit | Multi-Strategy | Long-Only | Unknown",
-    "firm_type_rationale": "1-2 sentences explaining what signals led to this classification",
-    "num_clients": "number or null",
-    "num_employees": "number or null",
-    "num_investment_advisers": "number or null"
-  }},
-  "fee_structure": {{
-    "fee_types": ["list from filing"],
+    "aum_note": "1 sentence: AUM picture from 13F + Form D",
+    "firm_type": "PE | Hedge Fund | VC | Credit | Multi-Strategy | Long-Only | Unknown",
+    "firm_type_rationale": "1 sentence",
+    "num_clients": null,
+    "num_employees": null,
+    "num_investment_advisers": null
+  },
+  "fee_structure": {
+    "fee_types": ["list"],
     "min_account_size": "string or null",
-    "notes": "string"
-  }},
+    "notes": "1 sentence or null"
+  },
   "key_personnel": [
-    {{
-      "name": "string",
-      "crd": "string or null",
-      "titles": ["list"],
-      "ownership_pct": "string or null"
-    }}
+    {"name": "string", "crd": "string or null", "titles": ["list"], "ownership_pct": "string or null"}
   ],
-  "regulatory_disclosures": {{
-    "has_disclosures": "boolean or null",
-    "disclosure_count": "number or null",
+  "regulatory_disclosures": {
+    "has_disclosures": true,
+    "disclosure_count": 0,
     "disclosure_types": ["list"],
     "severity_assessment": "CLEAN | LOW | MEDIUM | HIGH | CRITICAL",
-    "assessment": "your interpretation of what these disclosures mean for an LP"
-  }},
-  "13f_filings": {{
-    "available": "boolean",
+    "assessment": "1 sentence"
+  },
+  "13f_filings": {
+    "available": true,
     "most_recent": "string or null",
-    "count_found": "number",
+    "count_found": 0,
     "portfolio_value": "string or null",
-    "holdings_count": "number or null",
+    "holdings_count": null,
     "period_of_report": "string or null",
-    "strategy_signal": "what the holdings count and concentration tell us about strategy",
+    "strategy_signal": "1 sentence",
     "note": "string or null"
-  }},
-  "macro_context_snapshot": {{
+  },
+  "macro_context_snapshot": {
     "fed_funds_rate": "string or null",
     "hy_spread": "string or null",
     "ten_yr_yield": "string or null",
-    "notes": "what this rate environment means specifically for this firm type"
-  }},
-  "funds_analysis": {{
-    "total_funds_found": "number or null",
+    "notes": "1 sentence"
+  }
+}"""
+
+    print(f"[Fund Analysis] Pass 1 — firm profile ({client.model})...")
+    pass1 = client.complete_json(
+        system=SYSTEM_PROMPT,
+        user=preamble + "OUTPUT SCHEMA — respond with ONLY this JSON:\n" + pass1_schema,
+        max_tokens=8000,
+    )
+
+    # ── Pass 2: fund structure and analyst synthesis ───────────────────────────
+    pass2_schema = """\
+{
+  "funds_analysis": {
+    "total_funds_found": 0,
     "sources_used": ["list"],
     "funds": [
-      {{
+      {
         "name": "string",
         "entity_type": "string or null",
         "offering_amount": "string or null",
         "date_of_first_sale": "string or null",
         "jurisdiction": "string or null",
         "exemptions": ["3C.1 / 3C.7 etc."],
-        "is_private_fund": "boolean",
-        "exemption_interpretation": "what 3C.1 vs 3C.7 means for this specific fund",
+        "is_private_fund": true,
+        "exemption_interpretation": "1 sentence",
         "edgar_url": "string or null",
-        "news_headlines": ["up to 3 headlines"]
-      }}
+        "news_headlines": ["up to 2 headlines"]
+      }
     ],
-    "vintage_summary": "what the fund launch dates tell us about fundraising cadence",
-    "fundraising_pattern": "your read on the fundraising trajectory",
-    "notes": "data gaps or limitations"
-  }},
-  "data_quality_flags": [
-    "specific inconsistencies or gaps that need follow-up"
-  ],
-  "analyst_notes": "2-3 sentences of your highest-signal observations that the IC should know first"
-}}
-"""
+    "vintage_summary": "1 sentence",
+    "fundraising_pattern": "1 sentence",
+    "notes": "1 sentence or null"
+  },
+  "data_quality_flags": ["specific gap or inconsistency"],
+  "analyst_notes": "2 sentences max — highest-signal observations for IC"
+}"""
 
-    print(f"[Fund Analysis] Calling {client.provider} ({client.model})...")
-    result = client.complete_json(
+    print(f"[Fund Analysis] Pass 2 — funds + synthesis ({client.model})...")
+    pass2 = client.complete_json(
         system=SYSTEM_PROMPT,
-        user=user_message,
-        max_tokens=16384,
+        user=preamble + "OUTPUT SCHEMA — respond with ONLY this JSON:\n" + pass2_schema,
+        max_tokens=8000,
     )
+
+    result = {**pass1, **pass2}
 
     errors = validate_analysis(result)
     if errors:
-        print(f"[Fund Analysis] Schema validation failed ({len(errors)} errors) — retrying...")
-        retry_message = user_message + format_validation_errors(errors)
-        result = client.complete_json(
+        print(f"[Fund Analysis] Schema errors ({len(errors)}) — retrying both passes...")
+        err_note = format_validation_errors(errors)
+        pass1 = client.complete_json(
             system=SYSTEM_PROMPT,
-            user=retry_message,
-            max_tokens=16384,
+            user=preamble + "OUTPUT SCHEMA — respond with ONLY this JSON:\n"
+                 + pass1_schema + err_note,
+            max_tokens=8000,
         )
+        pass2 = client.complete_json(
+            system=SYSTEM_PROMPT,
+            user=preamble + "OUTPUT SCHEMA — respond with ONLY this JSON:\n"
+                 + pass2_schema + err_note,
+            max_tokens=8000,
+        )
+        result = {**pass1, **pass2}
         remaining = validate_analysis(result)
         if remaining:
-            print(f"[Fund Analysis] Retry still has {len(remaining)} schema errors: {remaining}")
+            print(f"[Fund Analysis] Retry still has {len(remaining)} errors: {remaining}")
 
     return result

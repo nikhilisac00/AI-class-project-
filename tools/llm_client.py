@@ -337,18 +337,19 @@ class LLMClient:
                 except json.JSONDecodeError:
                     pass
 
-        # Strategy C: walk backward from end looking for a complete top-level object
+        # Strategy C: walk backward, close any remaining open structures
         for end in range(len(text) - 1, 0, -1):
             if text[end] in ('}', ']'):
-                candidate_c = text[:end + 1]
-                _, in_str_c, _ = _scan(candidate_c)
+                prefix = text[:end + 1]
+                stack_c, in_str_c, _ = _scan(prefix)
                 if not in_str_c:
+                    candidate_c = prefix + "".join(reversed(stack_c))
                     try:
                         return json.loads(candidate_c)
                     except json.JSONDecodeError:
                         pass
 
-        # Strategy D: return minimal shell with just the fields that parsed cleanly
+        # Strategy D: minimal shell with only the safely-parsed prefix
         first_brace = text.find('{')
         if first_brace != -1 and last_safe > first_brace:
             return text[first_brace:last_safe].rstrip().rstrip(",") + "}"
