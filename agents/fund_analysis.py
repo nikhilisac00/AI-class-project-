@@ -156,7 +156,7 @@ def _slim_raw_data(raw_data: dict) -> dict:
             }
             for fund in funds[:12]
         ]
-        d["fund_discovery"] = {**fund_disc, "funds": slimmed_funds}
+        d["fund_discovery"] = {**fund_disc, "funds": slimmed_funds[:5]}
 
     # Trim enforcement to summary fields only (drop verbose order/action text)
     enforcement = raw_data.get("enforcement") or {}
@@ -253,6 +253,8 @@ def run(raw_data: dict, client: LLMClient) -> dict:
     )
 
     # ── Pass 2: fund structure and analyst synthesis ───────────────────────────
+    # Keep funds entries minimal (factual fields only) to stay within 8000 tokens
+    # even for firms with many registered funds (Point72, Citadel, etc.)
     pass2_schema = """\
 {
   "funds_analysis": {
@@ -261,15 +263,10 @@ def run(raw_data: dict, client: LLMClient) -> dict:
     "funds": [
       {
         "name": "string",
-        "entity_type": "string or null",
         "offering_amount": "string or null",
         "date_of_first_sale": "string or null",
-        "jurisdiction": "string or null",
         "exemptions": ["3C.1 / 3C.7 etc."],
-        "is_private_fund": true,
-        "exemption_interpretation": "1 sentence",
-        "edgar_url": "string or null",
-        "news_headlines": ["up to 2 headlines"]
+        "is_private_fund": true
       }
     ],
     "vintage_summary": "1 sentence",
@@ -278,7 +275,8 @@ def run(raw_data: dict, client: LLMClient) -> dict:
   },
   "data_quality_flags": ["specific gap or inconsistency"],
   "analyst_notes": "2 sentences max — highest-signal observations for IC"
-}"""
+}
+IMPORTANT: funds array must contain AT MOST 5 entries (most significant only)."""
 
     print(f"[Fund Analysis] Pass 2 — funds + synthesis ({client.model})...")
     pass2 = client.complete_json(
