@@ -319,23 +319,38 @@ class LLMClient:
         except json.JSONDecodeError:
             pass
 
-        # Strategy B: roll back to last safe boundary outside any string,
-        # strip trailing comma/colon, close structures
-        truncated = text[:last_safe].rstrip().rstrip(",")
-        stack2, in_str2, _ = _scan(truncated)
-        if not in_str2:
-            closing2 = "".join(reversed(stack2))
-            candidate_b = truncated + closing2
-            try:
-                json.loads(candidate_b)
-                print("[LLMClient] Repaired: rolled back to last safe boundary")
-                return candidate_b
-            except json.JSONDecodeError:
-                pass
+        # Strategy B: roll back to last safe boundary outside any string.
+        # If last_safe itself is inside a string (can happen with complex values),
+        # scan backward until we find a position that is outside a string.
+        for rollback in (last_safe, last_safe - 1):
+            if rollback <= 0:
+                continue
+            truncated = text[:rollback].rstrip().rstrip(",")
+            stack2, in_str2, _ = _scan(truncated)
+            if not in_str2:
+                closing2 = "".join(reversed(stack2))
+                candidate_b = truncated + closing2
+                try:
+                    json.loads(candidate_b)
+                    print("[LLMClient] Repaired: rolled back to last safe boundary")
+                    return candidate_b
+                except json.JSONDecodeError:
+                    pass
 
-        # Strategy C: strip back to the outermost { and return minimal valid object
+        # Strategy C: walk backward from end looking for a complete top-level object
+        for end in range(len(text) - 1, 0, -1):
+            if text[end] in ('}', ']'):
+                candidate_c = text[:end + 1]
+                _, in_str_c, _ = _scan(candidate_c)
+                if not in_str_c:
+                    try:
+                        return json.loads(candidate_c)
+                    except json.JSONDecodeError:
+                        pass
+
+        # Strategy D: return minimal shell with just the fields that parsed cleanly
         first_brace = text.find('{')
-        if first_brace != -1:
+        if first_brace != -1 and last_safe > first_brace:
             return text[first_brace:last_safe].rstrip().rstrip(",") + "}"
         return text.rstrip().rstrip(",") + "".join(reversed(stack))
 

@@ -96,6 +96,7 @@ def _slim_raw_data(raw_data: dict) -> dict:
 
     # Not useful for synthesis
     d.pop("search_results", None)
+    d.pop("market_context", None)  # FRED rates don't affect fund analysis output
 
     # Only deep-copy the sub-dicts we will mutate
     adv_xml = raw_data.get("adv_xml_data") or {}
@@ -141,7 +142,7 @@ def _slim_raw_data(raw_data: dict) -> dict:
         slim_adv["disclosures"] = slimmed_disclosures
     d["adv_xml_data"] = slim_adv
 
-    # Trim fund news to title + date (drop snippet text)
+    # Trim fund news to title + date (drop snippet text); cap at 12 funds
     fund_disc = raw_data.get("fund_discovery") or {}
     funds = fund_disc.get("funds")
     if isinstance(funds, list):
@@ -150,12 +151,25 @@ def _slim_raw_data(raw_data: dict) -> dict:
                 **{k: v for k, v in fund.items() if k != "news"},
                 "news": [
                     {"title": n.get("title"), "date": n.get("date")}
-                    for n in (fund.get("news") or [])
+                    for n in (fund.get("news") or [])[:2]
                 ],
             }
-            for fund in funds
+            for fund in funds[:12]
         ]
         d["fund_discovery"] = {**fund_disc, "funds": slimmed_funds}
+
+    # Trim enforcement to summary fields only (drop verbose order/action text)
+    enforcement = raw_data.get("enforcement") or {}
+    if enforcement:
+        actions = enforcement.get("actions") or []
+        d["enforcement"] = {
+            **{k: v for k, v in enforcement.items() if k != "actions"},
+            "actions": [
+                {k: v for k, v in a.items()
+                 if k in ("date", "type", "summary", "source")}
+                for a in actions[:5]
+            ],
+        }
 
     return d
 
@@ -185,7 +199,11 @@ Work through the following in your analysis:
 
 5. Are there any internal inconsistencies in the data that warrant flagging?
 
-Return ONLY a JSON object with this exact schema (null for any missing field):
+Return ONLY a JSON object with this exact schema (null for any missing field).
+IMPORTANT output size limits to stay within token budget:
+- key_personnel: include at most 5 most senior individuals
+- funds_analysis.funds: include at most 8 most recent/significant funds
+- All narrative string fields: 1-3 sentences maximum, be concise
 
 {{
   "firm_overview": {{
@@ -272,7 +290,7 @@ Return ONLY a JSON object with this exact schema (null for any missing field):
     result = client.complete_json(
         system=SYSTEM_PROMPT,
         user=user_message,
-        max_tokens=16000,
+        max_tokens=16384,
     )
 
     errors = validate_analysis(result)
@@ -282,7 +300,7 @@ Return ONLY a JSON object with this exact schema (null for any missing field):
         result = client.complete_json(
             system=SYSTEM_PROMPT,
             user=retry_message,
-            max_tokens=16000,
+            max_tokens=16384,
         )
         remaining = validate_analysis(result)
         if remaining:
