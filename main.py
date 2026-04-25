@@ -202,6 +202,11 @@ def main():
         action="store_true",
         help="Bypass cached raw data and re-fetch from all sources",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from a saved ingestion checkpoint instead of re-fetching from EDGAR/IAPD/FRED",
+    )
     args = parser.parse_args()
 
     try:
@@ -237,12 +242,21 @@ def main():
 
     # ── Agent 1: Data Ingestion ────────────────────────────────────────────────
     set_current_firm(args.firm)
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
-                  console=console) as p:
-        task = p.add_task("Ingesting data from EDGAR / IAPD / FRED...", total=None)
-        raw_data = ingestion_agent.run(args.firm, fred_api_key=fred_key,
-                                       force_refresh=args.force_refresh)
-        p.update(task, description="Data ingestion complete", completed=True)
+    _checkpoint_path = Path(args.output_dir) / f"{_safe_early}_checkpoint.json"
+
+    if args.resume and _checkpoint_path.exists():
+        console.print(f"[dim]Loading ingestion checkpoint: {_checkpoint_path}[/]")
+        raw_data = json.loads(_checkpoint_path.read_text(encoding="utf-8"))
+    else:
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
+                      console=console) as p:
+            task = p.add_task("Ingesting data from EDGAR / IAPD / FRED...", total=None)
+            raw_data = ingestion_agent.run(args.firm, fred_api_key=fred_key,
+                                           force_refresh=args.force_refresh)
+            p.update(task, description="Data ingestion complete", completed=True)
+        _checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        _checkpoint_path.write_text(json.dumps(raw_data, indent=2, default=str), encoding="utf-8")
+        console.print(f"[dim]Ingestion checkpoint saved → {_checkpoint_path}[/]")
 
     firm_name = (
         raw_data.get("adv_summary", {}).get("firm_name")
@@ -280,7 +294,9 @@ def main():
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Running fund analysis (GPT-4o reasoning)...", total=None)
+        client._current_agent = "fund_analysis"
         analysis = analysis_agent.run(raw_data, client)
+        client._current_agent = None
         p.update(task, description="Fund analysis complete", completed=True)
 
     # Bug #7: re-validate analysis schema before passing to downstream agents.
@@ -314,6 +330,7 @@ def main():
                 f"{'Tavily' if tavily_key else 'DuckDuckGo'})...",
                 total=None,
             )
+            client._current_agent = "news_research"
             news_report = news_agent.run(
                 firm_name=firm_name,
                 analysis=analysis,
@@ -321,6 +338,7 @@ def main():
                 tavily_api_key=tavily_key,
                 max_rounds=args.news_rounds,
             )
+            client._current_agent = None
             p.update(task, description=(
                 f"News research complete — "
                 f"{news_report['research_rounds']} rounds, "
@@ -344,7 +362,9 @@ def main():
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Running risk flagging (GPT-4o reasoning)...", total=None)
+        client._current_agent = "risk_flagging"
         risk_report = risk_agent.run(analysis, raw_data, client, news_report=news_report)
+        client._current_agent = None
         p.update(task, description="Risk flagging complete", completed=True)
 
     print_risk_summary(risk_report)
@@ -353,8 +373,10 @@ def main():
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Generating DD memo (GPT-4o reasoning)...", total=None)
+        client._current_agent = "memo_generation"
         memo = memo_agent.run(analysis, risk_report, raw_data, client,
                               news_report=news_report)
+        client._current_agent = None
         p.update(task, description="Memo generation complete", completed=True)
 
     # ── Shared timestamp for all output files ────────────────────────────────────
@@ -365,8 +387,10 @@ def main():
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Generating IC Scorecard (GPT-4o reasoning)...", total=None)
+        client._current_agent = "ic_scorecard"
         scorecard = scorecard_agent.run(analysis, risk_report, raw_data, client,
                                         news_report=news_report)
+        client._current_agent = None
         p.update(task, description="IC Scorecard complete", completed=True)
 
     rec       = scorecard.get("recommendation", "UNKNOWN")
@@ -382,9 +406,11 @@ def main():
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Fact-checking memo (deterministic + narrative)...", total=None)
+        client._current_agent = "fact_checker"
         verification = fact_checker_agent.run(
             analysis, risk_report, raw_data, scorecard, memo, client,
         )
+        client._current_agent = None
         p.update(task, description="Fact check complete", completed=True)
 
     # Auto-retry memo if FAIL-level issues found
@@ -393,13 +419,16 @@ def main():
             f"[yellow]Fact checker found {verification['summary']['failures']} "
             f"failure(s) — re-generating memo...[/]"
         )
+        client._current_agent = "memo_generation_retry"
         memo = memo_agent.run(
             analysis, risk_report, raw_data, client,
             news_report=news_report,
         )
+        client._current_agent = "fact_checker_retry"
         re_verification = fact_checker_agent.run(
             analysis, risk_report, raw_data, scorecard, memo, client,
         )
+        client._current_agent = None
         # Bug #8: normalize check names before comparing — LLM may rephrase
         # names between runs ("AUM Consistency Check" vs "AUM Cross-Check").
         fixed = [
@@ -505,10 +534,12 @@ def main():
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                   console=console) as p:
         task = p.add_task("Research Director review (GPT-4o reasoning)...", total=None)
+        client._current_agent = "research_director"
         director_review = director_agent.run(
             analysis, risk_report, raw_data, scorecard, client,
             news_report=news_report,
         )
+        client._current_agent = None
         p.update(task, description="Director review complete", completed=True)
 
     verdict = director_review.get("verdict", "UNKNOWN")
@@ -526,6 +557,30 @@ def main():
     (Path(args.output_dir) / f"{ts}_{safe_name}_director_review.json").write_text(
         json.dumps(director_review, indent=2, default=str), encoding="utf-8"
     )
+
+    # ── Harness trace: save + print per-agent cost/latency summary ────────────
+    trace = client.get_trace()
+    if trace:
+        trace_path = Path(args.output_dir) / f"{ts}_{safe_name}_trace.json"
+        trace_path.write_text(json.dumps(trace, indent=2, default=str), encoding="utf-8")
+
+        trace_table = Table(title="Agent Trace", show_lines=True)
+        trace_table.add_column("Agent", style="cyan", width=22)
+        trace_table.add_column("Model", width=10)
+        trace_table.add_column("Prompt tok", justify="right", width=11)
+        trace_table.add_column("Completion tok", justify="right", width=14)
+        trace_table.add_column("Total tok", justify="right", width=10)
+        trace_table.add_column("Latency ms", justify="right", width=11)
+        for row in trace:
+            trace_table.add_row(
+                row.get("agent") or "—",
+                row.get("model") or "—",
+                str(row.get("prompt_tokens") or "—"),
+                str(row.get("completion_tokens") or "—"),
+                str(row.get("total_tokens") or "—"),
+                str(row.get("latency_ms") or "—"),
+            )
+        console.print(trace_table)
 
     console.print(Panel(
         f"[bold green]Done.[/]\n"

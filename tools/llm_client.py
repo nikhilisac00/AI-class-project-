@@ -10,6 +10,7 @@ Provides three interaction modes:
 import json
 import re
 import time
+from datetime import datetime
 
 import openai
 
@@ -26,6 +27,27 @@ class LLMClient:
         self._client = openai.OpenAI(api_key=api_key, timeout=_API_TIMEOUT)
         self.provider = "openai"
         self.model = "gpt-4o"
+        self._trace: list[dict] = []
+        self._current_agent: str | None = None
+
+    def _record(self, response, latency_ms: int) -> None:
+        """Append one trace row after each successful API call."""
+        usage = getattr(response, "usage", None)
+        self._trace.append({
+            "agent": self._current_agent,
+            "model": getattr(response, "model", self.model),
+            "prompt_tokens": usage.prompt_tokens if usage else None,
+            "completion_tokens": usage.completion_tokens if usage else None,
+            "total_tokens": usage.total_tokens if usage else None,
+            "latency_ms": latency_ms,
+            "ts": datetime.now().isoformat(),
+        })
+
+    def get_trace(self) -> list[dict]:
+        return list(self._trace)
+
+    def reset_trace(self) -> None:
+        self._trace.clear()
 
     # ── Single-turn completions ──────────────────────────────────────────────
 
@@ -55,6 +77,7 @@ class LLMClient:
         except openai.RateLimitError as e:
             print(f"[LLMClient] Rate limit hit — waiting 60s before retry: {e}")
             time.sleep(60)
+            t0 = time.perf_counter()
             response = self._client.chat.completions.create(
                 model=self.model,
                 max_tokens=max_tokens,
@@ -63,6 +86,8 @@ class LLMClient:
                     {"role": "user", "content": user},
                 ],
             )
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+        self._record(response, latency_ms)
         self._emit_trace(step_name, t0, response, success)
         content = (response.choices[0].message.content or "").strip()
         finish_reason = response.choices[0].finish_reason
@@ -162,6 +187,8 @@ class LLMClient:
                 print(f"[LLMClient] Rate limit hit in agent loop — waiting 60s: {e}")
                 time.sleep(60)
                 continue
+            latency_ms = int((time.perf_counter() - t0) * 1000)
+            self._record(response, latency_ms)
             self._emit_trace(step_name, t0, response, True)
 
             choice = response.choices[0]
