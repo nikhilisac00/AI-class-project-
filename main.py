@@ -38,11 +38,13 @@ import agents.ic_scorecard      as scorecard_agent
 import agents.research_director as director_agent
 import agents.comparables       as comparables_agent
 import agents.fact_checker       as fact_checker_agent
-from tools.llm_client    import make_client
+from tools.llm_client     import make_client
 from tools.reconciliation import run_all as reconcile_sources
 from tools.schemas        import validate_analysis
 from tools.trace          import set_current_firm, set_run_id
 from tools.validation     import validate_firm_input
+from tools.pipeline_state import PipelineState
+from tools                import boundary_checks
 
 load_dotenv()
 console = Console()
@@ -230,6 +232,10 @@ def main():
     _safe_early = "".join(c if c.isalnum() or c in "_ -" else "_" for c in args.firm)[:40]
     _setup_file_logging(args.output_dir, _safe_early, _ts_early)
 
+    # Harness session state — checkpoint every agent so the pipeline can resume
+    # from any completed step after a crash (Agent = Model + Harness, Fowler 2026)
+    state = PipelineState(Path(args.output_dir) / f"{_safe_early}_session")
+
     console.print(Panel(
         f"[bold]AI Alternatives Research Associate[/]\n"
         f"Target: [cyan]{args.firm}[/]\n"
@@ -242,11 +248,10 @@ def main():
 
     # ── Agent 1: Data Ingestion ────────────────────────────────────────────────
     set_current_firm(args.firm)
-    _checkpoint_path = Path(args.output_dir) / f"{_safe_early}_checkpoint.json"
 
-    if args.resume and _checkpoint_path.exists():
-        console.print(f"[dim]Loading ingestion checkpoint: {_checkpoint_path}[/]")
-        raw_data = json.loads(_checkpoint_path.read_text(encoding="utf-8"))
+    if args.resume and state.completed("raw_data"):
+        console.print(f"[dim]Resuming: raw_data ← {state.session_dir}[/]")
+        raw_data = state.load("raw_data")
     else:
         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                       console=console) as p:
@@ -254,9 +259,8 @@ def main():
             raw_data = ingestion_agent.run(args.firm, fred_api_key=fred_key,
                                            force_refresh=args.force_refresh)
             p.update(task, description="Data ingestion complete", completed=True)
-        _checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-        _checkpoint_path.write_text(json.dumps(raw_data, indent=2, default=str), encoding="utf-8")
-        console.print(f"[dim]Ingestion checkpoint saved → {_checkpoint_path}[/]")
+        state.save("raw_data", raw_data)
+        console.print(f"[dim]Checkpoint: raw_data → {state.session_dir}[/]")
 
     firm_name = (
         raw_data.get("adv_summary", {}).get("firm_name")
@@ -291,23 +295,32 @@ def main():
         return
 
     # ── Agent 2: Fund Analysis ────────────────────────────────────────────
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
-                  console=console) as p:
-        task = p.add_task("Running fund analysis (GPT-4o reasoning)...", total=None)
-        client._current_agent = "fund_analysis"
-        analysis = analysis_agent.run(raw_data, client)
-        client._current_agent = None
-        p.update(task, description="Fund analysis complete", completed=True)
+    if args.resume and state.completed("analysis"):
+        console.print("[dim]Resuming: analysis ← session checkpoint[/]")
+        analysis = state.load("analysis")
+    else:
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
+                      console=console) as p:
+            task = p.add_task("Running fund analysis (GPT-4o reasoning)...", total=None)
+            client._current_agent = "fund_analysis"
+            analysis = analysis_agent.run(raw_data, client)
+            client._current_agent = None
+            p.update(task, description="Fund analysis complete", completed=True)
 
-    # Bug #7: re-validate analysis schema before passing to downstream agents.
-    # analysis_agent retries internally but never re-validates the final result.
-    _analysis_errors = validate_analysis(analysis)
-    if _analysis_errors:
-        console.print(
-            f"[yellow]Warning: fund analysis output has {len(_analysis_errors)} schema "
-            f"issue(s) after retry — downstream agents may produce incomplete output.[/]"
-        )
-        console.print(f"[dim]Schema errors: {_analysis_errors}[/dim]")
+        # Boundary sensor — retry once if schema is invalid
+        _analysis_errors = boundary_checks.check_analysis(analysis)
+        if _analysis_errors:
+            console.print(
+                f"[yellow]⚠ Boundary [fund_analysis]: {len(_analysis_errors)} issue(s) — retrying[/]"
+            )
+            client._current_agent = "fund_analysis_retry"
+            analysis = analysis_agent.run(raw_data, client)
+            client._current_agent = None
+            _analysis_errors = boundary_checks.check_analysis(analysis)
+            if _analysis_errors:
+                console.print(f"[dim]Retry still has {len(_analysis_errors)} issue(s): {_analysis_errors[:2]}[/]")
+
+        state.save("analysis", analysis)
 
     # Cross-source reconciliation
     recon_results = reconcile_sources(analysis, raw_data)
@@ -322,7 +335,10 @@ def main():
 
     # ── Agent 3: News Research ────────────────────────────────────────────
     news_report = None
-    if not args.no_news:
+    if args.resume and state.completed("news_report"):
+        console.print("[dim]Resuming: news_report ← session checkpoint[/]")
+        news_report = state.load("news_report")
+    elif not args.no_news:
         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
                       console=console) as p:
             task = p.add_task(
@@ -345,6 +361,23 @@ def main():
                 f"{news_report['total_sources']} sources"
             ), completed=True)
 
+        # Boundary sensor
+        _news_errors = boundary_checks.check_news_report(news_report)
+        if _news_errors:
+            console.print(f"[yellow]⚠ Boundary [news_research]: {_news_errors} — retrying[/]")
+            client._current_agent = "news_research_retry"
+            news_report = news_agent.run(
+                firm_name=firm_name, analysis=analysis, client=client,
+                tavily_api_key=tavily_key, max_rounds=args.news_rounds,
+            )
+            client._current_agent = None
+            _news_errors2 = boundary_checks.check_news_report(news_report)
+            if _news_errors2:
+                console.print(f"[dim]Retry still has issues: {_news_errors2}[/]")
+
+        state.save("news_report", news_report)
+
+    if news_report:
         if news_report.get("errors"):
             console.print(f"\n[yellow]News research warnings:[/] {news_report['errors']}")
 
@@ -359,39 +392,88 @@ def main():
         )
 
     # ── Agent 4: Risk Flagging ────────────────────────────────────────────
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
-                  console=console) as p:
-        task = p.add_task("Running risk flagging (GPT-4o reasoning)...", total=None)
-        client._current_agent = "risk_flagging"
-        risk_report = risk_agent.run(analysis, raw_data, client, news_report=news_report)
-        client._current_agent = None
-        p.update(task, description="Risk flagging complete", completed=True)
+    if args.resume and state.completed("risk_report"):
+        console.print("[dim]Resuming: risk_report ← session checkpoint[/]")
+        risk_report = state.load("risk_report")
+    else:
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
+                      console=console) as p:
+            task = p.add_task("Running risk flagging (GPT-4o reasoning)...", total=None)
+            client._current_agent = "risk_flagging"
+            risk_report = risk_agent.run(analysis, raw_data, client, news_report=news_report)
+            client._current_agent = None
+            p.update(task, description="Risk flagging complete", completed=True)
+
+        # Boundary sensor
+        _risk_errors = boundary_checks.check_risk_report(risk_report)
+        if _risk_errors:
+            console.print(f"[yellow]⚠ Boundary [risk_flagging]: {_risk_errors} — retrying[/]")
+            client._current_agent = "risk_flagging_retry"
+            risk_report = risk_agent.run(analysis, raw_data, client, news_report=news_report)
+            client._current_agent = None
+            _risk_errors2 = boundary_checks.check_risk_report(risk_report)
+            if _risk_errors2:
+                console.print(f"[dim]Retry still has issues: {_risk_errors2}[/]")
+
+        state.save("risk_report", risk_report)
 
     print_risk_summary(risk_report)
 
     # ── Agent 5: Memo Generation ────────────────────────────────────────────
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
-                  console=console) as p:
-        task = p.add_task("Generating DD memo (GPT-4o reasoning)...", total=None)
-        client._current_agent = "memo_generation"
-        memo = memo_agent.run(analysis, risk_report, raw_data, client,
-                              news_report=news_report)
-        client._current_agent = None
-        p.update(task, description="Memo generation complete", completed=True)
+    if args.resume and state.completed("memo"):
+        console.print("[dim]Resuming: memo ← session checkpoint[/]")
+        memo = state.load("memo")
+    else:
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
+                      console=console) as p:
+            task = p.add_task("Generating DD memo (GPT-4o reasoning)...", total=None)
+            client._current_agent = "memo_generation"
+            memo = memo_agent.run(analysis, risk_report, raw_data, client,
+                                  news_report=news_report)
+            client._current_agent = None
+            p.update(task, description="Memo generation complete", completed=True)
+
+        # Boundary sensor — memo must be a non-empty string
+        if not memo or not isinstance(memo, str):
+            console.print("[yellow]⚠ Boundary [memo_generation]: empty/invalid memo — retrying[/]")
+            client._current_agent = "memo_generation_retry"
+            memo = memo_agent.run(analysis, risk_report, raw_data, client,
+                                  news_report=news_report)
+            client._current_agent = None
+
+        state.save("memo", memo)
 
     # ── Shared timestamp for all output files ────────────────────────────────────
     ts        = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_name = "".join(c if c.isalnum() or c in "_ -" else "_" for c in firm_name)[:40]
 
     # ── Agent 6: IC Scorecard ──────────────────────────────────────────────
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
-                  console=console) as p:
-        task = p.add_task("Generating IC Scorecard (GPT-4o reasoning)...", total=None)
-        client._current_agent = "ic_scorecard"
-        scorecard = scorecard_agent.run(analysis, risk_report, raw_data, client,
-                                        news_report=news_report)
-        client._current_agent = None
-        p.update(task, description="IC Scorecard complete", completed=True)
+    if args.resume and state.completed("scorecard"):
+        console.print("[dim]Resuming: scorecard ← session checkpoint[/]")
+        scorecard = state.load("scorecard")
+    else:
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
+                      console=console) as p:
+            task = p.add_task("Generating IC Scorecard (GPT-4o reasoning)...", total=None)
+            client._current_agent = "ic_scorecard"
+            scorecard = scorecard_agent.run(analysis, risk_report, raw_data, client,
+                                            news_report=news_report)
+            client._current_agent = None
+            p.update(task, description="IC Scorecard complete", completed=True)
+
+        # Boundary sensor
+        _sc_errors = boundary_checks.check_scorecard(scorecard)
+        if _sc_errors:
+            console.print(f"[yellow]⚠ Boundary [ic_scorecard]: {_sc_errors} — retrying[/]")
+            client._current_agent = "ic_scorecard_retry"
+            scorecard = scorecard_agent.run(analysis, risk_report, raw_data, client,
+                                            news_report=news_report)
+            client._current_agent = None
+            _sc_errors2 = boundary_checks.check_scorecard(scorecard)
+            if _sc_errors2:
+                console.print(f"[dim]Retry still has issues: {_sc_errors2}[/]")
+
+        state.save("scorecard", scorecard)
 
     rec       = scorecard.get("recommendation", "UNKNOWN")
     overall   = scorecard.get("overall_score", "—")
@@ -531,16 +613,36 @@ def main():
         p.update(task, description=f"Comparables complete — {len(comparables.get('peers', []))} peers found", completed=True)
 
     # ── Agent 8: Research Director ────────────────────────────────────────────
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
-                  console=console) as p:
-        task = p.add_task("Research Director review (GPT-4o reasoning)...", total=None)
-        client._current_agent = "research_director"
-        director_review = director_agent.run(
-            analysis, risk_report, raw_data, scorecard, client,
-            news_report=news_report,
-        )
-        client._current_agent = None
-        p.update(task, description="Director review complete", completed=True)
+    if args.resume and state.completed("director_review"):
+        console.print("[dim]Resuming: director_review ← session checkpoint[/]")
+        director_review = state.load("director_review")
+    else:
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
+                      console=console) as p:
+            task = p.add_task("Research Director review (GPT-4o reasoning)...", total=None)
+            client._current_agent = "research_director"
+            director_review = director_agent.run(
+                analysis, risk_report, raw_data, scorecard, client,
+                news_report=news_report,
+            )
+            client._current_agent = None
+            p.update(task, description="Director review complete", completed=True)
+
+        # Boundary sensor
+        _dr_errors = boundary_checks.check_director_review(director_review)
+        if _dr_errors:
+            console.print(f"[yellow]⚠ Boundary [research_director]: {_dr_errors} — retrying[/]")
+            client._current_agent = "research_director_retry"
+            director_review = director_agent.run(
+                analysis, risk_report, raw_data, scorecard, client,
+                news_report=news_report,
+            )
+            client._current_agent = None
+            _dr_errors2 = boundary_checks.check_director_review(director_review)
+            if _dr_errors2:
+                console.print(f"[dim]Retry still has issues: {_dr_errors2}[/]")
+
+        state.save("director_review", director_review)
 
     verdict = director_review.get("verdict", "UNKNOWN")
     revised = director_review.get("revised_recommendation", "")
