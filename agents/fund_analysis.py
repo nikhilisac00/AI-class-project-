@@ -1,8 +1,15 @@
 """
-Fund Analysis Agent — Reasoning Agent
-======================================
-Uses GPT-4o to reason through what the data means before producing
-structured output — not just pattern-matching fields to schema.
+Fund Analysis Agent — Agentic RAG
+==================================
+Uses GPT-4o with a retrieve() tool to pull only the data chunks needed
+for each analysis question. This replaces the full-data-dump approach
+that caused truncation for large firms (Point72, Bridgewater, Two Sigma).
+
+The agent issues 6-10 targeted retrieve() calls per pass, then produces
+structured JSON. Only the relevant chunks enter the context window.
+
+Upgrade path: swap RawDataIndex.search() for embedding cosine similarity
+once ADV brochure text is indexed — the tool interface is identical.
 
 The reasoning step works through:
 - What type of firm this is (PE, hedge, VC, multi-strat, credit) and what that implies
@@ -15,6 +22,7 @@ The reasoning step works through:
 import json
 from datetime import date
 from tools.llm_client import LLMClient
+from tools.rag_index import RawDataIndex
 from tools.schemas import validate_analysis, format_validation_errors
 
 _TODAY = date.today().isoformat()
@@ -24,8 +32,8 @@ TODAY'S DATE: {_TODAY} — use this for all date recency assessments.
 (university endowment, $10B+ AUM). You have 15+ years of experience evaluating hedge funds,
 private equity, and credit managers for institutional investment.
 
-You have been given raw data extracted from public SEC filings (IAPD, EDGAR 13F, Form D, FRED).
-Your job is to analyze this data and produce structured, insightful output — not just reformat it.
+You have access to a retrieve() tool that searches SEC filing data (IAPD, EDGAR 13F, Form D, FRED).
+Issue targeted retrieve() calls to gather the data you need, then produce your structured JSON output.
 
 WHAT YOU SHOULD UNDERSTAND AND APPLY:
 
@@ -75,126 +83,35 @@ CRITICAL RULES:
 4. Interpret, don't just reformat — explain what the data means, not just what it says
 """
 
+_RETRIEVE_TOOL = {
+    "name": "retrieve",
+    "description": (
+        "Retrieve relevant data chunks from the SEC filing index. "
+        "Issue multiple targeted queries to gather all data you need before producing your final answer. "
+        "Each call returns up to top_k chunks of raw data."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": (
+                    "Natural language search query, e.g. 'fee structure minimum account size', "
+                    "'key personnel ownership percentages', '13F holdings count strategy', "
+                    "'Form D funds exemptions', 'regulatory disclosures violations'"
+                ),
+            },
+            "top_k": {
+                "type": "integer",
+                "description": "Number of chunks to return (default 4, max 6)",
+                "default": 4,
+            },
+        },
+        "required": ["query"],
+    },
+}
 
-def _slim_raw_data(raw_data: dict) -> dict:
-    """
-    Trim raw_data before sending to the LLM to stay within token limits.
-
-    Bug #25: replaced copy.deepcopy(raw_data) with a targeted shallow copy
-    that only deep-copies the specific nested structures we mutate. This avoids
-    allocating a full duplicate of potentially large SEC filing data.
-
-    Removes high-volume fields that add tokens without adding analytical value:
-    - search_results (IAPD search hits — not needed by the analyst)
-    - Top holdings truncated to 10 (from 25)
-    - 13F history trimmed to period/value/qoq only
-    - Fund news trimmed to title + date (no snippets)
-    - Disclosure details arrays dropped (type/date/description kept)
-    """
-    # Shallow copy of top-level dict to avoid mutating caller's raw_data
-    d = dict(raw_data)
-
-    # Not useful for synthesis
-    d.pop("search_results", None)
-    d.pop("market_context", None)  # FRED rates don't affect fund analysis output
-
-    # Only deep-copy the sub-dicts we will mutate
-    adv_xml = raw_data.get("adv_xml_data") or {}
-
-    # Trim 13F holdings to top 10
-    thirteenf = adv_xml.get("thirteenf") or {}
-    hb = thirteenf.get("holdings_breakdown") or {}
-    if hb.get("top_holdings"):
-        thirteenf = dict(thirteenf)
-        hb = dict(hb)
-        hb["top_holdings"] = hb["top_holdings"][:10]
-        thirteenf["holdings_breakdown"] = hb
-
-    # Trim 13F history to essential fields only
-    history = adv_xml.get("thirteenf_history")
-    slimmed_history = None
-    if isinstance(history, list):
-        slimmed_history = [
-            {
-                "period":              q.get("period"),
-                "portfolio_value_fmt": q.get("portfolio_value_fmt"),
-                "holdings_count":      q.get("holdings_count"),
-                "qoq_change_pct":      q.get("qoq_change_pct"),
-            }
-            for q in history
-        ]
-
-    # Drop verbose details arrays from disclosures (keep type/date/description)
-    disclosures = adv_xml.get("disclosures")
-    slimmed_disclosures = None
-    if isinstance(disclosures, list):
-        slimmed_disclosures = [
-            {k: v for k, v in disc.items() if k != "details"}
-            for disc in disclosures
-        ]
-
-    # Reassemble adv_xml_data without mutating the original
-    slim_adv = dict(adv_xml)
-    slim_adv["thirteenf"] = thirteenf
-    if slimmed_history is not None:
-        slim_adv["thirteenf_history"] = slimmed_history
-    if slimmed_disclosures is not None:
-        slim_adv["disclosures"] = slimmed_disclosures
-    d["adv_xml_data"] = slim_adv
-
-    # Trim fund news to title + date (drop snippet text); cap at 12 funds
-    fund_disc = raw_data.get("fund_discovery") or {}
-    funds = fund_disc.get("funds")
-    if isinstance(funds, list):
-        slimmed_funds = [
-            {
-                **{k: v for k, v in fund.items() if k != "news"},
-                "news": [
-                    {"title": n.get("title"), "date": n.get("date")}
-                    for n in (fund.get("news") or [])[:2]
-                ],
-            }
-            for fund in funds[:12]
-        ]
-        d["fund_discovery"] = {**fund_disc, "funds": slimmed_funds[:5]}
-
-    # Trim enforcement to summary fields only (drop verbose order/action text)
-    enforcement = raw_data.get("enforcement") or {}
-    if enforcement:
-        actions = enforcement.get("actions") or []
-        d["enforcement"] = {
-            **{k: v for k, v in enforcement.items() if k != "actions"},
-            "actions": [
-                {k: v for k, v in a.items()
-                 if k in ("date", "type", "summary", "source")}
-                for a in actions[:5]
-            ],
-        }
-
-    return d
-
-
-def _data_preamble(slimmed: dict) -> str:
-    return (
-        "Analyze this investment adviser data. Think carefully before responding.\n\n"
-        f"<data>\n{json.dumps(slimmed, indent=2, default=str)}\n</data>\n\n"
-        "Context questions:\n"
-        "1. Firm type? (PE/hedge fund/VC/credit/multi-strat/long-only) — reason from 13F, Form D, name.\n"
-        "2. What does 13F tell us about strategy and scale? Gap vs likely AUM?\n"
-        "3. What do Form D funds tell us? Exemption types, fundraising cadence?\n"
-        "4. IAPD disclosures — what do they mean for an LP?\n"
-        "5. Any internal inconsistencies worth flagging?\n\n"
-        "Return ONLY valid JSON. null for any missing field. Keep all narrative fields to 1-2 sentences.\n\n"
-    )
-
-
-def run(raw_data: dict, client: LLMClient) -> dict:
-    """Two-pass analysis: each pass targets ≤8000 output tokens to avoid truncation."""
-    slimmed = _slim_raw_data(raw_data)
-    preamble = _data_preamble(slimmed)
-
-    # ── Pass 1: firm identity, personnel, regulatory, 13F, macro ──────────────
-    pass1_schema = """\
+_PASS1_SCHEMA = """\
 {
   "firm_overview": {
     "name": "string or null",
@@ -245,17 +162,7 @@ def run(raw_data: dict, client: LLMClient) -> dict:
   }
 }"""
 
-    print(f"[Fund Analysis] Pass 1 — firm profile ({client.model})...")
-    pass1 = client.complete_json(
-        system=SYSTEM_PROMPT,
-        user=preamble + "OUTPUT SCHEMA — respond with ONLY this JSON:\n" + pass1_schema,
-        max_tokens=8000,
-    )
-
-    # ── Pass 2: fund structure and analyst synthesis ───────────────────────────
-    # Keep funds entries minimal (factual fields only) to stay within 8000 tokens
-    # even for firms with many registered funds (Point72, Citadel, etc.)
-    pass2_schema = """\
+_PASS2_SCHEMA = """\
 {
   "funds_analysis": {
     "total_funds_found": 0,
@@ -278,11 +185,73 @@ def run(raw_data: dict, client: LLMClient) -> dict:
 }
 IMPORTANT: funds array must contain AT MOST 5 entries (most significant only)."""
 
-    print(f"[Fund Analysis] Pass 2 — funds + synthesis ({client.model})...")
-    pass2 = client.complete_json(
+
+def _build_pass1_prompt(sources_hint: str, extra: str = "") -> str:
+    return (
+        f"Analyze this investment adviser for LP due diligence.\n"
+        f"Available data sources: {sources_hint}\n\n"
+        "Use retrieve() to gather the data you need. Suggested queries:\n"
+        "  • \"firm registration AUM employees clients\"\n"
+        "  • \"key personnel ownership percentages titles\"\n"
+        "  • \"fee structure minimum account size compensation\"\n"
+        "  • \"regulatory disclosures violations disciplinary\"\n"
+        "  • \"13F portfolio holdings count strategy value\"\n"
+        "  • \"macro context rates spreads\"\n\n"
+        "After gathering data, respond with ONLY valid JSON matching this schema. "
+        "Use null for any missing field. Keep narrative fields to 1-2 sentences.\n\n"
+        f"OUTPUT SCHEMA:\n{_PASS1_SCHEMA}"
+        + (f"\n\n{extra}" if extra else "")
+    )
+
+
+def _build_pass2_prompt(sources_hint: str, extra: str = "") -> str:
+    return (
+        f"Analyze this investment adviser's fund structure for LP due diligence.\n"
+        f"Available data sources: {sources_hint}\n\n"
+        "Use retrieve() to gather the data you need. Suggested queries:\n"
+        "  • \"Form D funds exemptions 3C.1 3C.7\"\n"
+        "  • \"fund offering amounts first sale dates\"\n"
+        "  • \"fund discovery sources relying advisors\"\n"
+        "  • \"enforcement actions penalties SEC FINRA\"\n"
+        "  • \"data gaps inconsistencies AUM reconciliation\"\n\n"
+        "After gathering data, respond with ONLY valid JSON matching this schema. "
+        "Use null for any missing field. Keep narrative fields to 1-2 sentences.\n\n"
+        f"OUTPUT SCHEMA:\n{_PASS2_SCHEMA}"
+        + (f"\n\n{extra}" if extra else "")
+    )
+
+
+def run(raw_data: dict, client: LLMClient) -> dict:
+    """Two-pass agentic RAG analysis: each pass issues retrieve() calls, then produces JSON."""
+    index = RawDataIndex(raw_data)
+    sources_hint = ", ".join(index.available_sources())
+
+    tool_executor = {
+        "retrieve": lambda args: index.search(
+            args["query"], min(int(args.get("top_k", 4)), 6)
+        )
+    }
+
+    # ── Pass 1: firm identity, personnel, regulatory, 13F, macro ──────────────
+    print(f"[Fund Analysis] Pass 1 — firm profile ({client.model})...")
+    pass1 = client.agent_loop_json(
         system=SYSTEM_PROMPT,
-        user=preamble + "OUTPUT SCHEMA — respond with ONLY this JSON:\n" + pass2_schema,
-        max_tokens=8000,
+        initial_message=_build_pass1_prompt(sources_hint),
+        tools=[_RETRIEVE_TOOL],
+        tool_executor=tool_executor,
+        max_tokens=6000,
+        max_iterations=15,
+    )
+
+    # ── Pass 2: fund structure and analyst synthesis ───────────────────────────
+    print(f"[Fund Analysis] Pass 2 — funds + synthesis ({client.model})...")
+    pass2 = client.agent_loop_json(
+        system=SYSTEM_PROMPT,
+        initial_message=_build_pass2_prompt(sources_hint),
+        tools=[_RETRIEVE_TOOL],
+        tool_executor=tool_executor,
+        max_tokens=6000,
+        max_iterations=15,
     )
 
     result = {**pass1, **pass2}
@@ -291,17 +260,21 @@ IMPORTANT: funds array must contain AT MOST 5 entries (most significant only).""
     if errors:
         print(f"[Fund Analysis] Schema errors ({len(errors)}) — retrying both passes...")
         err_note = format_validation_errors(errors)
-        pass1 = client.complete_json(
+        pass1 = client.agent_loop_json(
             system=SYSTEM_PROMPT,
-            user=preamble + "OUTPUT SCHEMA — respond with ONLY this JSON:\n"
-                 + pass1_schema + err_note,
-            max_tokens=8000,
+            initial_message=_build_pass1_prompt(sources_hint, extra=err_note),
+            tools=[_RETRIEVE_TOOL],
+            tool_executor=tool_executor,
+            max_tokens=6000,
+            max_iterations=15,
         )
-        pass2 = client.complete_json(
+        pass2 = client.agent_loop_json(
             system=SYSTEM_PROMPT,
-            user=preamble + "OUTPUT SCHEMA — respond with ONLY this JSON:\n"
-                 + pass2_schema + err_note,
-            max_tokens=8000,
+            initial_message=_build_pass2_prompt(sources_hint, extra=err_note),
+            tools=[_RETRIEVE_TOOL],
+            tool_executor=tool_executor,
+            max_tokens=6000,
+            max_iterations=15,
         )
         result = {**pass1, **pass2}
         remaining = validate_analysis(result)
