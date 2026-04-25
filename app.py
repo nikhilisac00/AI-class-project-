@@ -1408,6 +1408,48 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
     elif firm_type_rationale:
         st.info(f"**Firm Type:** {firm_type_rationale}")
 
+    # ── Key Personnel Ownership Donut ────────────────────────────────────
+    _personnel = (analysis or {}).get("key_personnel") or []
+    _owned = [(p.get("name", "Unknown"), p.get("ownership_pct")) for p in _personnel if p.get("ownership_pct")]
+    if _owned:
+        import plotly.graph_objects as _go4
+        import re as _re3
+        _own_labels, _own_vals = [], []
+        for _nm, _pct in _owned:
+            try:
+                _v = float(_re3.findall(r"[\d.]+", str(_pct))[0])
+            except Exception:
+                continue
+            _own_labels.append(_nm[:25])
+            _own_vals.append(_v)
+        _rest = max(0, 100 - sum(_own_vals))
+        if _rest > 0.5:
+            _own_labels.append("Other / Unknown")
+            _own_vals.append(_rest)
+        if _own_vals:
+            _own_fig = _go4.Figure(_go4.Pie(
+                labels=_own_labels,
+                values=_own_vals,
+                hole=0.45,
+                textinfo="label+percent",
+                hovertemplate="%{label}: %{value:.1f}%<extra></extra>",
+                marker=dict(colors=[
+                    "#4a8fff", "#3aaa7a", "#e67e22", "#9b59b6",
+                    "#c0392b", "#1abc9c", "#f39c12", "#555555",
+                ]),
+            ))
+            _own_fig.update_layout(
+                title="Key Personnel Ownership",
+                height=300,
+                margin=dict(l=10, r=10, t=45, b=10),
+                showlegend=True,
+                legend=dict(font=dict(color="#777777", size=10)),
+                paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#aaaaaa"),
+                title_font=dict(color="#aaaaaa"),
+            )
+            st.plotly_chart(_own_fig, use_container_width=True)
+
     # ── Source / brochure captions ────────────────────────────────────────
     if tf.get("accession") and tf.get("cik"):
         acc_clean  = tf["accession"].replace("-", "")
@@ -1799,6 +1841,52 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                       </span>
                     </div>
                     """, unsafe_allow_html=True)
+
+            # ── Score Radar Chart ─────────────────────────────────────────
+            if scores:
+                import plotly.graph_objects as _go
+                _radar_labels = [
+                    "Regulatory", "Data Avail.", "Key Person",
+                    "Fund Structure", "News/Rep.", "Ops Maturity",
+                ]
+                _radar_keys = [
+                    "regulatory_compliance", "data_availability", "key_person_risk",
+                    "fund_structure", "news_reputation", "operational_maturity",
+                ]
+                _radar_vals = []
+                for _k in _radar_keys:
+                    try:
+                        _radar_vals.append(int(scores.get(_k, {}).get("score") or 0))
+                    except (TypeError, ValueError):
+                        _radar_vals.append(0)
+                _radar_vals_closed = _radar_vals + [_radar_vals[0]]
+                _radar_labels_closed = _radar_labels + [_radar_labels[0]]
+                _radar_fig = _go.Figure(_go.Scatterpolar(
+                    r=_radar_vals_closed,
+                    theta=_radar_labels_closed,
+                    fill="toself",
+                    fillcolor="rgba(74,143,255,0.12)",
+                    line=dict(color="#4a8fff", width=2),
+                    marker=dict(size=6, color="#4a8fff"),
+                    name="Score",
+                ))
+                _radar_fig.update_layout(
+                    polar=dict(
+                        radialaxis=dict(
+                            visible=True, range=[0, 10],
+                            gridcolor="#222222", tickfont=dict(color="#555555", size=9),
+                            tickvals=[2, 4, 6, 8, 10],
+                        ),
+                        angularaxis=dict(gridcolor="#222222", tickfont=dict(color="#aaaaaa", size=10)),
+                        bgcolor="rgba(0,0,0,0)",
+                    ),
+                    showlegend=False,
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    height=340,
+                    margin=dict(l=60, r=60, t=20, b=20),
+                    font=dict(color="#aaaaaa"),
+                )
+                st.plotly_chart(_radar_fig, use_container_width=True)
 
             st.markdown("---")
 
@@ -2226,6 +2314,32 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
 
             flags = risk_report.get("flags", [])
             if flags:
+                # ── Risk flags bar chart ──────────────────────────────────
+                import plotly.graph_objects as _go2
+                _cats = sorted(set(f.get("category", "Other") for f in flags))
+                _hi  = [sum(1 for f in flags if f.get("category") == c and f.get("severity") == "HIGH")   for c in _cats]
+                _med = [sum(1 for f in flags if f.get("category") == c and f.get("severity") == "MEDIUM") for c in _cats]
+                _low = [sum(1 for f in flags if f.get("category") == c and f.get("severity") == "LOW")    for c in _cats]
+                _rf_fig = _go2.Figure(data=[
+                    _go2.Bar(name="HIGH",   x=_cats, y=_hi,  marker_color="#c0392b"),
+                    _go2.Bar(name="MEDIUM", x=_cats, y=_med, marker_color="#e67e22"),
+                    _go2.Bar(name="LOW",    x=_cats, y=_low, marker_color="#27ae60"),
+                ])
+                _rf_fig.update_layout(
+                    barmode="stack",
+                    title="Risk Flags by Category",
+                    height=260,
+                    margin=dict(l=10, r=10, t=40, b=60),
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color="#777777"),
+                    title_font=dict(color="#aaaaaa"),
+                    legend=dict(orientation="h", y=-0.35, font=dict(color="#777777")),
+                    xaxis=dict(tickangle=-25, gridcolor="#1e1e1e", color="#777777"),
+                    yaxis=dict(gridcolor="#1e1e1e", color="#777777", dtick=1),
+                )
+                st.plotly_chart(_rf_fig, use_container_width=True)
+
                 order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
                 flags_sorted = sorted(flags, key=lambda f: order.get(f.get("severity", ""), 9))
                 st.markdown(f"#### Risk Flags &nbsp; `{len(flags_sorted)}`")
@@ -2338,6 +2452,57 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     })
                 df_f = pd.DataFrame(rows)
                 st.dataframe(df_f, use_container_width=True, hide_index=True)
+
+                # ── Fund vintage timeline ─────────────────────────────────
+                import plotly.graph_objects as _go3
+                import re as _re2
+                _fv_names, _fv_dates, _fv_sizes, _fv_exemps = [], [], [], []
+                for _fnd in funds_list:
+                    _d = _fnd.get("date_of_first_sale")
+                    if not _d:
+                        continue
+                    _fv_names.append(_fnd.get("name", "Unknown")[:35])
+                    _fv_dates.append(_d)
+                    _fv_exemps.append(", ".join(_fnd.get("exemptions", [])) or "—")
+                    try:
+                        _nums = _re2.findall(r"[\d,]+", str(_fnd.get("offering_amount") or ""))
+                        _sz = float(_nums[0].replace(",", "")) if _nums else 10_000_000
+                    except Exception:
+                        _sz = 10_000_000
+                    _fv_sizes.append(max(_sz / 1e6, 2))
+
+                if _fv_dates:
+                    _fv_fig = _go3.Figure(_go3.Scatter(
+                        x=_fv_dates,
+                        y=_fv_names,
+                        mode="markers+text",
+                        marker=dict(
+                            size=[min(max(s / 5, 10), 50) for s in _fv_sizes],
+                            color="#4a8fff",
+                            opacity=0.75,
+                            line=dict(color="#2255bb", width=1),
+                        ),
+                        text=[f"${s:.0f}M" for s in _fv_sizes],
+                        textposition="middle right",
+                        textfont=dict(size=9, color="#888888"),
+                        hovertemplate=(
+                            "<b>%{y}</b><br>Date: %{x}<br>Size: %{text}"
+                            "<extra></extra>"
+                        ),
+                        customdata=_fv_exemps,
+                    ))
+                    _fv_fig.update_layout(
+                        title="Fund Vintage Timeline (bubble size = offering amount)",
+                        height=max(220, len(_fv_dates) * 38 + 80),
+                        margin=dict(l=10, r=120, t=45, b=10),
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        font=dict(color="#777777"),
+                        title_font=dict(color="#aaaaaa"),
+                        xaxis=dict(gridcolor="#1e1e1e", color="#777777"),
+                        yaxis=dict(gridcolor="#1e1e1e", color="#777777"),
+                    )
+                    st.plotly_chart(_fv_fig, use_container_width=True)
 
                 # Expandable cards with EDGAR links + news
                 st.subheader("Fund Detail")
