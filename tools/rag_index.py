@@ -130,6 +130,19 @@ class RawDataIndex:
                       "List of 13F-HR filings with dates and accession numbers",
                       raw_data["filings_13f"][:4])
 
+        # Section 7.B private funds from ADV PDF
+        section7b = adv.get("private_funds_section7b") or []
+        if section7b:
+            self._add("section7b_summary",
+                      "ADV Section 7.B private fund count and overview",
+                      {"total_private_funds": len(section7b),
+                       "fund_names": [f.get("fund_name") for f in section7b[:20]]})
+            for fund in section7b[:12]:
+                name = fund.get("fund_name") or "Unknown"
+                self._add(f"section7b:{name[:40]}",
+                          f"Section 7.B private fund: {name[:40]} — type, GAV, owners",
+                          fund)
+
         # Form D funds — one chunk per fund for targeted retrieval
         fund_disc = raw_data.get("fund_discovery") or {}
         for fund in (fund_disc.get("funds") or [])[:8]:
@@ -156,12 +169,17 @@ class RawDataIndex:
                       "SEC/FINRA enforcement actions, penalties, settlement dates",
                       enforcement)
 
-        # ADV brochure metadata (the PDF itself is not yet fetched)
+        # ADV brochure metadata and extracted text
         brochure = adv_xml.get("brochure") or adv.get("brochure")
         if brochure:
             self._add("brochure_metadata",
-                      "ADV Part 2A brochure name, date, version — text not yet indexed",
+                      "ADV Part 2A brochure name, date, version",
                       brochure)
+
+        # Auto-load brochure text chunks if available from adv_parser
+        brochure_chunks = adv_xml.get("brochure_chunks") or []
+        if brochure_chunks:
+            self.add_brochure_chunks(brochure_chunks)
 
         # Market context (FRED macro)
         if raw_data.get("market_context"):

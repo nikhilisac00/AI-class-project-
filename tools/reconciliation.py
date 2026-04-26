@@ -272,10 +272,103 @@ def check_personnel_reconciliation(analysis: dict, raw_data: dict) -> dict:
     }
 
 
+def check_section7b_vs_form_d(analysis: dict, raw_data: dict) -> dict:
+    """
+    Cross-reference ADV Section 7.B private funds against Form D fund discovery.
+
+    Section 7.B is the authoritative list of private funds an adviser manages.
+    Form D filings are the offering registrations. A fund in Section 7.B with
+    no matching Form D filing may indicate a stale Form D, an exemption, or
+    incomplete data pull.
+    """
+    adv_summary = raw_data.get("adv_summary") or {}
+    section7b_funds = adv_summary.get("private_funds_section7b") or []
+    fund_discovery = raw_data.get("fund_discovery") or {}
+    form_d_funds = fund_discovery.get("funds") or []
+
+    if not section7b_funds:
+        return {
+            "check": "Section 7.B vs Form D Reconciliation",
+            "status": "SKIP",
+            "detail": "No Section 7.B private fund data available from ADV PDF.",
+            "sources": ["ADV Part 1A Section 7.B", "SEC EDGAR Form D"],
+        }
+
+    if not form_d_funds:
+        return {
+            "check": "Section 7.B vs Form D Reconciliation",
+            "status": "WARN",
+            "detail": (
+                f"ADV Section 7.B lists {len(section7b_funds)} private fund(s) "
+                "but no Form D filings were found. Recommend verifying on EDGAR."
+            ),
+            "sources": ["ADV Part 1A Section 7.B", "SEC EDGAR Form D"],
+            "section7b_count": len(section7b_funds),
+            "form_d_count": 0,
+        }
+
+    # Normalize names for fuzzy matching
+    def _norm(name: str) -> set[str]:
+        return set(re.sub(r"[^\w\s]", " ", name.lower()).split())
+
+    form_d_names = []
+    for fd in form_d_funds:
+        name = fd.get("fund_name") or fd.get("name") or ""
+        if name:
+            form_d_names.append((name, _norm(name)))
+
+    unmatched = []
+    for fund in section7b_funds:
+        s7b_name = fund.get("fund_name") or ""
+        if not s7b_name:
+            continue
+        s7b_tokens = _norm(s7b_name)
+        if not s7b_tokens:
+            continue
+        # Check for any Form D fund with >= 50% token overlap
+        matched = False
+        for fd_name, fd_tokens in form_d_names:
+            if not fd_tokens:
+                continue
+            overlap = len(s7b_tokens & fd_tokens)
+            if overlap / max(len(s7b_tokens), 1) >= 0.5:
+                matched = True
+                break
+        if not matched:
+            unmatched.append(s7b_name)
+
+    if not unmatched:
+        status = "PASS"
+        detail = (
+            f"All {len(section7b_funds)} Section 7.B fund(s) have matching Form D filings. "
+            f"Form D shows {len(form_d_funds)} total filing(s)."
+        )
+    else:
+        status = "WARN"
+        detail = (
+            f"{len(unmatched)} of {len(section7b_funds)} Section 7.B fund(s) "
+            f"have no matching Form D filing: {', '.join(unmatched[:5])}"
+            + (f" (and {len(unmatched) - 5} more)" if len(unmatched) > 5 else "")
+            + ". Possible causes: fund is exempt, uses a different name in Form D, "
+            "or Form D filing is missing."
+        )
+
+    return {
+        "check": "Section 7.B vs Form D Reconciliation",
+        "status": status,
+        "detail": detail,
+        "sources": ["ADV Part 1A Section 7.B", "SEC EDGAR Form D"],
+        "section7b_count": len(section7b_funds),
+        "form_d_count": len(form_d_funds),
+        "unmatched_funds": unmatched[:10],
+    }
+
+
 def run_all(analysis: dict, raw_data: dict) -> list[dict]:
     """Run all reconciliation checks and return results list."""
     return [
         check_aum_reconciliation(analysis, raw_data),
         check_fund_count_reconciliation(analysis, raw_data),
         check_personnel_reconciliation(analysis, raw_data),
+        check_section7b_vs_form_d(analysis, raw_data),
     ]

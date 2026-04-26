@@ -444,10 +444,42 @@ def _latest_13f_from_submissions(cik: str) -> Optional[dict]:
     return best
 
 
-def _xml_file_from_filing(cik: str, acc: str) -> Optional[str]:
+def _xml_file_from_submissions(cik: str, acc: str) -> Optional[str]:
+    """
+    Use the EDGAR submissions API to find the primary document for a 13F filing.
+    The submissions API includes primaryDocument for each filing, which is more
+    reliable than scraping the HTML index page.
+    """
+    cik_padded = cik.lstrip("0").zfill(10)
+    url = SUBMISSIONS.format(cik=cik_padded)
+    data = _json(url)
+    if not data:
+        return None
+
+    recent = data.get("filings", {}).get("recent", {})
+    accessions = recent.get("accessionNumber", [])
+    primary_docs = recent.get("primaryDocument", [])
+
+    for idx, filed_acc in enumerate(accessions):
+        if filed_acc == acc and idx < len(primary_docs):
+            doc = primary_docs[idx]
+            if doc and doc.lower().endswith(".xml"):
+                print(
+                    f"[ADV Enrichment] XML file resolved via submissions API: {doc} "
+                    f"(acc={acc})"
+                )
+                return doc
+            break
+
+    return None
+
+
+def _xml_file_from_html_index(cik: str, acc: str) -> Optional[str]:
     """
     Scrape the EDGAR filing HTML index to find the primary 13F XML filename.
     Returns just the filename (not the full URL).
+    This is the fallback when the submissions API doesn't return a usable
+    primaryDocument.
     """
     acc_clean = acc.replace("-", "")
     base = f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc_clean}/"
@@ -459,9 +491,41 @@ def _xml_file_from_filing(cik: str, acc: str) -> Optional[str]:
         if name.lower() == "primary_doc.xml":
             return name
     # Fallback to any .xml not in an xsl subdirectory
-    for name in re.findall(r'href="(?!.*xslForm)[^"]*?/([^/\"]+\.xml)"', html, re.I):
-        if name.lower() not in ("xsl.xml",):
+    for name in re.findall(r'href="(?:[^"]*?/)?([^/\"]+\.xml)"', html, re.I):
+        if "xsl" not in name.lower() and name.lower() not in ("xsl.xml",):
             return name
+    return None
+
+
+def _xml_file_from_filing(cik: str, acc: str) -> Optional[str]:
+    """
+    Find the primary 13F XML filename for a given filing.
+
+    Strategy:
+      1. Try submissions API primaryDocument (most reliable, machine-readable)
+      2. Fall back to HTML index scraping (handles older filings)
+      3. Log a traceable warning if both fail
+    """
+    # Primary: submissions API
+    xml_file = _xml_file_from_submissions(cik, acc)
+    if xml_file:
+        return xml_file
+
+    # Fallback: HTML index scraping
+    xml_file = _xml_file_from_html_index(cik, acc)
+    if xml_file:
+        print(
+            f"[ADV Enrichment] XML file resolved via HTML index fallback: {xml_file} "
+            f"(acc={acc})"
+        )
+        return xml_file
+
+    # Both approaches failed — log a traceable warning
+    print(
+        f"[ADV Enrichment] WARNING: Could not locate XML document for "
+        f"CIK={cik}, accession={acc}. Neither submissions API nor HTML index "
+        f"returned an XML file. The 13F parse will be skipped for this filing."
+    )
     return None
 
 
@@ -765,6 +829,129 @@ def parse_brochure_metadata(iacontent: dict) -> dict:
     }
 
 
+# ── Brochure PDF download ────────────────────────────────────────────────────
+
+BROCHURE_URL = (
+    "https://adviserinfo.sec.gov/IAPD/Content/Common/"
+    "crd_iapd_Brochure.aspx?BROCHUREPK={brochure_id}"
+)
+
+
+def fetch_brochure_text(brochure_version_id: str) -> Optional[str]:
+    """
+    Attempt to download an ADV Part 2A brochure PDF and extract text.
+
+    The IAPD brochure endpoint serves an SPA HTML page for most firms (not a
+    direct PDF download). This function detects that case and returns None
+    rather than raising.
+
+    Returns extracted text if the PDF is accessible, None otherwise.
+    """
+    if not brochure_version_id:
+        return None
+
+    url = BROCHURE_URL.format(brochure_id=brochure_version_id)
+    print(f"[Brochure] Attempting download: brochure ID {brochure_version_id}")
+
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=30)
+    except requests.exceptions.RequestException as exc:
+        print(f"[Brochure] Download failed: {exc}")
+        return None
+
+    if resp.status_code == 403:
+        print("[Brochure] Not publicly accessible (403) — skipping")
+        return None
+
+    if resp.status_code == 404:
+        print("[Brochure] Not found (404) — skipping")
+        return None
+
+    if resp.status_code != 200:
+        print(f"[Brochure] Unexpected status {resp.status_code} — skipping")
+        return None
+
+    content_type = resp.headers.get("content-type", "").lower()
+
+    # Check if response is a PDF
+    if "pdf" in content_type or "octet-stream" in content_type:
+        return _extract_pdf_text(resp.content, brochure_version_id)
+
+    # Check if response is HTML (SPA login/redirect page)
+    if "html" in content_type or resp.content[:20].strip().startswith(b"<"):
+        print("[Brochure] Not publicly accessible — received HTML page, not PDF. Skipping")
+        return None
+
+    # Unknown content type — try parsing as PDF anyway
+    if len(resp.content) > 1000 and resp.content[:5] == b"%PDF-":
+        return _extract_pdf_text(resp.content, brochure_version_id)
+
+    print(f"[Brochure] Unrecognized response (content-type: {content_type}) — skipping")
+    return None
+
+
+def _extract_pdf_text(pdf_bytes: bytes, brochure_id: str) -> Optional[str]:
+    """Extract text from PDF bytes using pypdf."""
+    try:
+        import io
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        pages_text = []
+        for page in reader.pages:
+            text = page.extract_text()
+            if text:
+                pages_text.append(text)
+        full_text = "\n".join(pages_text)
+        print(
+            f"[Brochure] PDF extracted — {len(reader.pages)} pages, "
+            f"{len(full_text)} chars"
+        )
+        return full_text if full_text.strip() else None
+    except ImportError:
+        print("[Brochure] pypdf not installed — cannot extract brochure text")
+        return None
+    except Exception as exc:
+        print(f"[Brochure] PDF parse error for brochure {brochure_id}: {exc}")
+        return None
+
+
+def split_brochure_into_chunks(text: str) -> list[dict]:
+    """
+    Split ADV Part 2A brochure text into labeled chunks by section headers.
+
+    Standard ADV Part 2A sections are Item 1 through Item 18. We split on
+    these boundaries so each chunk corresponds to one disclosure topic.
+    """
+    if not text:
+        return []
+
+    # Split on "Item N" headers (e.g., "Item 4", "Item 5 – Fees")
+    parts = re.split(r"(?i)(?=\bItem\s+\d{1,2}\b)", text)
+
+    chunks: list[dict] = []
+    for part in parts:
+        part = part.strip()
+        if len(part) < 50:
+            continue
+
+        # Extract item number for labeling
+        header_match = re.match(r"(?i)(Item\s+\d{1,2})\b(.{0,80})", part)
+        if header_match:
+            item_num = header_match.group(1).strip()
+            item_rest = header_match.group(2).strip().strip("–—:-. ")
+            label = f"ADV Part 2A {item_num}: {item_rest}" if item_rest else f"ADV Part 2A {item_num}"
+        else:
+            label = "ADV Part 2A (preamble)"
+
+        chunks.append({
+            "source": f"brochure:{label[:40]}",
+            "label": label[:80],
+            "content": part[:3000],  # cap chunk size for RAG context window
+        })
+
+    return chunks
+
+
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 def fetch_adv_data(firm_name: str, iacontent: dict = None) -> dict:
@@ -810,6 +997,22 @@ def fetch_adv_data(firm_name: str, iacontent: dict = None) -> dict:
     if iacontent:
         result["disclosures"] = parse_iapd_disclosures(iacontent)
         result["brochure"]    = parse_brochure_metadata(iacontent)
+
+        # Attempt brochure PDF download and text extraction
+        brochure_meta = result["brochure"]
+        bv_id = brochure_meta.get("brochure_version") if brochure_meta else None
+        if bv_id:
+            brochure_text = fetch_brochure_text(str(bv_id))
+            if brochure_text:
+                result["brochure"]["text_extracted"] = True
+                result["brochure_chunks"] = split_brochure_into_chunks(brochure_text)
+                result["brochure"]["note"] = (
+                    f"Brochure PDF downloaded and parsed — "
+                    f"{len(result['brochure_chunks'])} section(s) extracted"
+                )
+            else:
+                result["brochure"]["text_extracted"] = False
+                result["brochure_chunks"] = []
 
     pv = result["thirteenf"].get("portfolio_value_fmt")
     print(

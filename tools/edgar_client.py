@@ -4,17 +4,21 @@ Pulls real data from:
   - IAPD (Investment Adviser Public Disclosure): adviser search + ADV filing detail
   - SEC EDGAR full-text search: 13F filings, company filings
   - SEC EDGAR company API: filing history
+  - ADV PDF (Part 1A): Schedule D Section 7.B private fund data
 
 All URLs are public. No auth required.
 Field names are verified against live API responses.
 """
 
+import io
 import json
+import re
 import time
 import requests
 
 IAPD_SEARCH   = "https://api.adviserinfo.sec.gov/search/firm"
 IAPD_DETAIL   = "https://api.adviserinfo.sec.gov/search/firm/{crd}"
+ADV_PDF_URL   = "https://reports.adviserinfo.sec.gov/reports/ADV/{crd}/PDF/{crd}.pdf"
 EDGAR_EFTS    = "https://efts.sec.gov/LATEST/search-index"
 EDGAR_COMPANY = "https://www.sec.gov/cgi-bin/browse-edgar"
 EDGAR_SUBMIT  = "https://data.sec.gov/submissions/CIK{cik}.json"
@@ -117,6 +121,252 @@ def get_adviser_detail(crd: str) -> dict | None:
         return json.loads(iacontent_raw)
     except json.JSONDecodeError:
         return None
+
+
+# ─── ADV PDF: Section 7.B private fund data ──────────────────────────────────
+
+# Max PDF size to download (bytes). ADV PDFs for large firms can be 30-50 MB.
+_ADV_PDF_MAX_SIZE = 60 * 1024 * 1024  # 60 MB
+
+
+def fetch_adv_pdf_text(crd: str) -> str | None:
+    """
+    Download the ADV Part 1A PDF and extract full text via pypdf.
+    Returns extracted text or None if download/parse fails.
+    """
+    url = ADV_PDF_URL.format(crd=crd)
+    print(f"[EDGAR] Downloading ADV PDF for CRD {crd}...")
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=90, stream=True)
+        resp.raise_for_status()
+    except requests.exceptions.RequestException as exc:
+        print(f"[EDGAR] ADV PDF download failed: {exc}")
+        return None
+
+    content_type = resp.headers.get("content-type", "")
+    if "pdf" not in content_type and "octet" not in content_type:
+        print(f"[EDGAR] ADV PDF unexpected content-type: {content_type}")
+        return None
+
+    # Stream into memory with size guard
+    chunks = []
+    total = 0
+    for chunk in resp.iter_content(chunk_size=256 * 1024):
+        total += len(chunk)
+        if total > _ADV_PDF_MAX_SIZE:
+            print(f"[EDGAR] ADV PDF exceeds {_ADV_PDF_MAX_SIZE // (1024*1024)} MB limit — aborting")
+            return None
+        chunks.append(chunk)
+
+    pdf_bytes = b"".join(chunks)
+    print(f"[EDGAR] ADV PDF downloaded ({total / (1024*1024):.1f} MB)")
+
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        pages_text = []
+        for page in reader.pages:
+            text = page.extract_text()
+            if text:
+                pages_text.append(text)
+        full_text = "\n".join(pages_text)
+        print(f"[EDGAR] ADV PDF parsed — {len(reader.pages)} pages, {len(full_text)} chars")
+        return full_text
+    except ImportError:
+        print("[EDGAR] pypdf not installed — cannot parse ADV PDF")
+        return None
+    except Exception as exc:
+        print(f"[EDGAR] ADV PDF parse error: {exc}")
+        return None
+
+
+def parse_section_7b(text: str) -> list[dict]:
+    """
+    Extract private fund data from ADV Part 1A Section 7.B PDF text.
+
+    Each fund entry in Section 7.B typically contains:
+      - Fund name
+      - Fund type (hedge fund, PE, VC, liquidity fund, etc.)
+      - Gross asset value
+      - Number of beneficial owners
+      - Whether the fund is a feeder fund
+      - Regulatory AUM attributable to the fund
+
+    Returns a list of dicts, one per fund. Fields are None when not found.
+    """
+    if not text:
+        return []
+
+    funds: list[dict] = []
+
+    # Section 7.B in ADV PDFs uses "SECTION 7.B" or "Schedule D, Section 7.B"
+    # Each private fund block starts with a fund name and has structured fields.
+    # The PDF text layout varies, but funds are delimited by repeated headers
+    # like "Private Fund Name:" or by the pattern "SECTION 7.B.(1)" numbering.
+
+    # Strategy: find the Section 7.B region, then split into per-fund blocks
+    section_start = _find_section_7b_start(text)
+    if section_start < 0:
+        print("[EDGAR] Section 7.B not found in ADV PDF text")
+        return []
+
+    # Find where Section 7.B ends (next major section like Section 8, 9, etc.)
+    section_end = _find_section_7b_end(text, section_start)
+    section_text = text[section_start:section_end]
+
+    # Split into individual fund blocks
+    # Funds are separated by headers like "Name of the private fund:"
+    fund_blocks = re.split(
+        r"(?i)(?=Name\s+of\s+the\s+private\s+fund\s*:)",
+        section_text,
+    )
+
+    for block in fund_blocks:
+        if len(block.strip()) < 30:
+            continue
+        fund = _parse_fund_block(block)
+        if fund and fund.get("fund_name"):
+            funds.append(fund)
+
+    print(f"[EDGAR] Section 7.B parsed — {len(funds)} private fund(s) found")
+    return funds
+
+
+def _find_section_7b_start(text: str) -> int:
+    """Locate the start of Section 7.B in ADV PDF text."""
+    patterns = [
+        r"(?i)SECTION\s+7\.?\s*B",
+        r"(?i)Schedule\s+D.*?Section\s+7\.?\s*B",
+        r"(?i)Item\s+7\.?\s*B\b.*?Private\s+Fund",
+        r"(?i)PRIVATE\s+FUND\s+REPORTING",
+    ]
+    for pat in patterns:
+        match = re.search(pat, text)
+        if match:
+            return match.start()
+    return -1
+
+
+def _find_section_7b_end(text: str, start: int) -> int:
+    """Find where Section 7.B ends (start of next major section)."""
+    # Look for Section 8, 9, 10, or Part 2 / Schedule markers after the start
+    patterns = [
+        r"(?i)SECTION\s+[89]\b",
+        r"(?i)Item\s+[89]\b",
+        r"(?i)PART\s+2[AB]?\b",
+        r"(?i)Schedule\s+[A-C]\b",
+        r"(?i)SECTION\s+1[0-9]",
+    ]
+    earliest = len(text)
+    for pat in patterns:
+        match = re.search(pat, text[start + 100:])
+        if match:
+            pos = start + 100 + match.start()
+            if pos < earliest:
+                earliest = pos
+    return earliest
+
+
+def _parse_fund_block(block: str) -> dict:
+    """Parse a single private fund block from Section 7.B text."""
+    fund: dict = {
+        "fund_name": None,
+        "fund_type": None,
+        "gross_asset_value": None,
+        "number_of_beneficial_owners": None,
+        "is_feeder_fund": None,
+        "regulatory_aum": None,
+    }
+
+    # Fund name — typically after "Name of the private fund:"
+    name_match = re.search(
+        r"(?i)Name\s+of\s+the\s+private\s+fund\s*:\s*(.+?)(?:\n|$)",
+        block,
+    )
+    if name_match:
+        fund["fund_name"] = name_match.group(1).strip()
+
+    # Fund type — hedge fund, PE, VC, liquidity fund, real estate, securitized asset
+    type_match = re.search(
+        r"(?i)(?:Type\s+of\s+(?:private\s+)?fund|fund\s+type)\s*:\s*(.+?)(?:\n|$)",
+        block,
+    )
+    if type_match:
+        fund["fund_type"] = type_match.group(1).strip()
+    else:
+        # Infer from keywords in the block
+        block_lower = block.lower()
+        for ftype in ["hedge fund", "private equity fund", "venture capital fund",
+                       "liquidity fund", "real estate fund", "securitized asset fund",
+                       "other investment fund"]:
+            if ftype in block_lower:
+                fund["fund_type"] = ftype.title()
+                break
+
+    # Gross asset value
+    gav_match = re.search(
+        r"(?i)(?:gross\s+asset\s+value|total\s+assets?)\s*[\$:]?\s*\$?\s*([\d,]+(?:\.\d+)?)\s*(million|billion|[MB])?",
+        block,
+    )
+    if gav_match:
+        val = gav_match.group(1).replace(",", "")
+        suffix = (gav_match.group(2) or "").lower()
+        try:
+            num = float(val)
+            if suffix.startswith("b"):
+                num *= 1_000_000_000
+            elif suffix.startswith("m"):
+                num *= 1_000_000
+            fund["gross_asset_value"] = int(num)
+        except ValueError:
+            pass
+
+    # Number of beneficial owners
+    owners_match = re.search(
+        r"(?i)(?:number\s+of\s+)?beneficial\s+owners?\s*:\s*(\d+)",
+        block,
+    )
+    if owners_match:
+        fund["number_of_beneficial_owners"] = int(owners_match.group(1))
+
+    # Feeder fund flag
+    feeder_match = re.search(
+        r"(?i)(?:Is\s+the\s+(?:private\s+)?fund\s+a\s+)?feeder\s+fund\s*[:\?]?\s*(yes|no)",
+        block,
+    )
+    if feeder_match:
+        fund["is_feeder_fund"] = feeder_match.group(1).strip().lower() == "yes"
+
+    # Regulatory AUM
+    aum_match = re.search(
+        r"(?i)(?:regulatory\s+assets?\s+under\s+management|RAUM)\s*[\$:]?\s*\$?\s*([\d,]+(?:\.\d+)?)\s*(million|billion|[MB])?",
+        block,
+    )
+    if aum_match:
+        val = aum_match.group(1).replace(",", "")
+        suffix = (aum_match.group(2) or "").lower()
+        try:
+            num = float(val)
+            if suffix.startswith("b"):
+                num *= 1_000_000_000
+            elif suffix.startswith("m"):
+                num *= 1_000_000
+            fund["regulatory_aum"] = int(num)
+        except ValueError:
+            pass
+
+    return fund
+
+
+def fetch_private_funds_section7b(crd: str) -> list[dict]:
+    """
+    High-level function: download ADV PDF for a CRD and parse Section 7.B.
+    Returns list of private fund dicts, or empty list on failure.
+    """
+    text = fetch_adv_pdf_text(crd)
+    if not text:
+        return []
+    return parse_section_7b(text)
 
 
 def extract_adv_summary(iacontent: dict, search_hit: dict = None) -> dict:
@@ -222,7 +472,19 @@ def extract_adv_summary(iacontent: dict, search_hit: dict = None) -> dict:
         "fee_types": [],            # Not in IAPD API — in ADV Part 2
         "min_account_size": None,   # Not in IAPD API — in ADV Part 2
         "key_personnel": [],        # Not in IAPD API — in Schedule A/B
+
+        # Section 7.B private funds — populated by fetch_private_funds_section7b()
+        "private_funds_section7b": [],
     }
+
+    # Fetch Section 7.B private fund data from ADV PDF
+    crd = basic.get("firmId")
+    if crd:
+        try:
+            section7b = fetch_private_funds_section7b(str(crd))
+            summary["private_funds_section7b"] = section7b
+        except Exception as exc:
+            print(f"[EDGAR] Section 7.B fetch failed: {exc}")
 
     return summary
 
