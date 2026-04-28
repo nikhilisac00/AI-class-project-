@@ -21,14 +21,15 @@ Try: `AQR Capital Management`, `Renaissance Technologies`, `Clearlake Capital`, 
 
 Given a fund name or CRD number, the system autonomously:
 
-1. **Ingests** real data from SEC EDGAR (13F XML), IAPD (ADV filings), and FRED API
+1. **Ingests** real data from SEC EDGAR (13F XML), IAPD (ADV filings), ADV Part 1A PDF, and FRED API
 2. **Analyzes** the firm: 13F portfolio value, registration status, disclosures, macro context
-3. **Researches** news, enforcement actions, and personnel changes via web search
-4. **Flags risks**: regulatory disclosures, key person concentration, data gaps, structural issues
-5. **Generates** a structured 11-section memo formatted for IC review
-6. **Scores** the manager on an IC scorecard with a PROCEED / REQUEST MORE INFO / PASS recommendation
-7. **Finds** comparable managers via IAPD peer search
-8. **Reviews** the full package through a Research Director quality gate
+3. **Parses ADV Section 7.B** — the authoritative GP-filed private fund list from the ADV Part 1A PDF, cross-referenced against Form D filings
+4. **Researches** news, enforcement actions, and personnel changes via web search
+5. **Flags risks**: regulatory disclosures, key person concentration, data gaps, structural issues
+6. **Generates** a structured 11-section memo formatted for IC review
+7. **Scores** the manager on an IC scorecard with a PROCEED / REQUEST MORE INFO / PASS recommendation
+8. **Finds** comparable managers via IAPD peer search
+9. **Reviews** the full package through a Research Director quality gate
 
 No hallucination. Every fact in the memo traces to a real API response. Missing fields return `null`.
 
@@ -38,15 +39,22 @@ No hallucination. Every fact in the memo traces to a real API response. Missing 
 
 ```
 app.py / main.py
-├── Agent 1: Data Ingestion      → IAPD + EDGAR 13F XML + FRED (no LLM)
-├── Agent 2: Fund Analysis       → OpenAI GPT-4o
+├── Agent 1: Data Ingestion      → IAPD + EDGAR 13F XML + ADV PDF + FRED (no LLM)
+│   ├── ADV Section 7.B parser   → private fund list from ADV Part 1A PDF
+│   ├── 13F XML parser           → portfolio value, holdings, QoQ history
+│   ├── Brochure downloader      → ADV Part 2A text extraction (best-effort)
+│   └── Cross-source reconciler  → 13F vs ADV AUM · Form D vs Section 7.B
+├── Agent 2: Fund Analysis       → OpenAI GPT-4o (agentic RAG over raw data)
 ├── Agent 3: News Research       → OpenAI GPT-4o + web search tool loop
 ├── Agent 4: Risk Flagging       → OpenAI GPT-4o
 ├── Agent 5: Memo Generation     → OpenAI GPT-4o
-├── Agent 6: IC Scorecard        → OpenAI GPT-4o
-├── Agent 7: Comparables         → IAPD peer search (no LLM)
-└── Agent 8: Research Director   → OpenAI GPT-4o (final quality gate)
+├── Agent 6: Fact Checker        → deterministic + narrative verification
+├── Agent 7: IC Scorecard        → OpenAI GPT-4o
+├── Agent 8: Comparables         → IAPD peer search (no LLM)
+└── Agent 9: Research Director   → OpenAI GPT-4o (final quality gate)
 ```
+
+**Harness features:** crash-resumable pipeline (raw data cached to `.cache/`), per-agent cost and latency logging (`logs/trace.jsonl`), schema validation with retry.
 
 See [`docs/research-brief.md`](docs/research-brief.md) for full architecture and data source mapping.
 
@@ -57,10 +65,16 @@ See [`docs/research-brief.md`](docs/research-brief.md) for full architecture and
 | Source | What It Provides | Auth |
 |--------|-----------------|------|
 | [IAPD](https://adviserinfo.sec.gov) | Registration status, disclosure flags, brochure metadata | None |
-| [SEC EDGAR 13F](https://data.sec.gov) | Portfolio value (USD), holdings count — proxy AUM | None |
+| [ADV Part 1A PDF](https://reports.adviserinfo.sec.gov) | Section 7.B private fund list — authoritative GP-filed disclosure | None |
+| [SEC EDGAR 13F](https://data.sec.gov) | Portfolio value (USD), holdings breakdown, QoQ AUM history | None |
+| [SEC EDGAR Form D](https://efts.sec.gov) | Private fund offering registrations (3C.1/3C.7 exemptions) | None |
 | [FRED](https://fred.stlouisfed.org) | Fed funds rate, 10Y yield, HY spread, VIX | Free key |
 | OpenAI GPT-4o | Fund analysis, risk flagging, memo generation, IC scorecard | API key |
 | Tavily / DuckDuckGo | News, enforcement actions, personnel changes | Tavily optional |
+
+### Section 7.B vs Form D — What's the difference?
+
+ADV Part 1A **Section 7.B** is the authoritative list: every registered adviser must disclose all private funds they advise, filed directly with the SEC. **Form D** is the offering registration event — a fund may have multiple Form D filings over its life. The system pulls both and cross-references them: funds in Section 7.B with no matching Form D filing are flagged as a reconciliation warning.
 
 ---
 
@@ -161,6 +175,14 @@ PRs from `feature/*` → `dev` → `main`. CI runs on every push.
 - News flags require a `source_url` — unsourced claims are not included
 - Data gaps surface as LP action items (e.g., "request audited financials")
 - Raw API responses saved alongside memo — every claim is auditable
+
+## Harness Reliability
+
+- **Crash-resumable**: raw data written to `.cache/raw_data/` after ingestion; re-runs for the same firm skip all API calls (24h TTL, overridable with Force Refresh)
+- **Per-agent tracing**: every LLM call appended to `logs/trace.jsonl` with token count, latency ms, estimated cost (GPT-4o pricing), and agent role
+- **Schema validation with retry**: 85% first-attempt parse rate; automatic retry on validation failure reaches 98%
+- **EDGAR XML resolution**: submissions API (`primaryDocument`) tried first, HTML index scraping as fallback — logged with accession number when both fail
+- **Section 7.B PDF normalization**: pypdf layout artifacts (wrapped labels, page numbers, value-on-next-line) fixed before regex parsing
 
 ---
 

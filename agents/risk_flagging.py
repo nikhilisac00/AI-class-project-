@@ -11,20 +11,12 @@ An LP risk analyst needs to understand:
 """
 
 import json
-from datetime import date
 from tools.llm_client import LLMClient
-from tools.schemas import validate_risk_report, format_validation_errors
-
-_TODAY = date.today().isoformat()  # injected into prompt so LLM knows what "recent" means
 
 
-SYSTEM_PROMPT = f"""You are a risk analyst at a $15B institutional LP (pension fund).
+SYSTEM_PROMPT = """You are a risk analyst at a $15B institutional LP (pension fund).
 You have reviewed hundreds of alternative investment managers and know what distinguishes
 routine issues from genuine red flags.
-
-TODAY'S DATE: {_TODAY}
-Use this date for all recency assessments (e.g. "< 3 years ago", "old ADV filing").
-ADV filing dates in {_TODAY[:4]} are current and normal — do NOT flag them as anomalous.
 
 LP RISK FRAMEWORK — apply this when flagging:
 
@@ -84,17 +76,6 @@ CRITICAL RULES:
 def run(analysis: dict, raw_data: dict, client: LLMClient,
         news_report: dict = None, scoring_weights: dict = None) -> dict:
 
-    recon_block = ""
-    recon = raw_data.get("reconciliation", [])
-    recon_flags = [r for r in recon if r.get("status") in ("WARN", "FAIL")]
-    if recon_flags:
-        recon_block = f"""
-<data_reconciliation>
-Cross-source reconciliation flagged {len(recon_flags)} issue(s):
-{json.dumps(recon_flags, indent=2, default=str)}
-Consider these when assessing data quality and risk.
-</data_reconciliation>"""
-
     news_block = ""
     if news_report and (news_report.get("news_flags") or news_report.get("news_summary")):
         news_block = f"""
@@ -146,18 +127,16 @@ Think carefully about context and severity before flagging anything.
 <raw_data_summary>
 Registration status: {raw_data.get("adv_summary", {}).get("registration_status")}
 Has disclosures (IAPD flag): {raw_data.get("adv_summary", {}).get("has_disclosures")}
-ADV filing date: {raw_data.get("adv_summary", {}).get("adv_last_filing_date")}
+ADV filing date: {raw_data.get("adv_summary", {}).get("adv_filing_date")}
 13F portfolio value: {(raw_data.get("adv_xml_data", {}).get("thirteenf") or {}).get("portfolio_value_fmt")}
 Ingestion errors: {raw_data.get("errors", [])}
 </raw_data_summary>
 {fund_block}
 {enforcement_block}
 {news_block}
-{recon_block}
 {f"""
 <lp_scoring_weights>
-The LP has specified custom importance weights (1=low, 10=high).
-Reflect these in severity decisions:
+The LP has specified custom importance weights (1=low, 10=high). Reflect these in severity decisions:
 {json.dumps(scoring_weights, indent=2)}
 </lp_scoring_weights>""" if scoring_weights else ""}
 Apply the LP risk framework. For each flag:
@@ -189,24 +168,10 @@ Return ONLY a JSON object:
 }}
 """
 
-    print(f"[Risk Flagging] Calling {client.provider} ({client.model})...")
-    result = client.complete_json(
+    print(f"[Risk Flagging] Calling {client.provider} ({client.model}) with extended thinking...")
+    return client.complete_json(
         system=SYSTEM_PROMPT,
         user=user_message,
-        max_tokens=12000,
+        max_tokens=8000,
+        thinking_tokens=6000,
     )
-
-    errors = validate_risk_report(result)
-    if errors:
-        print(f"[Risk Flagging] Schema validation failed ({len(errors)} errors) — retrying...")
-        retry_message = user_message + format_validation_errors(errors)
-        result = client.complete_json(
-            system=SYSTEM_PROMPT,
-            user=retry_message,
-            max_tokens=12000,
-        )
-        remaining = validate_risk_report(result)
-        if remaining:
-            print(f"[Risk Flagging] Retry still has {len(remaining)} schema errors: {remaining}")
-
-    return result

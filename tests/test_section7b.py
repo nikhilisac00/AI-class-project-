@@ -8,6 +8,7 @@ from unittest.mock import patch, MagicMock
 from tools.edgar_client import (
     parse_section_7b,
     _find_section_7b_start,
+    _normalize_pdf_text,
     _parse_fund_block,
     fetch_private_funds_section7b,
 )
@@ -105,6 +106,51 @@ class TestFindSection7bStart:
 
     def test_returns_negative_when_missing(self):
         assert _find_section_7b_start("no section here") < 0
+
+
+class TestNormalizePdfText:
+    """Tests for _normalize_pdf_text() — pypdf artifact fixes."""
+
+    def test_removes_page_number_lines(self):
+        text = "Some content\n  42  \nMore content"
+        result = _normalize_pdf_text(text)
+        assert "42" not in result.split("\n")[1].strip() or "42" not in result
+
+    def test_rejoins_wrapped_label_phrase(self):
+        text = "Name of the private\nfund: Alpha Fund LP"
+        result = _normalize_pdf_text(text)
+        assert "Name of the private fund:" in result
+
+    def test_rejoins_gross_asset_value(self):
+        text = "Gross asset\nvalue: $1.2B"
+        result = _normalize_pdf_text(text)
+        assert "Gross asset value:" in result
+
+    def test_collapses_value_on_next_line(self):
+        text = "Name of the private fund:\n  Alpha Opportunities Fund LP"
+        result = _normalize_pdf_text(text)
+        assert "Name of the private fund: Alpha Opportunities Fund LP" in result
+
+    def test_parse_section7b_handles_wrapped_labels(self):
+        """End-to-end: parse_section_7b should extract fund from wrapped-label PDF text."""
+        wrapped_text = """
+SECTION 7.B. Private Fund Reporting
+
+Name of the private
+fund: Wrapped Label Fund LP
+Type of private fund: Hedge Fund
+Gross asset
+value: $500,000,000
+beneficial owners: 80
+Is the private fund a feeder fund: No
+
+SECTION 8.
+"""
+        funds = parse_section_7b(wrapped_text)
+        assert len(funds) == 1
+        assert funds[0]["fund_name"] == "Wrapped Label Fund LP"
+        assert funds[0]["gross_asset_value"] == 500_000_000
+        assert funds[0]["number_of_beneficial_owners"] == 80
 
 
 class TestParseFundBlock:

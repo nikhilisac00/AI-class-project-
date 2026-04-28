@@ -180,6 +180,45 @@ def fetch_adv_pdf_text(crd: str) -> str | None:
         return None
 
 
+# Known field label phrases in Section 7.B — used by the normalizer to rejoin
+# labels that pypdf splits across lines due to column/wrapping layouts.
+_SECTION_7B_LABELS = [
+    "Name of the private fund",
+    "Type of private fund",
+    "Gross asset value",
+    "Number of beneficial owners",
+    "Is the private fund a feeder fund",
+    "Regulatory assets under management",
+]
+
+
+def _normalize_pdf_text(text: str) -> str:
+    """
+    Pre-process PDF-extracted text to fix common pypdf layout artifacts
+    before Section 7.B regex parsing.
+
+    Three passes:
+    1. Remove standalone page-number lines (only digits on a line).
+    2. Rejoin known field label phrases that pypdf split across a line break
+       e.g. "Name of the private\nfund:" → "Name of the private fund:"
+    3. Collapse "label:\n  value" patterns into "label: value" so the value
+       lands on the same line as the label colon.
+    """
+    # Pass 1: remove bare page numbers
+    text = re.sub(r"(?m)^\s*\d{1,4}\s*$", "", text)
+
+    # Pass 2: rejoin wrapped label phrases
+    for phrase in _SECTION_7B_LABELS:
+        words = phrase.split()
+        pat = r"\b" + r"\s+".join(re.escape(w) for w in words) + r"\b"
+        text = re.sub(pat, phrase, text, flags=re.IGNORECASE)
+
+    # Pass 3: collapse ":\n<whitespace>value" → ": value"
+    text = re.sub(r":\s*\n[ \t]+", ": ", text)
+
+    return text
+
+
 def parse_section_7b(text: str) -> list[dict]:
     """
     Extract private fund data from ADV Part 1A Section 7.B PDF text.
@@ -196,6 +235,9 @@ def parse_section_7b(text: str) -> list[dict]:
     """
     if not text:
         return []
+
+    # Normalize before any regex work so patterns are robust to pypdf artifacts
+    text = _normalize_pdf_text(text)
 
     funds: list[dict] = []
 
@@ -304,8 +346,11 @@ def _parse_fund_block(block: str) -> dict:
                 break
 
     # Gross asset value
+    # Use [ \t]* (not \s*) before the suffix so a newline doesn't cause [MB]
+    # to greedily match the first letter of the next field (e.g. "b" in "beneficial").
+    # Require \b after [MB] so it only matches a standalone letter, not mid-word.
     gav_match = re.search(
-        r"(?i)(?:gross\s+asset\s+value|total\s+assets?)\s*[\$:]?\s*\$?\s*([\d,]+(?:\.\d+)?)\s*(million|billion|[MB])?",
+        r"(?i)(?:gross\s+asset\s+value|total\s+assets?)\s*[\$:]?\s*\$?\s*([\d,]+(?:\.\d+)?)[ \t]*(million|billion|[MB]\b)?",
         block,
     )
     if gav_match:
@@ -337,9 +382,9 @@ def _parse_fund_block(block: str) -> dict:
     if feeder_match:
         fund["is_feeder_fund"] = feeder_match.group(1).strip().lower() == "yes"
 
-    # Regulatory AUM
+    # Regulatory AUM — same [ \t]* + \b fix as gross asset value above
     aum_match = re.search(
-        r"(?i)(?:regulatory\s+assets?\s+under\s+management|RAUM)\s*[\$:]?\s*\$?\s*([\d,]+(?:\.\d+)?)\s*(million|billion|[MB])?",
+        r"(?i)(?:regulatory\s+assets?\s+under\s+management|RAUM)\s*[\$:]?\s*\$?\s*([\d,]+(?:\.\d+)?)[ \t]*(million|billion|[MB]\b)?",
         block,
     )
     if aum_match:
@@ -473,18 +518,10 @@ def extract_adv_summary(iacontent: dict, search_hit: dict = None) -> dict:
         "min_account_size": None,   # Not in IAPD API — in ADV Part 2
         "key_personnel": [],        # Not in IAPD API — in Schedule A/B
 
-        # Section 7.B private funds — populated by fetch_private_funds_section7b()
+        # Section 7.B private funds — populated by data_ingestion._fetch_section7b()
+        # as a parallel task so the PDF download doesn't block extract_adv_summary.
         "private_funds_section7b": [],
     }
-
-    # Fetch Section 7.B private fund data from ADV PDF
-    crd = basic.get("firmId")
-    if crd:
-        try:
-            section7b = fetch_private_funds_section7b(str(crd))
-            summary["private_funds_section7b"] = section7b
-        except Exception as exc:
-            print(f"[EDGAR] Section 7.B fetch failed: {exc}")
 
     return summary
 

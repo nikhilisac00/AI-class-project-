@@ -21,6 +21,7 @@ from tools.edgar_client import (
     extract_adv_summary,
     search_13f_filings,
     search_13f_by_cik,
+    fetch_private_funds_section7b,
 )
 from tools.fred_client import get_market_context, latest_value
 from tools.raw_data_cache import load_raw_data, save_raw_data
@@ -194,7 +195,20 @@ def run(firm_input: str, fred_api_key: str = None,
         except (ValueError, KeyError, TypeError, RuntimeError, OSError) as e:
             return "enforcement", {}, f"Enforcement check failed: {e}"
 
-    tasks = [_fetch_13f, _fetch_fred, _fetch_adv, _fetch_funds, _fetch_enforcement]
+    def _fetch_section7b():
+        _crd = raw_data.get("crd")
+        if not _crd:
+            return "_section7b", [], None
+        print(f"[Ingestion] Downloading ADV Part 1A PDF for Section 7.B (CRD {_crd})")
+        try:
+            funds = fetch_private_funds_section7b(str(_crd))
+            note = f"Section 7.B: {len(funds)} private fund(s) parsed from ADV PDF"
+            print(f"[Ingestion] {note}")
+            return "_section7b", funds, None
+        except Exception as e:
+            return "_section7b", [], f"Section 7.B fetch failed: {e}"
+
+    tasks = [_fetch_13f, _fetch_fred, _fetch_adv, _fetch_funds, _fetch_enforcement, _fetch_section7b]
     print(f"[Ingestion] Running {len(tasks)} data pulls in parallel...")
 
     # Bug #11: use futures_wait with timeout so a hung API call doesn't block forever.
@@ -222,6 +236,13 @@ def run(firm_input: str, fred_api_key: str = None,
                 f"Task {task_name} timed out after {_PARALLEL_TIMEOUT}s — data unavailable"
             )
             print(f"[Ingestion] WARNING: {task_name} timed out")
+
+    # ── Merge Section 7.B results into adv_summary ───────────────────────────
+    # _fetch_section7b writes to a temporary "_section7b" key so it doesn't
+    # conflict with the existing raw_data schema. Merge it here then remove.
+    section7b_funds = raw_data.pop("_section7b", [])
+    if isinstance(raw_data.get("adv_summary"), dict):
+        raw_data["adv_summary"]["private_funds_section7b"] = section7b_funds or []
 
     # ── Step 5b: Upgrade 13F list using resolved CIK (post-parallel) ────────
     # ADV enrichment resolves the CIK via EFTS — more accurate than name search.
