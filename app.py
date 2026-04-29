@@ -851,12 +851,12 @@ if run_button:
 
         status_box.info("⏳ Step 5b — Fact Checker verifying memo claims against source data...")
         fact_check = fact_checker_agent.run(
-            memo=memo,
+            memo_text=memo,
             raw_data=raw_data,
             analysis=analysis,
             risk_report=risk_report,
+            scorecard={},
             client=client,
-            news_report=news_report,
         )
         step[0] += 1
         progress_bar.progress(_pct(step[0]), text="Fact check complete")
