@@ -60,6 +60,52 @@ See [`docs/research-brief.md`](docs/research-brief.md) for full architecture and
 
 ---
 
+## Agents
+
+The pipeline is composed of 14 specialized agents organized into four stages:
+
+### Orchestration
+
+| Agent | File | Description |
+|---|---|---|
+| **Research Director** | `agents/research_director.py` | Final quality gate — reads all prior agent outputs, challenges inconsistencies, flags gaps the other agents missed, and confirms or overrides the IC recommendation |
+
+### Data Collection
+
+| Agent | File | Description |
+|---|---|---|
+| **Data Ingestion** | `agents/data_ingestion.py` | Orchestrates all data pulls for a given firm (EDGAR, IAPD, FRED, ADV PDF); steps 3–7 run in parallel via `ThreadPoolExecutor` |
+| **Firm Resolver** | `agents/firm_resolver.py` | Resolves a rough user input (e.g. "Blackstone") to the correct SEC-registered entity name and CRD number using fuzzy + token scoring — no LLM |
+| **Fund Discovery** | `agents/fund_discovery.py` | Agentic — GPT-4o uses tool-use to autonomously search EDGAR Form D filings, web, and IAPD relying advisors, trying name variants until confident it has found all discoverable funds |
+
+### Analysis
+
+| Agent | File | Description |
+|---|---|---|
+| **Fund Analysis** | `agents/fund_analysis.py` | Agentic RAG — GPT-4o issues 6–10 targeted `retrieve()` calls per pass to pull only relevant data chunks, then produces structured JSON (strategy, fees, personnel, 13F holdings) |
+| **Comparables** | `agents/comparables.py` | Finds peer investment managers from the IAPD universe and builds a side-by-side benchmarking table — no LLM, pure IAPD search + scoring |
+| **Comparison** | `agents/comparison.py` | Side-by-side comparison of two managers across all LP due diligence dimensions with a per-dimension winner recommendation |
+| **Portfolio Fit** | `agents/portfolio_fit.py` | Scores how well a candidate manager fits an LP's existing portfolio across strategy overlap, geographic diversification, vintage exposure, size fit, and risk budget |
+
+### Risk & Compliance
+
+| Agent | File | Description |
+|---|---|---|
+| **Risk Flagging** | `agents/risk_flagging.py` | Reasoning agent — GPT-4o contextualizes risk flags (enforcement history, regulatory disclosures, pattern recognition) using an LP risk framework |
+| **Enforcement** | `agents/enforcement.py` | Agentic — GPT-4o autonomously investigates regulatory history via targeted web search and EDGAR, adapting queries based on what it finds |
+| **News Research** | `agents/news_research.py` | Agentic — GPT-4o loops through web searches, adapting queries based on findings, and stops when it has sufficient coverage |
+| **Fact Checker** | `agents/fact_checker.py` | Deterministic checks comparing raw API data against LLM-generated analysis to detect hallucinations, transcription errors, and data drift before the memo reaches the IC |
+
+### Output
+
+| Agent | File | Description |
+|---|---|---|
+| **IC Scorecard** | `agents/ic_scorecard.py` | Synthesizes all prior agent outputs into a structured IC verdict: recommendation (PROCEED / REQUEST MORE INFO / PASS), confidence, dimension scores, and minimum diligence checklist |
+| **Memo Generation** | `agents/memo_generation.py` | The only agent that produces narrative prose — synthesizes all structured JSON outputs into the final IC-ready due diligence memo in markdown |
+
+
+---
+
 ## Data Sources
 
 | Source | What It Provides | Auth |
