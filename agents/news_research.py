@@ -15,8 +15,30 @@ Output:
   findings, sources_consulted, queries_used, coverage_gaps, errors
 """
 
+import json
+import re
+
 from tools.llm_client import LLMClient
 from tools import web_search_client
+
+def _extract_json_from_text(text: str) -> dict | None:
+    """Try to pull a JSON object out of a prose/markdown LLM response."""
+    # Try fenced code block first: ```json ... ```
+    fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if fence_match:
+        try:
+            return json.loads(fence_match.group(1))
+        except json.JSONDecodeError:
+            pass
+    # Try the outermost { ... } span
+    brace_match = re.search(r"(\{.*\})", text, re.DOTALL)
+    if brace_match:
+        try:
+            return json.loads(brace_match.group(1))
+        except json.JSONDecodeError:
+            pass
+    return None
+
 
 # Domains that are not financial news sources — filter before sending to LLM
 _NON_FINANCIAL_DOMAINS = frozenset({
@@ -259,8 +281,16 @@ def run(
         return news_report
 
     if "parse_error" in result:
-        news_report["errors"].append(f"Agent output parse error: {result['parse_error'][:200]}")
-        return news_report
+        # The LLM sometimes wraps JSON in markdown prose — try to salvage it.
+        raw = result.get("_raw_text", "") or result.get("parse_error", "")
+        extracted = _extract_json_from_text(raw)
+        if extracted:
+            result = extracted
+        else:
+            news_report["errors"].append(
+                f"Agent output parse error: {result['parse_error'][:200]}"
+            )
+            return news_report
 
     sources = result.get("sources_consulted", [])
     queries = result.get("queries_used", [])

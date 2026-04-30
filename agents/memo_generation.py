@@ -44,7 +44,11 @@ def _build_context(
     news_report: dict,
     today: str,
 ) -> str:
-    """Assemble all structured inputs into a single context block for the writer."""
+    """Assemble all structured inputs into a single context block for the writer.
+
+    No size trimming here — the harness (LLMClient._enforce_budget) handles
+    token budget enforcement for all agents uniformly.
+    """
 
     adv = raw_data.get("adv_summary", {})
     fd  = raw_data.get("fund_discovery", {})

@@ -14,6 +14,7 @@ from datetime import datetime
 
 import openai
 
+from tools.context_prep import trim_json_arrays
 from tools.trace import trace_llm_call
 
 # Default timeout for all OpenAI API calls (seconds). Bug #20.
@@ -23,12 +24,19 @@ _API_TIMEOUT = 90
 class LLMClient:
     """Thin wrapper around the OpenAI API for the agent pipeline."""
 
-    def __init__(self, api_key: str):
+    # Rough characters-per-token ratio for estimation (GPT-4o averages ~3.5-4)
+    _CHARS_PER_TOKEN = 4
+    # Default max input tokens — leaves room for output within a 30k TPM cap.
+    # Can be overridden via the tpm_limit parameter.
+    _DEFAULT_TPM_LIMIT = 30_000
+
+    def __init__(self, api_key: str, tpm_limit: int | None = None):
         self._client = openai.OpenAI(api_key=api_key, timeout=_API_TIMEOUT)
         self.provider = "openai"
         self.model = "gpt-4o"
         self._trace: list[dict] = []
         self._current_agent: str | None = None
+        self._tpm_limit = tpm_limit or self._DEFAULT_TPM_LIMIT
 
     def _record(self, response, latency_ms: int) -> None:
         """Append one trace row after each successful API call."""
@@ -49,13 +57,53 @@ class LLMClient:
     def reset_trace(self) -> None:
         self._trace.clear()
 
+    # ── Context budget enforcement ──────────────────────────────────────────
+
+    def _estimate_tokens(self, text: str) -> int:
+        """Rough token count estimate from character length."""
+        return max(1, len(text) // self._CHARS_PER_TOKEN)
+
+    def _enforce_budget(self, system: str, user: str,
+                        max_tokens: int) -> tuple[str, str]:
+        """Ensure the request fits within the TPM limit.
+
+        Uses structured trimming: finds the largest JSON arrays in the
+        user message and compresses them (keep first N + count) rather
+        than blindly truncating. This preserves all sections of the prompt
+        while reducing only the heaviest data (13F holdings, fund lists, etc.).
+
+        Returns (system, user) — possibly with user compressed.
+        The harness owns the token budget; individual agents should not need
+        to worry about prompt size.
+        """
+        sys_tokens = self._estimate_tokens(system)
+        user_tokens = self._estimate_tokens(user)
+        total = sys_tokens + user_tokens + max_tokens
+
+        if total <= self._tpm_limit:
+            return system, user
+
+        # Budget available for the user message
+        budget_for_user = max(500, self._tpm_limit - sys_tokens - max_tokens)
+        max_user_chars = budget_for_user * self._CHARS_PER_TOKEN
+
+        original_tokens = user_tokens
+        user = trim_json_arrays(user, max_user_chars)
+
+        trimmed_tokens = self._estimate_tokens(user)
+        print(
+            f"[LLMClient] Context budget: compressed user prompt from "
+            f"~{original_tokens} to ~{trimmed_tokens} tokens "
+            f"(TPM limit: {self._tpm_limit}, max_tokens: {max_tokens})"
+        )
+        return system, user
+
     # ── Single-turn completions ──────────────────────────────────────────────
 
     def complete(self, system: str, user: str,
                  max_tokens: int = 8000, step_name: str = "", **_) -> str:
         """Return a plain-text completion."""
-        # Bug #3: catch auth/rate-limit errors explicitly so mid-run failures
-        # surface clearly rather than propagating as opaque KeyError/AttributeError.
+        system, user = self._enforce_budget(system, user, max_tokens)
         t0 = time.perf_counter()
         success = True
         response = None
@@ -164,6 +212,9 @@ class LLMClient:
         """
         openai_tools = self._to_openai_tools(tools)
 
+        system, initial_message = self._enforce_budget(
+            system, initial_message, max_tokens,
+        )
         messages = [
             {"role": "system", "content": system},
             {"role": "user", "content": initial_message},
@@ -225,7 +276,7 @@ class LLMClient:
             try:
                 return self._parse_json(text)
             except (json.JSONDecodeError, ValueError) as exc:
-                return {"parse_error": str(exc)}
+                return {"parse_error": str(exc), "_raw_text": text}
 
         # Exhausted iterations
         return {"parse_error": f"Agent loop hit max iterations ({max_iterations})"}

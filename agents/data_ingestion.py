@@ -199,8 +199,12 @@ def run(firm_input: str, fred_api_key: str = None,
         if not _crd:
             return "_section7b", [], None
         print(f"[Ingestion] Downloading ADV Part 1A PDF for Section 7.B (CRD {_crd})")
+        import time as _time
+        # Give this task a soft deadline so parse_section_7b returns partial
+        # results instead of being killed with nothing.
+        _deadline = _time.monotonic() + 200  # seconds
         try:
-            funds = fetch_private_funds_section7b(str(_crd))
+            funds = fetch_private_funds_section7b(str(_crd), deadline=_deadline)
             note = f"Section 7.B: {len(funds)} private fund(s) parsed from ADV PDF"
             print(f"[Ingestion] {note}")
             return "_section7b", funds, None
@@ -211,7 +215,8 @@ def run(firm_input: str, fred_api_key: str = None,
     print(f"[Ingestion] Running {len(tasks)} data pulls in parallel...")
 
     # Bug #11: use futures_wait with timeout so a hung API call doesn't block forever.
-    _PARALLEL_TIMEOUT = 120  # seconds
+    # 240s covers the 90s HTTP timeout in fetch_adv_pdf_text + PDF parsing + slow SEC servers.
+    _PARALLEL_TIMEOUT = 240  # seconds
     with ThreadPoolExecutor(max_workers=len(tasks)) as pool:
         futures = {pool.submit(_with_semaphore(t)): t.__name__ for t in tasks}
         done, not_done = futures_wait(futures, timeout=_PARALLEL_TIMEOUT)
@@ -227,14 +232,25 @@ def run(firm_input: str, fred_api_key: str = None,
             except Exception as e:
                 raw_data["errors"].append(f"Task {task_name} failed: {e}")
 
-        # Handle tasks that timed out (not_done) — Bug #11
+        # Handle tasks that timed out — give a short grace period then
+        # accept whatever partial result the task managed to produce.
+        _GRACE_PERIOD = 15  # seconds
         for future in not_done:
             task_name = futures[future]
-            future.cancel()
-            raw_data["errors"].append(
-                f"Task {task_name} timed out after {_PARALLEL_TIMEOUT}s — data unavailable"
-            )
-            print(f"[Ingestion] WARNING: {task_name} timed out")
+            try:
+                key, value, err = future.result(timeout=_GRACE_PERIOD)
+                raw_data[key] = value
+                note = (f"Task {task_name} finished in grace period"
+                        + (f" ({err})" if err else ""))
+                raw_data["errors"].append(note)
+                print(f"[Ingestion] {note}")
+            except Exception:
+                future.cancel()
+                raw_data["errors"].append(
+                    f"Task {task_name} timed out after {_PARALLEL_TIMEOUT + _GRACE_PERIOD}s"
+                    f" — data unavailable"
+                )
+                print(f"[Ingestion] WARNING: {task_name} timed out")
 
     # ── Merge Section 7.B results into adv_summary ───────────────────────────
     # _fetch_section7b writes to a temporary "_section7b" key so it doesn't

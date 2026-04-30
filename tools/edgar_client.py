@@ -219,7 +219,7 @@ def _normalize_pdf_text(text: str) -> str:
     return text
 
 
-def parse_section_7b(text: str) -> list[dict]:
+def parse_section_7b(text: str, deadline: float | None = None) -> list[dict]:
     """
     Extract private fund data from ADV Part 1A Section 7.B PDF text.
 
@@ -230,6 +230,9 @@ def parse_section_7b(text: str) -> list[dict]:
       - Number of beneficial owners
       - Whether the fund is a feeder fund
       - Regulatory AUM attributable to the fund
+
+    If *deadline* (``time.monotonic()`` timestamp) is provided, parsing
+    stops early and returns whatever funds were successfully parsed so far.
 
     Returns a list of dicts, one per fund. Fields are None when not found.
     """
@@ -264,6 +267,9 @@ def parse_section_7b(text: str) -> list[dict]:
     )
 
     for block in fund_blocks:
+        if deadline and time.monotonic() > deadline:
+            print(f"[EDGAR] Section 7.B deadline reached — returning {len(funds)} fund(s) parsed so far")
+            break
         if len(block.strip()) < 30:
             continue
         fund = _parse_fund_block(block)
@@ -403,15 +409,18 @@ def _parse_fund_block(block: str) -> dict:
     return fund
 
 
-def fetch_private_funds_section7b(crd: str) -> list[dict]:
+def fetch_private_funds_section7b(crd: str, deadline: float | None = None) -> list[dict]:
     """
     High-level function: download ADV PDF for a CRD and parse Section 7.B.
     Returns list of private fund dicts, or empty list on failure.
+
+    If *deadline* (a ``time.monotonic()`` timestamp) is provided, parsing
+    stops early and returns whatever funds were parsed so far.
     """
     text = fetch_adv_pdf_text(crd)
     if not text:
         return []
-    return parse_section_7b(text)
+    return parse_section_7b(text, deadline=deadline)
 
 
 def extract_adv_summary(iacontent: dict, search_hit: dict = None) -> dict:
