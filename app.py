@@ -2597,39 +2597,56 @@ Be direct, concise, and professional. No firm has been analyzed yet in this sess
                            key="run_firm_b")
 
         if _run_b and _b_name_input.strip():
-            with st.spinner(f"Running mini-pipeline for {_b_name_input.strip()}..."):
-                try:
-                    _client_b = make_client(openai_key)
-                    _b_candidates = resolver_agent.resolve(
-                        _b_name_input.strip(), tavily_key=tavily_key or None, max_candidates=1
-                    )
-                    _b_firm = _b_candidates[0] if _b_candidates else None
-                    _b_crd  = (_b_firm or {}).get("crd", _b_name_input.strip())
-                    _b_raw  = ingestion_agent.run(
-                        _b_crd,
-                        fred_api_key=fred_key or None,
-                        website=None,
-                        client=_client_b,
-                        tavily_key=tavily_key or None,
-                    )
-                    _b_analysis = analysis_agent.run(_b_raw, _client_b)
-                    _b_risk     = risk_agent.run(_b_analysis, _b_raw, _client_b,
-                                                 scoring_weights=scoring_weights)
-                    _b_scorecard = scorecard_agent.run(_b_analysis, _b_risk, _b_raw, _client_b)
-                    _b_firm_name = (
-                        (_b_analysis or {}).get("firm_overview", {}).get("name")
-                        or (_b_firm or {}).get("firm_name", _b_name_input.strip())
-                    )
-                    st.session_state.firm_b_result = {
-                        "firm_name": _b_firm_name,
-                        "raw_data": _b_raw,
-                        "analysis": _b_analysis,
-                        "risk_report": _b_risk,
-                        "scorecard": _b_scorecard,
-                    }
-                    st.session_state.comparison_result = {}
-                except Exception as _e:
-                    st.error(f"Firm B analysis failed: {_e}")
+            _b_status = st.empty()
+            _b_progress = st.progress(0, text="Starting Firm B analysis...")
+            try:
+                _b_status.info("Step 1/4 — Resolving firm name via IAPD...")
+                _client_b = make_client(openai_key)
+                _b_candidates = resolver_agent.resolve(
+                    _b_name_input.strip(), tavily_key=tavily_key or None, max_candidates=1
+                )
+                _b_firm = _b_candidates[0] if _b_candidates else None
+                _b_crd  = (_b_firm or {}).get("crd", _b_name_input.strip())
+                _b_progress.progress(10, text="Firm resolved")
+
+                _b_status.info(f"Step 2/4 — Ingesting data for CRD {_b_crd}...")
+                _b_raw  = ingestion_agent.run(
+                    _b_crd,
+                    fred_api_key=fred_key or None,
+                    website=None,
+                    client=_client_b,
+                    tavily_key=tavily_key or None,
+                )
+                _b_progress.progress(35, text="Data ingestion complete")
+
+                _b_status.info("Step 3/4 — Running fund analysis (GPT-4o)...")
+                _b_analysis = analysis_agent.run(_b_raw, _client_b)
+                _b_progress.progress(60, text="Analysis complete")
+
+                _b_status.info("Step 4/4 — Risk flagging + scorecard (GPT-4o)...")
+                _b_risk     = risk_agent.run(_b_analysis, _b_raw, _client_b,
+                                             scoring_weights=scoring_weights)
+                _b_scorecard = scorecard_agent.run(_b_analysis, _b_risk, _b_raw, _client_b)
+                _b_progress.progress(100, text="Firm B analysis complete")
+
+                _b_firm_name = (
+                    (_b_analysis or {}).get("firm_overview", {}).get("name")
+                    or (_b_firm or {}).get("firm_name", _b_name_input.strip())
+                )
+                st.session_state.firm_b_result = {
+                    "firm_name": _b_firm_name,
+                    "raw_data": _b_raw,
+                    "analysis": _b_analysis,
+                    "risk_report": _b_risk,
+                    "scorecard": _b_scorecard,
+                }
+                st.session_state.comparison_result = {}
+                _b_status.success(f"Firm B analyzed: **{_b_firm_name}**")
+            except Exception as _e:
+                _b_progress.empty()
+                _b_status.empty()
+                st.error(f"Firm B analysis failed: {_e}")
+                st.exception(_e)
 
         _b_res = st.session_state.get("firm_b_result", {})
         if _b_res.get("firm_name"):

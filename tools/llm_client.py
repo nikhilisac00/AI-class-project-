@@ -98,6 +98,47 @@ class LLMClient:
         )
         return system, user
 
+    # ── Retry logic ────────────────────────────────────────────────────────
+
+    _MAX_RETRIES = 3
+    _RETRY_DELAYS = [30, 60, 90]  # seconds — escalating backoff
+
+    def _call_with_retry(self, model: str, messages: list[dict],
+                         max_tokens: int, step_name: str = "",
+                         **kwargs) -> "openai.ChatCompletion":
+        """Make an OpenAI API call with retry on rate limits.
+
+        Retries up to _MAX_RETRIES times with escalating backoff.
+        Raises RuntimeError on auth errors (no retry).
+        """
+        for attempt in range(self._MAX_RETRIES + 1):
+            t0 = time.perf_counter()
+            try:
+                return self._client.chat.completions.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    messages=messages,
+                    **kwargs,
+                )
+            except openai.AuthenticationError as e:
+                self._emit_trace(step_name, t0, None, False)
+                raise RuntimeError(
+                    f"[LLMClient] OpenAI API key is invalid or revoked: {e}"
+                ) from e
+            except openai.RateLimitError as e:
+                if attempt >= self._MAX_RETRIES:
+                    self._emit_trace(step_name, t0, None, False)
+                    raise RuntimeError(
+                        f"[LLMClient] Rate limit exceeded after {self._MAX_RETRIES} "
+                        f"retries: {e}"
+                    ) from e
+                delay = self._RETRY_DELAYS[min(attempt, len(self._RETRY_DELAYS) - 1)]
+                print(
+                    f"[LLMClient] Rate limit hit (attempt {attempt + 1}/"
+                    f"{self._MAX_RETRIES}) — waiting {delay}s: {e}"
+                )
+                time.sleep(delay)
+
     # ── Single-turn completions ──────────────────────────────────────────────
 
     def complete(self, system: str, user: str,
@@ -105,38 +146,14 @@ class LLMClient:
         """Return a plain-text completion."""
         system, user = self._enforce_budget(system, user, max_tokens)
         t0 = time.perf_counter()
-        success = True
-        response = None
-        try:
-            response = self._client.chat.completions.create(
-                model=self.model,
-                max_tokens=max_tokens,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-            )
-        except openai.AuthenticationError as e:
-            success = False
-            self._emit_trace(step_name, t0, response, success)
-            raise RuntimeError(
-                f"[LLMClient] OpenAI API key is invalid or revoked: {e}"
-            ) from e
-        except openai.RateLimitError as e:
-            print(f"[LLMClient] Rate limit hit — waiting 60s before retry: {e}")
-            time.sleep(60)
-            t0 = time.perf_counter()
-            response = self._client.chat.completions.create(
-                model=self.model,
-                max_tokens=max_tokens,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-            )
+        response = self._call_with_retry(
+            self.model,
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            max_tokens, step_name=step_name,
+        )
         latency_ms = int((time.perf_counter() - t0) * 1000)
         self._record(response, latency_ms)
-        self._emit_trace(step_name, t0, response, success)
+        self._emit_trace(step_name, t0, response, True)
         content = (response.choices[0].message.content or "").strip()
         finish_reason = response.choices[0].finish_reason
         if finish_reason == "length":
@@ -151,24 +168,7 @@ class LLMClient:
 
     def chat(self, messages: list[dict], max_tokens: int = 2000) -> str:
         """Fast conversational completion using gpt-4o-mini."""
-        try:
-            response = self._client.chat.completions.create(
-                model="gpt-4o-mini",
-                max_tokens=max_tokens,
-                messages=messages,
-            )
-        except openai.AuthenticationError as e:
-            raise RuntimeError(
-                f"[LLMClient] OpenAI API key is invalid or revoked: {e}"
-            ) from e
-        except openai.RateLimitError as e:
-            print(f"[LLMClient] Rate limit hit — waiting 60s before retry: {e}")
-            time.sleep(60)
-            response = self._client.chat.completions.create(
-                model="gpt-4o-mini",
-                max_tokens=max_tokens,
-                messages=messages,
-            )
+        response = self._call_with_retry("gpt-4o-mini", messages, max_tokens)
         return (response.choices[0].message.content or "").strip()
 
     def chat_stream(self, messages: list[dict], max_tokens: int = 2000):
@@ -222,22 +222,11 @@ class LLMClient:
 
         for iteration in range(max_iterations):
             t0 = time.perf_counter()
-            try:
-                response = self._client.chat.completions.create(
-                    model=self.model,
-                    max_tokens=max_tokens,
-                    messages=messages,
-                    tools=openai_tools if openai_tools else None,
-                )
-            except openai.AuthenticationError as e:
-                self._emit_trace(step_name, t0, None, False)
-                raise RuntimeError(
-                    f"[LLMClient] OpenAI API key is invalid or revoked: {e}"
-                ) from e
-            except openai.RateLimitError as e:
-                print(f"[LLMClient] Rate limit hit in agent loop — waiting 60s: {e}")
-                time.sleep(60)
-                continue
+            response = self._call_with_retry(
+                self.model, messages, max_tokens,
+                step_name=step_name,
+                tools=openai_tools if openai_tools else None,
+            )
             latency_ms = int((time.perf_counter() - t0) * 1000)
             self._record(response, latency_ms)
             self._emit_trace(step_name, t0, response, True)
