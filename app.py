@@ -56,7 +56,7 @@ html, body, [class*="css"] {
     border-right: 1px solid #141e30 !important;
 }
 [data-testid="stSidebar"] * {
-    color: #94a3b8 !important;
+    color: #b0bfd0 !important;
 }
 [data-testid="stSidebar"] hr {
     border-color: #1a2540 !important;
@@ -65,7 +65,7 @@ html, body, [class*="css"] {
     font-size: 0.7rem !important;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #64748b !important;
+    color: #8b9bb5 !important;
 }
 
 /* ── Metric cards ─────────────────────────────────────────────── */
@@ -82,7 +82,7 @@ html, body, [class*="css"] {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #64748b;
+    color: #8b9bb5;
     margin-bottom: 4px;
 }
 .metric-card .metric-value {
@@ -93,7 +93,7 @@ html, body, [class*="css"] {
 }
 .metric-card .metric-sub {
     font-size: 0.62rem;
-    color: #64748b;
+    color: #8b9bb5;
     margin-top: 2px;
 }
 .metric-card.risk-card {
@@ -116,7 +116,7 @@ html, body, [class*="css"] {
 }
 .firm-header .firm-meta {
     font-size: 0.72rem;
-    color: #64748b;
+    color: #8b9bb5;
     margin-top: 4px;
 }
 
@@ -159,7 +159,7 @@ html, body, [class*="css"] {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #64748b;
+    color: #8b9bb5;
     margin-bottom: 4px;
 }
 
@@ -167,7 +167,7 @@ html, body, [class*="css"] {
 .sb-title {
     font-size: 0.72rem;
     font-weight: 700;
-    color: #94a3b8;
+    color: #b0bfd0;
     letter-spacing: 0.05em;
     text-transform: uppercase;
     padding: 10px 0 6px 0;
@@ -211,7 +211,7 @@ html, body, [class*="css"] {
     text-transform: uppercase !important;
     letter-spacing: 0.05em !important;
     padding: 6px 14px !important;
-    color: #94a3b8 !important;
+    color: #b0bfd0 !important;
 }
 
 /* ── Expanders ────────────────────────────────────────────────── */
@@ -230,7 +230,7 @@ hr { border-color: #1e293b !important; }
 /* ── Captions ─────────────────────────────────────────────────── */
 .stCaption, [data-testid="stCaptionContainer"] {
     font-size: 0.7rem !important;
-    color: #64748b !important;
+    color: #8b9bb5 !important;
 }
 
 /* ── Hero card ────────────────────────────────────────────────────────────── */
@@ -256,7 +256,7 @@ hr { border-color: #1e293b !important; }
     letter-spacing: -0.01em;
 }
 .hero-sub {
-    font-size: 0.65rem; color: #475569; margin-top: 1px;
+    font-size: 0.65rem; color: #7a8da3; margin-top: 1px;
     letter-spacing: 0.02em;
 }
 
@@ -276,20 +276,20 @@ hr { border-color: #1e293b !important; }
 }
 .sf-text { min-width: 0; }
 .sf-name { font-size: 0.7rem; font-weight: 600; white-space: nowrap; }
-.sf-hint { font-size: 0.6rem; opacity: 0.5; white-space: nowrap; }
+.sf-hint { font-size: 0.6rem; white-space: nowrap; }
 .sf-arrow { color: rgba(255,255,255,0.12); font-size: 0.85rem; padding: 0 6px; flex-shrink: 0; }
 .sf-step.s1 .sf-circle { background: rgba(59,130,246,0.15); color: #60a5fa; }
 .sf-step.s1 .sf-name   { color: #60a5fa; }
-.sf-step.s1 .sf-hint   { color: #334155; }
+.sf-step.s1 .sf-hint   { color: #6b7f96; }
 .sf-step.s2 .sf-circle { background: rgba(52,211,153,0.12); color: #34d399; }
 .sf-step.s2 .sf-name   { color: #34d399; }
-.sf-step.s2 .sf-hint   { color: #334155; }
+.sf-step.s2 .sf-hint   { color: #6b7f96; }
 .sf-step.s3 .sf-circle { background: rgba(251,191,36,0.12); color: #fbbf24; }
 .sf-step.s3 .sf-name   { color: #fbbf24; }
-.sf-step.s3 .sf-hint   { color: #334155; }
+.sf-step.s3 .sf-hint   { color: #6b7f96; }
 .sf-step.s4 .sf-circle { background: rgba(167,139,250,0.12); color: #a78bfa; }
 .sf-step.s4 .sf-name   { color: #a78bfa; }
-.sf-step.s4 .sf-hint   { color: #334155; }
+.sf-step.s4 .sf-hint   { color: #6b7f96; }
 
 /* ── Search section card ─────────────────────────────────────────────────── */
 .search-section {
@@ -302,7 +302,7 @@ hr { border-color: #1e293b !important; }
 .search-section-title {
     font-size: 0.62rem; font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.1em;
-    color: #64748b; margin-bottom: 8px;
+    color: #8b9bb5; margin-bottom: 8px;
 }
 [data-testid="stTextInput"] input {
     font-size: 0.88rem !important;
@@ -314,7 +314,7 @@ hr { border-color: #1e293b !important; }
     transition: all 0.2s ease !important;
 }
 [data-testid="stTextInput"] input::placeholder {
-    color: #475569 !important;
+    color: #7a8da3 !important;
 }
 [data-testid="stTextInput"] input:focus {
     border-color: #2563eb !important;
@@ -326,13 +326,13 @@ hr { border-color: #1e293b !important; }
 .chip-section-label {
     font-size: 0.6rem; font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.1em;
-    color: #475569; margin: 6px 0 4px 0;
+    color: #8b9bb5; margin: 6px 0 4px 0;
 }
 div[data-testid="column"] .stButton > button {
     background: transparent !important;
     border: 1px solid #1e293b !important;
     border-radius: 16px !important;
-    color: #94a3b8 !important;
+    color: #b0bfd0 !important;
     font-size: 0.65rem !important;
     font-weight: 500 !important;
     padding: 2px 12px !important;
@@ -359,23 +359,23 @@ div[data-testid="column"] .stButton > button:hover {
 .criteria-strip-title {
     font-size: 0.6rem; font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.1em;
-    color: #b8942f; margin-bottom: 6px;
+    color: #d4a537; margin-bottom: 6px;
 }
 .criteria-row {
     display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2px 14px;
 }
 .crit-item {
     display: flex; align-items: baseline; gap: 5px;
-    font-size: 0.68rem; color: #94a3b8; line-height: 1.5;
+    font-size: 0.68rem; color: #b0bfd0; line-height: 1.5;
 }
-.crit-dot { color: #b8942f; font-size: 0.6rem; flex-shrink: 0; }
+.crit-dot { color: #d4a537; font-size: 0.6rem; flex-shrink: 0; }
 
 /* ── Dark theme overrides for Streamlit containers ───────────────────────── */
 [data-testid="stContainer"], [data-testid="stVerticalBlock"] {
     color: #e2e8f0;
 }
 .stAlert { border-radius: 6px !important; }
-.stMarkdown p { color: #cbd5e1; }
+.stMarkdown p { color: #e2e8f0; }
 .stMarkdown strong { color: #f1f5f9; }
 .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 { color: #f1f5f9; }
 
