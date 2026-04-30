@@ -612,7 +612,6 @@ _EXAMPLE_FIRMS = [
 ]
 
 if not st.session_state.confirmed_firm:
-    st.markdown('<div class="search-section">', unsafe_allow_html=True)
     st.markdown('<div class="search-section-title">Search Investment Manager</div>', unsafe_allow_html=True)
 
     col_q, col_find = st.columns([6, 1])
@@ -661,7 +660,6 @@ if not st.session_state.confirmed_firm:
   </div>
 </div>
 """, unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)  # close search-section
 else:
     # Firm already confirmed — show minimal search bar for changing
     col_q, col_find = st.columns([5, 1])
