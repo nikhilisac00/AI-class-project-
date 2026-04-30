@@ -291,7 +291,7 @@ def _parse_13f_holdings(
 
 # ── 13F portfolio value (proxy AUM for public equity managers) ─────────────────
 
-import re as _re
+import re as _re  # noqa: E402
 
 _SUFFIX_RE = _re.compile(
     r"\b(LLC|LP|L\.P\.|LLP|L\.L\.C\.|Inc\.?|Corp\.?|Co\.?|Ltd\.?|"

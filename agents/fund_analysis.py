@@ -19,7 +19,6 @@ The reasoning step works through:
 - Whether the data picture is internally consistent
 """
 
-import json
 from datetime import date
 from tools.llm_client import LLMClient
 from tools.rag_index import RawDataIndex

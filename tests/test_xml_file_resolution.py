@@ -3,7 +3,7 @@ Tests for improved EDGAR XML file resolution (_xml_file_from_filing).
 All HTTP calls are mocked — no network required.
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from tools.adv_parser import (
     _xml_file_from_filing,

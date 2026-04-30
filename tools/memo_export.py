@@ -48,16 +48,15 @@ def to_pdf(memo_markdown: str, summary: str = "", firm_name: str = "") -> bytes:
     from reportlab.lib.pagesizes import LETTER
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import inch
-    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
+    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
     from reportlab.platypus import (
-        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-        HRFlowable, KeepTogether,
+        SimpleDocTemplate, Paragraph, Spacer,
+        HRFlowable,
     )
 
     # ── Palette ───────────────────────────────────────────────────────────────
     NAVY       = colors.HexColor("#0a2744")
     BLUE       = colors.HexColor("#1a5fa8")
-    LIGHT_BLUE = colors.HexColor("#dce8f5")
     DARK_GRAY  = colors.HexColor("#1e1e1e")
     MID_GRAY   = colors.HexColor("#555555")
     RULE_GRAY  = colors.HexColor("#cbd5e0")
@@ -116,9 +115,6 @@ def to_pdf(memo_markdown: str, summary: str = "", firm_name: str = "") -> bytes:
     H1 = ParagraphStyle("H1", fontName="Helvetica-Bold", fontSize=18,
                          textColor=NAVY, spaceAfter=4, spaceBefore=8, leading=22,
                          alignment=TA_CENTER)
-    H1_SUB = ParagraphStyle("H1Sub", fontName="Helvetica", fontSize=9,
-                              textColor=MID_GRAY, spaceAfter=6, leading=13,
-                              alignment=TA_CENTER)
     H2 = ParagraphStyle("H2", fontName="Helvetica-Bold", fontSize=11.5,
                          textColor=WHITE, spaceAfter=6, spaceBefore=14, leading=15,
                          leftIndent=6, backColor=TH_BG, borderPad=(4, 4, 4, 6))
@@ -257,8 +253,6 @@ def _make_table(rows, th_bg, alt_bg, th_fg, body_fg, rule_color):
     from reportlab.lib.units import inch
     from reportlab.platypus import Table, TableStyle, Paragraph
     from reportlab.lib.styles import ParagraphStyle
-    from reportlab.lib.enums import TA_LEFT
-
     cell_style = ParagraphStyle("Cell", fontName="Helvetica", fontSize=8.5,
                                  textColor=body_fg, leading=12)
     head_style = ParagraphStyle("Head", fontName="Helvetica-Bold", fontSize=8.5,
@@ -296,12 +290,10 @@ def _make_table(rows, th_bg, alt_bg, th_fg, body_fg, rule_color):
 def to_docx(memo_markdown: str, summary: str = "", firm_name: str = "") -> bytes:
     """Convert a markdown IC memo to a styled Word document."""
     from docx import Document
-    from docx.shared import Pt, RGBColor, Inches, Cm
+    from docx.shared import Pt, RGBColor, Cm
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
-    import copy
-
     doc = Document()
 
     # ── Page margins ─────────────────────────────────────────────────────────

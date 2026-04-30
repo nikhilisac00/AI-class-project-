@@ -12,8 +12,7 @@ the CIK resolved by ADV enrichment (more accurate than name-based search).
 """
 
 import threading
-import time
-from concurrent.futures import ThreadPoolExecutor, wait as futures_wait, FIRST_EXCEPTION
+from concurrent.futures import ThreadPoolExecutor, wait as futures_wait
 
 from tools.edgar_client import (
     search_adviser_by_name,

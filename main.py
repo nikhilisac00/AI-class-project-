@@ -40,7 +40,6 @@ import agents.comparables       as comparables_agent
 import agents.fact_checker       as fact_checker_agent
 from tools.llm_client     import make_client
 from tools.reconciliation import run_all as reconcile_sources
-from tools.schemas        import validate_analysis
 from tools.trace          import set_current_firm, set_run_id
 from tools.validation     import validate_firm_input
 from tools.pipeline_state import PipelineState

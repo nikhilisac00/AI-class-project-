@@ -3,7 +3,7 @@ Tests for ADV Section 7.B private fund parsing.
 All HTTP calls are mocked — no network required.
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from tools.edgar_client import (
     parse_section_7b,
