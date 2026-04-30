@@ -26,7 +26,7 @@ Given a fund name or CRD number, the system autonomously:
 3. **Parses ADV Section 7.B** — the authoritative GP-filed private fund list from the ADV Part 1A PDF, cross-referenced against Form D filings
 4. **Researches** news, enforcement actions, and personnel changes via web search
 5. **Flags risks**: regulatory disclosures, key person concentration, data gaps, structural issues
-6. **Generates** a structured 11-section memo formatted for IC review
+6. **Generates** a structured 12-section memo formatted for IC review
 7. **Scores** the manager on an IC scorecard with a PROCEED / REQUEST MORE INFO / PASS recommendation
 8. **Finds** comparable managers via IAPD peer search
 9. **Reviews** the full package through a Research Director quality gate
@@ -39,19 +39,25 @@ No hallucination. Every fact in the memo traces to a real API response. Missing 
 
 ```
 app.py / main.py
-├── Agent 1: Data Ingestion      → IAPD + EDGAR 13F XML + ADV PDF + FRED (no LLM)
-│   ├── ADV Section 7.B parser   → private fund list from ADV Part 1A PDF
-│   ├── 13F XML parser           → portfolio value, holdings, QoQ history
-│   ├── Brochure downloader      → ADV Part 2A text extraction (best-effort)
-│   └── Cross-source reconciler  → 13F vs ADV AUM · Form D vs Section 7.B
-├── Agent 2: Fund Analysis       → OpenAI GPT-4o (agentic RAG over raw data)
-├── Agent 3: News Research       → OpenAI GPT-4o + web search tool loop
-├── Agent 4: Risk Flagging       → OpenAI GPT-4o
-├── Agent 5: Memo Generation     → OpenAI GPT-4o
-├── Agent 6: Fact Checker        → deterministic + narrative verification
-├── Agent 7: IC Scorecard        → OpenAI GPT-4o
-├── Agent 8: Comparables         → IAPD peer search (no LLM)
-└── Agent 9: Research Director   → OpenAI GPT-4o (final quality gate)
+├── Firm Resolver              → fuzzy + token scoring to resolve firm name/CRD (no LLM)
+├── Data Ingestion             → IAPD + EDGAR 13F XML + ADV PDF + FRED (no LLM)
+│   ├── Fund Discovery         → GPT-4o tool-use over Form D + IAPD relying advisors
+│   ├── Enforcement            → GPT-4o + EDGAR/web search, agentic query adaptation
+│   ├── ADV Section 7.B parser → private fund list from ADV Part 1A PDF
+│   ├── 13F XML parser         → portfolio value, holdings, QoQ history
+│   ├── Brochure downloader    → ADV Part 2A text extraction (best-effort)
+│   └── Cross-source reconciler→ 13F vs ADV AUM · Form D vs Section 7.B
+├── Fund Analysis              → OpenAI GPT-4o (agentic RAG over raw data)
+├── News Research              → OpenAI GPT-4o + web search tool loop
+├── Risk Flagging              → OpenAI GPT-4o
+├── Memo Generation            → OpenAI GPT-4o
+│   ├── Fact Checker           → deterministic + narrative verification (shown in Memo tab)
+│   └── PAL Consensus          → optional Gemini-3-Pro via MCP (shown in Memo tab)
+├── IC Scorecard               → OpenAI GPT-4o
+├── Comparables                → IAPD peer search (no LLM)
+├── Comparison                 → GPT-4o side-by-side manager comparison
+├── Portfolio Fit              → GPT-4o LP portfolio scoring
+└── Research Director          → OpenAI GPT-4o (final quality gate)
 ```
 
 **Harness features:** crash-resumable pipeline (raw data cached to `.cache/`), per-agent cost and latency logging (`logs/trace.jsonl`), schema validation with retry.
@@ -62,7 +68,7 @@ See [`docs/research-brief.md`](docs/research-brief.md) for full architecture and
 
 ## Agents
 
-The pipeline is composed of 14 specialized agents organized into four stages:
+The pipeline is composed of 14 specialized agents organized into four stages. Fund Discovery and Enforcement run inside the Data Ingestion step; Fact Checker and PAL Consensus appear as collapsible panels inside the Memo tab rather than standalone tabs.
 
 ### Orchestration
 
@@ -103,6 +109,28 @@ The pipeline is composed of 14 specialized agents organized into four stages:
 | **IC Scorecard** | `agents/ic_scorecard.py` | Synthesizes all prior agent outputs into a structured IC verdict: recommendation (PROCEED / REQUEST MORE INFO / PASS), confidence, dimension scores, and minimum diligence checklist |
 | **Memo Generation** | `agents/memo_generation.py` | The only agent that produces narrative prose — synthesizes all structured JSON outputs into the final IC-ready due diligence memo in markdown |
 
+
+---
+
+## Streamlit UI Tabs
+
+The Streamlit app (`app.py`) organises results into 13 tabs:
+
+| Tab | What it shows |
+|-----|--------------|
+| **DD Memo** | Full 12-section markdown memo; Fact Checker and PAL Consensus are collapsible panels inside this tab |
+| **IC Scorecard** | PROCEED / REQUEST MORE INFO / PASS verdict, confidence score, dimension breakdown |
+| **Risk Dashboard** | Risk flag summary with severity tiers |
+| **Director Review** | Research Director quality-gate verdict and override notes |
+| **Comparables** | Side-by-side IAPD peer benchmarking table |
+| **Funds** | Private fund list from ADV Section 7.B cross-referenced with Form D |
+| **News** | Web-sourced news and personnel change flags |
+| **Raw Data** | Full JSON from every API call — every memo claim is auditable here |
+| **AI Assistant** | In-app chat against the research package |
+| **Portfolio Fit** | LP portfolio fit score across strategy, geography, vintage, size, and risk budget |
+| **Compare** | Side-by-side comparison of two managers with per-dimension winner |
+| **Watch List** | Saved managers for ongoing monitoring |
+| **Enforcement** | Regulatory history, EDGAR enforcement-adjacent filings, web enforcement search |
 
 ---
 
