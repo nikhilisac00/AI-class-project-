@@ -116,6 +116,14 @@ Coverage gaps: {news_report.get("coverage_gaps", [])}
 }, indent=2, default=str)}
 </enforcement>"""
 
+    scoring_block = ""
+    if scoring_weights:
+        scoring_block = f"""
+<lp_scoring_weights>
+The LP has specified custom importance weights (1=low, 10=high). Reflect these in severity decisions:
+{json.dumps(scoring_weights, indent=2)}
+</lp_scoring_weights>"""
+
     user_message = f"""
 Review this investment adviser and identify LP-material risk flags.
 Think carefully about context and severity before flagging anything.
@@ -134,11 +142,7 @@ Ingestion errors: {raw_data.get("errors", [])}
 {fund_block}
 {enforcement_block}
 {news_block}
-{f"""
-<lp_scoring_weights>
-The LP has specified custom importance weights (1=low, 10=high). Reflect these in severity decisions:
-{json.dumps(scoring_weights, indent=2)}
-</lp_scoring_weights>""" if scoring_weights else ""}
+{scoring_block}
 Apply the LP risk framework. For each flag:
 - What SPECIFICALLY in the data supports this?
 - Is this a real flag or just a data gap?
