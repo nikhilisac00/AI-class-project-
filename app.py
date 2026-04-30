@@ -1369,30 +1369,27 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
     _rec_badge    = f" {_rec_icons.get(_rec,'')}" if _rec else ""
     _enf_badge    = f" {enf_icon}" if enf_sev != "CLEAN" else " ✅"
 
-    _fc_verdict   = (fact_check or {}).get("verdict", "")
-    _fc_badge     = " ✅" if _fc_verdict == "PASS" else (" ⚠️" if _fc_verdict == "PASS_WITH_FLAGS" else (" 🔴" if _fc_verdict == "FAIL" else ""))
 
     (
         tab_memo, tab_scorecard, tab_risk, tab_director,
-        tab_enf, tab_comparables, tab_funds, tab_news,
-        tab_fact_check, tab_pal, tab_raw, tab_chat,
+        tab_comparables, tab_funds, tab_news,
+        tab_raw, tab_chat,
         tab_portfolio_fit, tab_compare, tab_watchlist,
+        tab_enf,
     ) = st.tabs([
         "DD Memo",
         f"IC Scorecard{_rec_badge}",
         f"Risk Dashboard{_risk_badge}",
         "Director Review",
-        f"Enforcement{_enf_badge}",
         "Comparables",
         "Funds",
         f"News{_news_badge}",
-        f"Fact Checker{_fc_badge}",
-        "PAL Consensus",
         "Raw Data",
-        "💬 AI Assistant",
+        "AI Assistant",
         "Portfolio Fit",
         "Compare",
-        "Watch List 👁",
+        "Watch List",
+        f"Enforcement{_enf_badge}",
     ])
 
     # ─ IC Scorecard ──────────────────────────────────────────────────────
@@ -2263,71 +2260,62 @@ if st.session_state.pipeline_done and st.session_state.pipeline_result:
                     )
             st.divider()
             st.markdown(memo)
-        else:
-            st.warning("Memo not generated.")
 
-    # ─ Fact Checker ──────────────────────────────────────────────────────
-    with tab_fact_check:
-        if fact_check and fact_check.get("verdict") != "SKIP":
-            verdict    = fact_check.get("verdict", "—")
-            confidence = fact_check.get("confidence", "—")
-            hal_risk   = fact_check.get("hallucination_risk", "—")
-            summary    = fact_check.get("summary", "")
-            verified   = fact_check.get("verified_claims", [])
-            flagged    = fact_check.get("flagged_claims", [])
-            high_flags = [f for f in flagged if f.get("severity") == "HIGH"]
+            # ── Fact Checker (collapsed inside memo tab) ────────────────
+            if fact_check and fact_check.get("verdict") != "SKIP":
+                verdict    = fact_check.get("verdict", "---")
+                confidence = fact_check.get("confidence", "---")
+                hal_risk   = fact_check.get("hallucination_risk", "---")
+                summary    = fact_check.get("summary", "")
+                verified   = fact_check.get("verified_claims", [])
+                flagged    = fact_check.get("flagged_claims", [])
+                high_flags = [f for f in flagged if f.get("severity") == "HIGH"]
 
-            verdict_color = {"PASS": "#28a745", "PASS_WITH_FLAGS": "#fd7e14", "FAIL": "#dc3545"}.get(verdict, "#6c757d")
-            st.markdown(
-                f'<div style="padding:12px;border-radius:6px;background:{verdict_color}20;'
-                f'border-left:4px solid {verdict_color};margin-bottom:12px">'
-                f'<b style="color:{verdict_color};font-size:1.1rem">{verdict}</b> &nbsp;·&nbsp; '
-                f'Confidence: {confidence} &nbsp;·&nbsp; Hallucination Risk: {hal_risk}<br>'
-                f'<span style="font-size:0.9rem">{summary}</span></div>',
-                unsafe_allow_html=True,
-            )
-
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Verified Claims", len(verified))
-            m2.metric("Flagged Claims", len(flagged))
-            m3.metric("HIGH Severity", len(high_flags))
-
-            if flagged:
-                st.subheader("Flagged Claims")
-                for f in flagged:
-                    sev = f.get("severity", "LOW")
-                    color = {"HIGH": "#dc3545", "MEDIUM": "#fd7e14", "LOW": "#6c757d"}.get(sev, "#6c757d")
+                verdict_color = {"PASS": "#28a745", "PASS_WITH_FLAGS": "#fd7e14", "FAIL": "#dc3545"}.get(verdict, "#6c757d")
+                fc_label = f"Fact Checker — {verdict} ({len(verified)} verified, {len(flagged)} flagged)"
+                with st.expander(fc_label, expanded=False):
                     st.markdown(
-                        f'<div style="padding:8px;border-left:3px solid {color};margin-bottom:6px">'
-                        f'<b style="color:{color}">{sev}</b> &nbsp;'
-                        f'<i>"{f.get("claim","")}"</i><br>'
-                        f'<span style="font-size:0.85rem">⚠ {f.get("issue","")}</span></div>',
+                        f'<div style="padding:12px;border-radius:6px;background:{verdict_color}20;'
+                        f'border-left:4px solid {verdict_color};margin-bottom:12px">'
+                        f'<b style="color:{verdict_color};font-size:1.1rem">{verdict}</b> &nbsp;·&nbsp; '
+                        f'Confidence: {confidence} &nbsp;·&nbsp; Hallucination Risk: {hal_risk}<br>'
+                        f'<span style="font-size:0.9rem">{summary}</span></div>',
                         unsafe_allow_html=True,
                     )
 
-            if verified:
-                with st.expander(f"Verified Claims ({len(verified)})", expanded=False):
-                    for v in verified:
-                        st.markdown(
-                            f'✅ **"{v.get("claim","")}"** — '
-                            f'Source: `{v.get("source","")}` = `{v.get("value","")}`'
-                        )
-        else:
-            st.info("Fact check not available for this analysis.")
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Verified Claims", len(verified))
+                    m2.metric("Flagged Claims", len(flagged))
+                    m3.metric("HIGH Severity", len(high_flags))
 
-    # ─ PAL Consensus ─────────────────────────────────────────────────────
-    with tab_pal:
-        if pal_review:
-            st.subheader("PAL Multi-Model Consensus Review")
-            st.caption("Validated by Gemini-3-Pro via PAL MCP server")
-            st.markdown(pal_review)
-        elif use_pal:
-            st.info("PAL MCP server not available in this environment.")
+                    if flagged:
+                        st.subheader("Flagged Claims")
+                        for f in flagged:
+                            sev = f.get("severity", "LOW")
+                            color = {"HIGH": "#dc3545", "MEDIUM": "#fd7e14", "LOW": "#6c757d"}.get(sev, "#6c757d")
+                            st.markdown(
+                                f'<div style="padding:8px;border-left:3px solid {color};margin-bottom:6px">'
+                                f'<b style="color:{color}">{sev}</b> &nbsp;'
+                                f'<i>"{f.get("claim","")}"</i><br>'
+                                f'<span style="font-size:0.85rem">Warning: {f.get("issue","")}</span></div>',
+                                unsafe_allow_html=True,
+                            )
+
+                    if verified:
+                        for v in verified:
+                            st.markdown(
+                                f'Verified **"{v.get("claim","")}"** — '
+                                f'Source: `{v.get("source","")}` = `{v.get("value","")}`'
+                            )
+
+            # ── PAL Consensus (collapsed inside memo tab) ───────────────
+            if pal_review:
+                with st.expander("PAL Multi-Model Consensus Review", expanded=False):
+                    st.caption("Validated by Gemini-3-Pro via PAL MCP server")
+                    st.markdown(pal_review)
+
         else:
-            st.info(
-                "Enable **Multi-Model Consensus** in the sidebar to validate "
-                "risk flags with Gemini-3-Pro via PAL MCP."
-            )
+            st.warning("Memo not generated.")
 
     # ─ Raw Data ──────────────────────────────────────────────────────────
     with tab_raw:
