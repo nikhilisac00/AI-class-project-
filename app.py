@@ -25,8 +25,11 @@ st.set_page_config(
 st.markdown("""
 <style>
 /* ── Hide Streamlit chrome ────────────────────────────────────── */
-#MainMenu, footer, header { visibility: hidden; }
-.stDeployButton { display: none; }
+#MainMenu, footer, header { display: none !important; height: 0 !important; }
+.stDeployButton { display: none !important; }
+[data-testid="stHeader"] { display: none !important; }
+[data-testid="stToolbar"] { display: none !important; }
+[data-testid="stDecoration"] { display: none !important; }
 
 /* ── Typography ───────────────────────────────────────────────── */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
