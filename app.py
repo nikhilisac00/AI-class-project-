@@ -335,7 +335,12 @@ div[data-testid="column"] .stButton > button {
     color: #94a3b8 !important;
     font-size: 0.65rem !important;
     font-weight: 500 !important;
-    padding: 2px 0 !important;
+    padding: 2px 12px !important;
+    min-height: 38px !important;
+    height: 38px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
     transition: all 0.2s ease !important;
     line-height: 1.4 !important;
 }
@@ -546,6 +551,13 @@ with st.sidebar:
 
 # ── Hero card (always visible) ───────────────────────────────────────────────
 
+# LLM-powered analysis agents in the core pipeline (sequential, not parallel):
+#   1. fund_analysis      2. news_research (optional)  3. risk_flagging
+#   4. memo_generation    5. fact_checker               6. ic_scorecard
+#   7. comparables        8. research_director
+# Data-fetching agents (no LLM): ingestion, resolver
+_NUM_ANALYSIS_AGENTS = 8
+
 _step_active = (
     4 if st.session_state.pipeline_done else
     3 if st.session_state.get("_pipeline_running") else
@@ -569,7 +581,7 @@ st.markdown(f"""
     <div class="hero-icon">📋</div>
     <div>
       <div class="hero-title">LP Due Diligence Intelligence</div>
-      <div class="hero-sub">SEC EDGAR 13F · IAPD / Form ADV · Form D · FRED Macro · GPT-4o · 8 AI Agents</div>
+      <div class="hero-sub">SEC EDGAR 13F · IAPD / Form ADV · Form D · FRED Macro · GPT-4o · {_NUM_ANALYSIS_AGENTS} AI Agents</div>
     </div>
   </div>
   <div class="step-flow">
@@ -577,7 +589,7 @@ st.markdown(f"""
     <div class="sf-arrow">›</div>
     {_sf(2, "Confirm", "IAPD match", "s2")}
     <div class="sf-arrow">›</div>
-    {_sf(3, "Analyze", "8 agents", "s3")}
+    {_sf(3, "Analyze", f"{_NUM_ANALYSIS_AGENTS} agents", "s3")}
     <div class="sf-arrow">›</div>
     {_sf(4, "Review", "IC memo", "s4")}
   </div>
