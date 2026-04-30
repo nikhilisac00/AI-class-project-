@@ -163,7 +163,28 @@ class LLMClient:
     def complete_json(self, system: str, user: str,
                       max_tokens: int = 8000, step_name: str = "", **_) -> dict:
         """Return a completion parsed as a JSON dict."""
-        text = self.complete(system, user, max_tokens, step_name=step_name)
+        system_msg, user_msg = self._enforce_budget(system, user, max_tokens)
+        t0 = time.perf_counter()
+        response = self._call_with_retry(
+            self.model,
+            [{"role": "system", "content": system_msg},
+             {"role": "user", "content": user_msg}],
+            max_tokens, step_name=step_name,
+        )
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+        self._record(response, latency_ms)
+        self._emit_trace(step_name, t0, response, True)
+        text = (response.choices[0].message.content or "").strip()
+        finish_reason = response.choices[0].finish_reason
+
+        if finish_reason == "length":
+            print(f"[LLMClient] WARNING: response hit max_tokens={max_tokens} — attempting JSON repair")
+            repaired = LLMClient._repair_truncated_json(text)
+            try:
+                return json.loads(repaired)
+            except json.JSONDecodeError:
+                pass
+
         return self._parse_json(text)
 
     def chat(self, messages: list[dict], max_tokens: int = 2000) -> str:
