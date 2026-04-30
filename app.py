@@ -29,110 +29,91 @@ st.markdown("""
 .stDeployButton { display: none; }
 
 /* ── Typography ───────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 html, body, [class*="css"] {
     font-family: "Inter", "Segoe UI", ui-sans-serif, sans-serif !important;
 }
 
+/* ── Global dark background ──────────────────────────────────── */
+.stApp, [data-testid="stAppViewContainer"], .main .block-container {
+    background-color: #0b1120 !important;
+}
+.main { background-color: #0b1120 !important; }
+
 /* ── Main area ────────────────────────────────────────────────── */
 .block-container {
-    padding-top: 1.25rem !important;
-    padding-bottom: 2rem !important;
-    max-width: 1200px;
+    padding-top: 1rem !important;
+    padding-bottom: 1.5rem !important;
+    max-width: 960px;
 }
 
 /* ── Sidebar ──────────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
-    background: #0f1923 !important;
+    background: #080e1a !important;
+    border-right: 1px solid #141e30 !important;
 }
 [data-testid="stSidebar"] * {
-    color: #c8d6e5 !important;
+    color: #94a3b8 !important;
 }
 [data-testid="stSidebar"] hr {
-    border-color: #1e3050 !important;
+    border-color: #1a2540 !important;
 }
 [data-testid="stSidebar"] label {
-    font-size: 0.72rem !important;
+    font-size: 0.7rem !important;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #5d7a96 !important;
-}
-
-/* ── Title bar ────────────────────────────────────────────────── */
-.title-bar {
-    background: #0f1923;
-    border-radius: 6px;
-    padding: 12px 20px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 16px;
-}
-.title-bar .tb-icon {
-    background: #c9a84c;
-    border-radius: 4px;
-    width: 26px; height: 26px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0.9rem; flex-shrink: 0;
-}
-.title-bar .tb-title {
-    font-size: 1rem;
-    font-weight: 700;
-    color: #ffffff;
-}
-.title-bar .tb-meta {
-    font-size: 0.72rem;
-    color: #5d7a96;
-    margin-left: 2px;
+    color: #64748b !important;
 }
 
 /* ── Metric cards ─────────────────────────────────────────────── */
 .metric-card {
-    background: #ffffff;
-    border: 1px solid #e2e6ea;
-    border-top: 3px solid #1a3d6e;
-    border-radius: 6px;
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-top: 2px solid #3b82f6;
+    border-radius: 8px;
     padding: 12px 14px;
     text-align: center;
 }
 .metric-card .metric-label {
-    font-size: 0.65rem;
-    font-weight: 700;
+    font-size: 0.62rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.07em;
-    color: #8fa3bb;
+    letter-spacing: 0.08em;
+    color: #64748b;
     margin-bottom: 4px;
 }
 .metric-card .metric-value {
-    font-size: 1.3rem;
+    font-size: 1.2rem;
     font-weight: 700;
-    color: #0f1923;
+    color: #f1f5f9;
     line-height: 1.2;
 }
 .metric-card .metric-sub {
-    font-size: 0.65rem;
-    color: #8fa3bb;
+    font-size: 0.62rem;
+    color: #64748b;
     margin-top: 2px;
 }
 .metric-card.risk-card {
-    border-top: 3px solid #c0392b;
+    border-top: 2px solid #ef4444;
 }
 
 /* ── Firm result header ───────────────────────────────────────── */
 .firm-header {
-    background: #0f1923;
-    border-radius: 6px;
-    padding: 16px 22px;
-    margin-bottom: 16px;
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 14px 20px;
+    margin-bottom: 12px;
 }
 .firm-header h2 {
-    margin: 0 0 6px 0;
-    font-size: 1.3rem;
+    margin: 0 0 4px 0;
+    font-size: 1.15rem;
     font-weight: 700;
-    color: #ffffff;
+    color: #f1f5f9;
 }
 .firm-header .firm-meta {
-    font-size: 0.75rem;
-    color: #7a95ae;
+    font-size: 0.72rem;
+    color: #64748b;
     margin-top: 4px;
 }
 
@@ -141,29 +122,29 @@ html, body, [class*="css"] {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 .step-label .step-num {
-    background: #1a3d6e;
+    background: #1e40af;
     color: #fff;
     border-radius: 50%;
-    width: 22px; height: 22px;
+    width: 20px; height: 20px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.72rem; font-weight: 700; flex-shrink: 0;
+    font-size: 0.68rem; font-weight: 700; flex-shrink: 0;
 }
 .step-label .step-title {
-    font-size: 0.95rem;
+    font-size: 0.88rem;
     font-weight: 700;
-    color: #0f1923;
+    color: #e2e8f0;
 }
 
 /* ── Risk tier banner ─────────────────────────────────────────── */
 .risk-tier-banner {
     border-radius: 6px;
-    padding: 10px 16px;
-    font-size: 0.9rem;
+    padding: 8px 14px;
+    font-size: 0.85rem;
     font-weight: 700;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -171,24 +152,24 @@ html, body, [class*="css"] {
 
 /* ── Section label ────────────────────────────────────────────── */
 .section-label {
-    font-size: 0.65rem;
-    font-weight: 700;
+    font-size: 0.62rem;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #8fa3bb;
+    color: #64748b;
     margin-bottom: 4px;
 }
 
 /* ── Sidebar config title ─────────────────────────────────────── */
 .sb-title {
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     font-weight: 700;
-    color: #c8d6e5;
+    color: #94a3b8;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    padding: 12px 0 8px 0;
-    border-bottom: 1px solid #1e3050;
-    margin-bottom: 10px;
+    padding: 10px 0 6px 0;
+    border-bottom: 1px solid #1a2540;
+    margin-bottom: 8px;
 }
 
 /* ── Badges ───────────────────────────────────────────────────── */
@@ -204,156 +185,191 @@ html, body, [class*="css"] {
 
 /* ── Primary button ───────────────────────────────────────────── */
 .stButton > button[kind="primary"] {
-    background: #1a3d6e !important;
+    background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%) !important;
     border: none !important;
     font-weight: 600 !important;
     border-radius: 6px !important;
     padding: 0.4rem 1.5rem !important;
+    font-size: 0.82rem !important;
+    letter-spacing: 0.02em !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3) !important;
 }
 .stButton > button[kind="primary"]:hover {
-    background: #1e4d8c !important;
+    background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%) !important;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4) !important;
+    transform: translateY(-1px) !important;
 }
 
 /* ── Tabs ─────────────────────────────────────────────────────── */
 [data-testid="stTabs"] button[role="tab"] {
-    font-size: 0.78rem !important;
+    font-size: 0.74rem !important;
     font-weight: 600 !important;
     text-transform: uppercase !important;
     letter-spacing: 0.05em !important;
     padding: 6px 14px !important;
+    color: #94a3b8 !important;
 }
 
 /* ── Expanders ────────────────────────────────────────────────── */
 [data-testid="stExpander"] summary {
-    font-size: 0.82rem !important;
+    font-size: 0.8rem !important;
     font-weight: 600 !important;
+    color: #cbd5e1 !important;
+}
+[data-testid="stExpander"] {
+    border-color: #1e293b !important;
 }
 
 /* ── Dividers ─────────────────────────────────────────────────── */
-hr { border-color: #e2e6ea !important; }
+hr { border-color: #1e293b !important; }
 
 /* ── Captions ─────────────────────────────────────────────────── */
 .stCaption, [data-testid="stCaptionContainer"] {
-    font-size: 0.72rem !important;
-    color: #8fa3bb !important;
+    font-size: 0.7rem !important;
+    color: #64748b !important;
 }
 
 /* ── Hero card ────────────────────────────────────────────────────────────── */
 .hero-card {
-    background: linear-gradient(160deg, #08111f 0%, #0d1e38 60%, #0f2040 100%);
+    background: linear-gradient(145deg, #0f172a 0%, #131d33 50%, #111827 100%);
     border-radius: 10px;
-    padding: 22px 28px 18px 28px;
-    margin-bottom: 16px;
-    border: 1px solid #1c2e48;
+    padding: 14px 22px 12px 22px;
+    margin-bottom: 12px;
+    border: 1px solid #1e293b;
 }
 .hero-row {
-    display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
 }
 .hero-icon {
-    background: #c9a84c; border-radius: 6px;
-    width: 32px; height: 32px;
+    background: linear-gradient(135deg, #d4a537 0%, #b8942f 100%);
+    border-radius: 6px;
+    width: 28px; height: 28px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 1rem; flex-shrink: 0;
+    font-size: 0.85rem; flex-shrink: 0;
 }
-.hero-title { font-size: 1.2rem; font-weight: 800; color: #fff; letter-spacing: -0.01em; }
-.hero-sub   { font-size: 0.72rem; color: #4a6278; margin-top: 2px; }
+.hero-title {
+    font-size: 1.05rem; font-weight: 700; color: #f1f5f9;
+    letter-spacing: -0.01em;
+}
+.hero-sub {
+    font-size: 0.65rem; color: #475569; margin-top: 1px;
+    letter-spacing: 0.02em;
+}
 
 /* ── Horizontal step flow ────────────────────────────────────────────────── */
 .step-flow {
     display: flex; align-items: center;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 8px; padding: 10px 16px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px; padding: 8px 14px;
 }
-.sf-step { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.sf-step { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
 .sf-circle {
-    width: 26px; height: 26px; border-radius: 50%;
+    width: 22px; height: 22px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.70rem; font-weight: 800; flex-shrink: 0;
+    font-size: 0.65rem; font-weight: 700; flex-shrink: 0;
+    transition: all 0.2s ease;
 }
 .sf-text { min-width: 0; }
-.sf-name { font-size: 0.76rem; font-weight: 700; white-space: nowrap; }
-.sf-hint { font-size: 0.64rem; opacity: 0.55; white-space: nowrap; }
-.sf-arrow { color: rgba(255,255,255,0.18); font-size: 1rem; padding: 0 8px; flex-shrink: 0; }
-.sf-step.s1 .sf-circle { background:#1a3d6e; color:#7ab0f5; }
-.sf-step.s1 .sf-name   { color:#7ab0f5; }
-.sf-step.s1 .sf-hint   { color:#3a5575; }
-.sf-step.s2 .sf-circle { background:#1a4d3a; color:#52c99a; }
-.sf-step.s2 .sf-name   { color:#52c99a; }
-.sf-step.s2 .sf-hint   { color:#2e5a44; }
-.sf-step.s3 .sf-circle { background:#4a3000; color:#e0a820; }
-.sf-step.s3 .sf-name   { color:#e0a820; }
-.sf-step.s3 .sf-hint   { color:#5a4010; }
-.sf-step.s4 .sf-circle { background:#3d1a48; color:#b97de8; }
-.sf-step.s4 .sf-name   { color:#b97de8; }
-.sf-step.s4 .sf-hint   { color:#4e2a60; }
+.sf-name { font-size: 0.7rem; font-weight: 600; white-space: nowrap; }
+.sf-hint { font-size: 0.6rem; opacity: 0.5; white-space: nowrap; }
+.sf-arrow { color: rgba(255,255,255,0.12); font-size: 0.85rem; padding: 0 6px; flex-shrink: 0; }
+.sf-step.s1 .sf-circle { background: rgba(59,130,246,0.15); color: #60a5fa; }
+.sf-step.s1 .sf-name   { color: #60a5fa; }
+.sf-step.s1 .sf-hint   { color: #334155; }
+.sf-step.s2 .sf-circle { background: rgba(52,211,153,0.12); color: #34d399; }
+.sf-step.s2 .sf-name   { color: #34d399; }
+.sf-step.s2 .sf-hint   { color: #334155; }
+.sf-step.s3 .sf-circle { background: rgba(251,191,36,0.12); color: #fbbf24; }
+.sf-step.s3 .sf-name   { color: #fbbf24; }
+.sf-step.s3 .sf-hint   { color: #334155; }
+.sf-step.s4 .sf-circle { background: rgba(167,139,250,0.12); color: #a78bfa; }
+.sf-step.s4 .sf-name   { color: #a78bfa; }
+.sf-step.s4 .sf-hint   { color: #334155; }
 
 /* ── Search section card ─────────────────────────────────────────────────── */
 .search-section {
-    background: #ffffff;
-    border: 1px solid #dde6f0;
+    background: #111827;
+    border: 1px solid #1e293b;
     border-radius: 10px;
-    padding: 18px 22px 14px 22px;
-    margin-bottom: 16px;
+    padding: 14px 18px 12px 18px;
+    margin-bottom: 12px;
 }
 .search-section-title {
-    font-size: 0.67rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.09em;
-    color: #8fa3bb; margin-bottom: 10px;
+    font-size: 0.62rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: #64748b; margin-bottom: 8px;
 }
 [data-testid="stTextInput"] input {
-    font-size: 1rem !important;
+    font-size: 0.88rem !important;
     border-radius: 6px !important;
-    border: 1.5px solid #c8d8ea !important;
-    padding: 10px 16px !important;
-    background: #f8fafc !important;
+    border: 1px solid #1e293b !important;
+    padding: 8px 14px !important;
+    background: #0f172a !important;
+    color: #e2e8f0 !important;
+    transition: all 0.2s ease !important;
+}
+[data-testid="stTextInput"] input::placeholder {
+    color: #475569 !important;
 }
 [data-testid="stTextInput"] input:focus {
-    border-color: #1a3d6e !important;
-    background: #fff !important;
-    box-shadow: 0 0 0 3px rgba(26,61,110,0.10) !important;
+    border-color: #2563eb !important;
+    background: #0c1425 !important;
+    box-shadow: 0 0 0 2px rgba(37,99,235,0.15) !important;
 }
 
 /* ── Example chips ───────────────────────────────────────────────────────── */
 .chip-section-label {
-    font-size: 0.64rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.08em;
-    color: #a0b4c8; margin: 10px 0 6px 0;
+    font-size: 0.6rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: #475569; margin: 6px 0 4px 0;
 }
 div[data-testid="column"] .stButton > button {
-    background: #f0f5fb !important;
-    border: 1px solid #ccd8e8 !important;
-    border-radius: 20px !important;
-    color: #1a3d6e !important;
-    font-size: 0.70rem !important;
-    font-weight: 600 !important;
-    padding: 4px 0 !important;
-    transition: all 0.15s !important;
+    background: transparent !important;
+    border: 1px solid #1e293b !important;
+    border-radius: 16px !important;
+    color: #94a3b8 !important;
+    font-size: 0.65rem !important;
+    font-weight: 500 !important;
+    padding: 2px 0 !important;
+    transition: all 0.2s ease !important;
+    line-height: 1.4 !important;
 }
 div[data-testid="column"] .stButton > button:hover {
-    background: #1a3d6e !important;
-    color: #fff !important;
-    border-color: #1a3d6e !important;
+    background: rgba(37,99,235,0.1) !important;
+    color: #60a5fa !important;
+    border-color: #2563eb !important;
 }
 
 /* ── Criteria strip ──────────────────────────────────────────────────────── */
 .criteria-strip {
-    background: #fffcf0; border: 1px solid #e8d9a8;
-    border-radius: 8px; padding: 12px 16px; margin-top: 10px;
+    background: rgba(180,140,50,0.06);
+    border: 1px solid rgba(180,140,50,0.15);
+    border-radius: 8px; padding: 10px 14px; margin-top: 8px;
 }
 .criteria-strip-title {
-    font-size: 0.65rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.09em;
-    color: #c9a84c; margin-bottom: 8px;
+    font-size: 0.6rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: #b8942f; margin-bottom: 6px;
 }
 .criteria-row {
-    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px 16px;
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2px 14px;
 }
 .crit-item {
-    display: flex; align-items: baseline; gap: 6px;
-    font-size: 0.74rem; color: #5a4a20; line-height: 1.5;
+    display: flex; align-items: baseline; gap: 5px;
+    font-size: 0.68rem; color: #94a3b8; line-height: 1.5;
 }
-.crit-dot { color: #c9a84c; font-size: 0.68rem; flex-shrink: 0; }
+.crit-dot { color: #b8942f; font-size: 0.6rem; flex-shrink: 0; }
+
+/* ── Dark theme overrides for Streamlit containers ───────────────────────── */
+[data-testid="stContainer"], [data-testid="stVerticalBlock"] {
+    color: #e2e8f0;
+}
+.stAlert { border-radius: 6px !important; }
+.stMarkdown p { color: #cbd5e1; }
+.stMarkdown strong { color: #f1f5f9; }
+.stMarkdown h1, .stMarkdown h2, .stMarkdown h3 { color: #f1f5f9; }
 
 </style>
 """, unsafe_allow_html=True)
@@ -550,17 +566,17 @@ st.markdown(f"""
     <div class="hero-icon">📋</div>
     <div>
       <div class="hero-title">LP Due Diligence Intelligence</div>
-      <div class="hero-sub">SEC EDGAR 13F &nbsp;·&nbsp; IAPD / Form ADV &nbsp;·&nbsp; Form D &nbsp;·&nbsp; FRED Macro &nbsp;·&nbsp; GPT-4o &nbsp;·&nbsp; 8 AI Agents</div>
+      <div class="hero-sub">SEC EDGAR 13F · IAPD / Form ADV · Form D · FRED Macro · GPT-4o · 8 AI Agents</div>
     </div>
   </div>
   <div class="step-flow">
-    {_sf(1, "Search", "Firm name or CRD", "s1")}
+    {_sf(1, "Search", "Firm or CRD", "s1")}
     <div class="sf-arrow">›</div>
-    {_sf(2, "Confirm", "Select from IAPD", "s2")}
+    {_sf(2, "Confirm", "IAPD match", "s2")}
     <div class="sf-arrow">›</div>
-    {_sf(3, "Analyze", "8 agents run", "s3")}
+    {_sf(3, "Analyze", "8 agents", "s3")}
     <div class="sf-arrow">›</div>
-    {_sf(4, "Review", "IC memo + risk", "s4")}
+    {_sf(4, "Review", "IC memo", "s4")}
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -584,7 +600,7 @@ if not st.session_state.confirmed_firm:
     st.markdown('<div class="search-section">', unsafe_allow_html=True)
     st.markdown('<div class="search-section-title">Search Investment Manager</div>', unsafe_allow_html=True)
 
-    col_q, col_find = st.columns([5, 1])
+    col_q, col_find = st.columns([6, 1])
     with col_q:
         query_input = st.text_input(
             "Firm",
@@ -597,11 +613,21 @@ if not st.session_state.confirmed_firm:
         find_btn = st.button("Search", type="primary", use_container_width=True)
 
     # Example chips
-    st.markdown('<div class="chip-section-label">Quick examples — click to search</div>', unsafe_allow_html=True)
-    chip_cols = st.columns(len(_EXAMPLE_FIRMS))
-    for _ci, (_firm_name, _firm_sub) in enumerate(_EXAMPLE_FIRMS):
-        with chip_cols[_ci]:
+    st.markdown('<div class="chip-section-label">Quick examples</div>', unsafe_allow_html=True)
+    # Two rows of 4 for cleaner layout
+    _row1 = _EXAMPLE_FIRMS[:4]
+    _row2 = _EXAMPLE_FIRMS[4:]
+    chip_cols_1 = st.columns(4)
+    for _ci, (_firm_name, _firm_sub) in enumerate(_row1):
+        with chip_cols_1[_ci]:
             if st.button(_firm_name, key=f"chip_{_ci}", use_container_width=True, help=_firm_sub):
+                st.session_state.search_query = _firm_name
+                st.session_state._auto_search  = True
+                st.rerun()
+    chip_cols_2 = st.columns(4)
+    for _ci, (_firm_name, _firm_sub) in enumerate(_row2):
+        with chip_cols_2[_ci]:
+            if st.button(_firm_name, key=f"chip_{_ci + 4}", use_container_width=True, help=_firm_sub):
                 st.session_state.search_query = _firm_name
                 st.session_state._auto_search  = True
                 st.rerun()
