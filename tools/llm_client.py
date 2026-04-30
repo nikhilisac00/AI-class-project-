@@ -417,6 +417,40 @@ class LLMClient:
         return text.rstrip().rstrip(",") + "".join(reversed(stack))
 
     @staticmethod
+    def _extract_balanced_json(text: str) -> str | None:
+        """Find the first balanced { ... } span in text using bracket counting.
+
+        More reliable than greedy regex when the LLM wraps JSON in prose
+        that itself contains braces or brackets.
+        """
+        start = text.find('{')
+        if start < 0:
+            return None
+        depth = 0
+        in_string = False
+        escape = False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if escape:
+                escape = False
+                continue
+            if ch == '\\' and in_string:
+                escape = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    return text[start:i + 1]
+        return None
+
+    @staticmethod
     def _parse_json(text: str) -> dict:
         """Extract and parse JSON from model output, stripping markdown fences."""
         if text.startswith("```"):
@@ -427,25 +461,37 @@ class LLMClient:
         try:
             return json.loads(text)
         except json.JSONDecodeError:
-            # Try regex extraction first
-            match = re.search(r'(\{.*\}|\[.*\])', text, re.DOTALL)
-            if match:
-                try:
-                    return json.loads(match.group(1))
-                except json.JSONDecodeError:
-                    pass
-            # Try repairing truncated JSON (response hit max_tokens)
+            pass
+
+        # Strategy 1: bracket-balanced extraction (handles prose wrapping)
+        balanced = LLMClient._extract_balanced_json(text)
+        if balanced:
             try:
-                repaired = LLMClient._repair_truncated_json(text)
-                result = json.loads(repaired)
-                print("[LLMClient] Warning: response was truncated — repaired JSON by closing open structures")
-                return result
-            except (json.JSONDecodeError, Exception):
+                return json.loads(balanced)
+            except json.JSONDecodeError:
                 pass
-            raise ValueError(
-                f"LLM returned non-JSON response. "
-                f"First 200 chars: {text[:200]!r}"
-            )
+
+        # Strategy 2: greedy regex (catches edge cases like arrays)
+        match = re.search(r'(\{.*\}|\[.*\])', text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # Strategy 3: repair truncated JSON (response hit max_tokens)
+        try:
+            repaired = LLMClient._repair_truncated_json(text)
+            result = json.loads(repaired)
+            print("[LLMClient] Warning: response was truncated — repaired JSON by closing open structures")
+            return result
+        except (json.JSONDecodeError, Exception):
+            pass
+
+        raise ValueError(
+            f"LLM returned non-JSON response. "
+            f"First 200 chars: {text[:200]!r}"
+        )
 
 
 def make_client(api_key: str) -> LLMClient:
